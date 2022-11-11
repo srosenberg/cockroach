@@ -667,6 +667,7 @@ func (c *sqlConn) Query(ctx context.Context, query string, args ...interface{}) 
 		return &sqlRows{rows: rows, connInfo: c.conn.ConnInfo(), conn: c}, nil
 	}
 
+	fmt.Printf("executing query via pgconn: %s\n", query)
 	// Otherwise, we use pgconn. This allows us to add support for multiple
 	// queries in a single string, which wouldn't be possible at the pgx level.
 	multiResultReader := c.conn.PgConn().Exec(ctx, query)

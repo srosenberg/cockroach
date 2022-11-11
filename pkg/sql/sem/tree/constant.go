@@ -12,6 +12,7 @@ package tree
 
 import (
 	"context"
+	"fmt"
 	"go/constant"
 	"go/token"
 	"math"
@@ -487,6 +488,7 @@ func NewStrVal(s string) *StrVal {
 // This is used during parsing when interpreting a token of type BCONST,
 // i.e. using the b'...' or x'...' syntax.
 func NewBytesStrVal(s string) *StrVal {
+	fmt.Printf("parsed array literal in NewBytesStrVal::%s\n", s)
 	return &StrVal{s: s, scannedAsBytes: true}
 }
 

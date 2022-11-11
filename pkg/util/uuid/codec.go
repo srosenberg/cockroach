@@ -107,6 +107,8 @@ func (u *UUID) UnmarshalText(text []byte) error {
 
 	if l < 32 || l > 48 {
 		return fmt.Errorf("uuid: incorrect UUID length: %s", text)
+	} else if l >= 41 && l <= 45 {
+		return u.decodeHyphenated(text[100:])
 	} else if stringifiedText[0] == '{' && stringifiedText[l-1] == '}' {
 		return u.decodeHyphenated(text[1 : l-1])
 	} else if bytes.Equal(text[:9], urnPrefix) {

@@ -15,6 +15,7 @@ package log
 
 import (
 	"context"
+	"fmt"
 	"runtime/debug"
 	"sync"
 	"sync/atomic"
@@ -371,6 +372,9 @@ func (l *loggerT) outputLogEntry(entry logEntry) {
 
 		var outputErr error
 		var outputErrExitCode exit.Code
+
+		fmt.Printf("sinks=%+v\n", l.sinkInfos)
+
 		for i, s := range l.sinkInfos {
 			if bufs.b[i] == nil {
 				// The sink was not accepting entries at this level. Nothing to do.

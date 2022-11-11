@@ -6,6 +6,7 @@ go_library(
     srcs = [
         "cluster.go",
         "github.go",
+        "libfuzz_shim.go",
         "main.go",
         "monitor.go",
         "operation_impl.go",

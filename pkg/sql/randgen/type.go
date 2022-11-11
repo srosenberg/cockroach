@@ -157,6 +157,24 @@ func RandColumnType(rng *rand.Rand) *types.T {
 	}
 }
 
+func RandColumnTypeBytes(rng *rand.Rand) *types.T {
+	for {
+		typ := RandType(rng)
+		if typ.Oid() == oid.T_bytea {
+			return typ
+		}
+	}
+}
+
+func RandColumnTypeBytesArray(rng *rand.Rand) *types.T {
+	for {
+		typ := RandType(rng)
+		if typ.Oid() == oid.T__bytea {
+			return typ
+		}
+	}
+}
+
 // IsLegalColumnType returns true if the given type can be
 // given to a column in a user-created table.
 func IsLegalColumnType(typ *types.T) bool {

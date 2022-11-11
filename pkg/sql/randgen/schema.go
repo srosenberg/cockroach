@@ -162,8 +162,58 @@ func RandCreateTableWithColumnIndexNumberGeneratorAndName(
 	// Make new defs from scratch.
 	nComputedColumns := randutil.RandIntInRange(rng, 0, (nColumns+1)/2)
 	nNormalColumns := nColumns - nComputedColumns
-	for i := 0; i < nNormalColumns; i++ {
+	for i := 0; i < nNormalColumns-2; i++ {
 		columnDef := randColumnTableDef(rng, tableIdx, colSuffix(i))
+		columnDefs = append(columnDefs, columnDef)
+		defs = append(defs, columnDef)
+	}
+
+	for i := nNormalColumns - 2; i < nNormalColumns-1; i++ {
+		columnDef := &tree.ColumnTableDef{
+			// We make a unique name for all columns by prefixing them with the table
+			// index to make it easier to reference columns from different tables.
+			Name: tree.Name(fmt.Sprintf("col%d_%d", tableIdx, colSuffix(i))),
+			Type: RandColumnTypeBytes(rng),
+		}
+		// Slightly prefer non-nullable columns
+		if columnDef.Type.(*types.T).Family() == types.OidFamily {
+			// Make all OIDs nullable so they're not part of a PK or unique index.
+			// Some OID types have a very narrow range of values they accept, which
+			// may cause many duplicate row errors.
+			columnDef.Nullable.Nullability = tree.RandomNullability(rng, true /* nullableOnly */)
+		} else if rand.Intn(2) == 0 {
+			// Slightly prefer non-nullable columns
+			columnDef.Nullable.Nullability = tree.NotNull
+		} else {
+			columnDef.Nullable.Nullability = tree.RandomNullability(rng, false /* nullableOnly */)
+		}
+		fmt.Printf("Created bytes column: %+v\n", columnDef)
+
+		columnDefs = append(columnDefs, columnDef)
+		defs = append(defs, columnDef)
+	}
+
+	for i := nNormalColumns - 1; i < nNormalColumns; i++ {
+		columnDef := &tree.ColumnTableDef{
+			// We make a unique name for all columns by prefixing them with the table
+			// index to make it easier to reference columns from different tables.
+			Name: tree.Name(fmt.Sprintf("col%d_%d", tableIdx, colSuffix(i))),
+			Type: RandColumnTypeBytesArray(rng),
+		}
+		// Slightly prefer non-nullable columns
+		if columnDef.Type.(*types.T).Family() == types.OidFamily {
+			// Make all OIDs nullable so they're not part of a PK or unique index.
+			// Some OID types have a very narrow range of values they accept, which
+			// may cause many duplicate row errors.
+			columnDef.Nullable.Nullability = tree.RandomNullability(rng, true /* nullableOnly */)
+		} else if rand.Intn(2) == 0 {
+			// Slightly prefer non-nullable columns
+			columnDef.Nullable.Nullability = tree.NotNull
+		} else {
+			columnDef.Nullable.Nullability = tree.RandomNullability(rng, false /* nullableOnly */)
+		}
+		fmt.Printf("Created array column: %+v\n", columnDef)
+
 		columnDefs = append(columnDefs, columnDef)
 		defs = append(defs, columnDef)
 	}

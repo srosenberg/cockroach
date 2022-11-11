@@ -24,7 +24,10 @@ go_library(
 go_test(
     name = "rand_test",
     size = "small",
-    srcs = ["rand_test.go"],
+    srcs = [
+        "fuzz_test.go",
+        "rand_test.go",
+    ],
     embed = [":rand"],
     deps = [
         "//pkg/base",

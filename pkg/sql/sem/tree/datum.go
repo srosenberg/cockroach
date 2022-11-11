@@ -376,7 +376,8 @@ func ParseDBool(s string) (*DBool, error) {
 // the beginning), and the escaped format, which supports "\\" and
 // octal escapes.
 func ParseDByte(s string) (*DBytes, error) {
-	res, err := lex.DecodeRawBytesToByteArrayAuto(encoding.UnsafeConvertStringToBytes(s))
+	res, err := lex.DecodeRawBytesToByteArrayAuto([]byte(s))
+	fmt.Printf("ParseDByte::s=%s, res=%+v\n", s, res)
 	if err != nil {
 		return nil, MakeParseError(s, types.Bytes, err)
 	}
@@ -1359,7 +1360,9 @@ func (d *DString) Format(ctx *FmtCtx) {
 	if f.HasFlags(fmtRawStrings) || f.HasFlags(fmtPgwireFormat) {
 		buf.WriteString(string(*d))
 	} else {
+		//fmt.Printf("about to escape: %s\n", string(*d))
 		lexbase.EncodeSQLStringWithFlags(buf, string(*d), f.EncodeFlags())
+		//fmt.Printf("after escaping: %s\n", buf.String())
 	}
 }
 
@@ -1654,6 +1657,9 @@ func writeAsHexString(ctx *FmtCtx, b string) {
 // Format implements the NodeFormatter interface.
 func (d *DBytes) Format(ctx *FmtCtx) {
 	f := ctx.flags
+
+	fmt.Printf("DBytes.Format::%s,fmtPgwireFormat=%v,fmtFormatByteLiterals=%v\n", string(*d), f.HasFlags(fmtPgwireFormat), f.HasFlags(fmtFormatByteLiterals))
+
 	if f.HasFlags(fmtPgwireFormat) {
 		ctx.WriteString(`\x`)
 		writeAsHexString(ctx, string(*d))
@@ -5179,6 +5185,7 @@ var errNonHomogeneousArray = pgerror.New(pgcode.ArraySubscript, "multidimensiona
 // Append appends a Datum to the array, whose parameterized type must be
 // consistent with the type of the Datum.
 func (d *DArray) Append(v Datum) error {
+	fmt.Printf("appending datum: %+v of type: %+v\n", v, v.ResolvedType())
 	// v.ResolvedType() must be the left-hand side because EquivalentOrNull
 	// only allows null tuple elements on the left-hand side.
 	if !v.ResolvedType().EquivalentOrNull(d.ParamTyp, true /* allowNullTupleEquivalence */) {

@@ -2269,6 +2269,8 @@ func (ex *connExecutor) execCmd() (retErr error) {
 			}
 			ex.curStmtAST = tcmd.AST
 
+			fmt.Printf("AST:%+v\n", tcmd.AST)
+
 			stmtRes := ex.clientComm.CreateStatementResult(
 				tcmd.AST,
 				NeedRowDesc,

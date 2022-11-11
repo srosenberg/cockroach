@@ -12,6 +12,8 @@ package tree
 
 import (
 	"bytes"
+	"fmt"
+	"runtime/debug"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -203,7 +205,10 @@ func (p *parseState) parseElement() error {
 func ParseDArrayFromString(
 	ctx ParseContext, s string, t *types.T,
 ) (_ *DArray, dependsOnContext bool, _ error) {
+	debug.PrintStack()
 	ret, dependsOnContext, err := doParseDArrayFromString(ctx, s, t)
+	fmt.Printf("after parsing %s; d=%+v\n", s, ret)
+
 	if err != nil {
 		return ret, false, MakeParseError(s, types.MakeArray(t), err)
 	}

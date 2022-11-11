@@ -102,7 +102,7 @@ func (fst fromStringTest) Run(t *testing.T) {
 // successfully by UnmarshalText / FromString.
 //
 // variants must be unique across elements of this slice. Please see the
-// comment in fuzz.go if you change this slice or add new tests to it.
+// comment in fuzz_test.go if you change this slice or add new tests to it.
 var fromStringTests = []fromStringTest{
 	{
 		input:   "6ba7b810-9dad-11d1-80b4-00c04fd430c8",

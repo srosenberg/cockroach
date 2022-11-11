@@ -41,6 +41,7 @@ func ParseAndRequireString(
 	switch t.Family() {
 	case types.ArrayFamily:
 		d, dependsOnContext, err = ParseDArrayFromString(ctx, s, t.ArrayContents())
+
 	case types.BitFamily:
 		r, err := ParseDBitArray(s)
 		if err != nil {

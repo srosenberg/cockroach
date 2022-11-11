@@ -12,6 +12,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -535,6 +536,7 @@ func (ex *connExecutor) execBind(
 		columnFormatCodes = make([]pgwirebase.FormatCode, numCols)
 		for i := 0; i < numCols; i++ {
 			columnFormatCodes[i] = bindCmd.OutFormats[0]
+			fmt.Printf("column %d has output format: %+v\n", i, columnFormatCodes[i])
 		}
 	}
 
