@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"strconv"
@@ -320,6 +321,9 @@ func DecodeDatum(
 	id := typ.Oid()
 	// Use a direct string pointing to b where we are sure we aren't retaining this string.
 	bs := encoding.UnsafeConvertBytesToString(b)
+
+	fmt.Printf("received oid: %+v\n", id)
+
 	switch code {
 	case FormatText:
 		switch id {

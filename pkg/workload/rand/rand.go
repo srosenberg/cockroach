@@ -15,7 +15,6 @@ import (
 	"context"
 	gosql "database/sql"
 	"database/sql/driver"
-	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"reflect"
@@ -364,8 +363,32 @@ func (sa sqlArray) Value() (driver.Value, error) {
 		repr.WriteString("}")
 		return repr.String(), nil
 	}
+	fmt.Printf("typeof sa.array: %+v\n", reflect.TypeOf(sa.array))
+	t := pq.Array(sa.array)
 
-	return pq.Array(sa.array).Value()
+	//if sa.paramType.Oid() == oid.T_bytea {
+	//	s := make([][]byte, len(sa.array))
+	//	for i, v := range sa.array {
+	//		s[i] = v.([]byte)
+	//	}
+	//	t = pq.Array(s)
+	//}
+	fmt.Printf("got array value from pq.Array: %+v\n", reflect.TypeOf(t))
+
+	tprime, err := t.Value()
+
+	if err == nil {
+		fmt.Printf("typeof t.Value: %+v\n", reflect.TypeOf(tprime))
+		fmt.Printf("t.Value: %+v\n", tprime)
+		fmt.Printf("[")
+		for _, v := range sa.array {
+			fmt.Printf("%+v ", v)
+		}
+		fmt.Println("]")
+	} else {
+		fmt.Printf("t.Value ERROR: %+v\n", err)
+	}
+	return tprime, err
 }
 
 // DatumToGoSQL converts a datum to a Go type.
@@ -380,7 +403,8 @@ func DatumToGoSQL(d tree.Datum) (interface{}, error) {
 	case *tree.DString:
 		return string(*d), nil
 	case *tree.DBytes:
-		return fmt.Sprintf(`x'%s'`, hex.EncodeToString([]byte(*d))), nil
+		//return fmt.Sprintf(`x'%s'`, hex.EncodeToString([]byte(*d))), nil
+		return []byte(*d), nil
 	case *tree.DDate, *tree.DTime:
 		return tree.AsStringWithFlags(d, tree.FmtBareStrings), nil
 	case *tree.DTimestamp:
@@ -466,6 +490,10 @@ func (o *randOp) run(ctx context.Context) (err error) {
 	_, err = o.writeStmt.ExecContext(ctx, params...)
 	if o.hists != nil {
 		o.hists.Get(`write`).Record(timeutil.Since(start))
+	}
+	if err != nil {
+		fmt.Printf("query: %+v\n", o.writeStmt)
+		fmt.Printf("params: %+v\n", params)
 	}
 	return err
 }

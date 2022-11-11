@@ -13,6 +13,7 @@ package log
 import (
 	"github.com/cockroachdb/cockroach/pkg/cli/exit"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
+	"runtime/debug"
 )
 
 // Type of a stderr copy sink.
@@ -32,6 +33,7 @@ func (l *stderrSink) attachHints(stacks []byte) []byte {
 
 // output implements the logSink interface.
 func (l *stderrSink) output(b []byte, _ sinkOutputOptions) error {
+	debug.PrintStack()
 	_, err := OrigStderr.Write(b)
 	return err
 }

@@ -1201,11 +1201,15 @@ func (r *testRunner) runTest(
 		defer func() {
 			// We only have to record panics if the panic'd value is not the sentinel
 			// produced by t.Fatal*().
-			if r := recover(); r != nil && r != errTestFatal {
-				// NB: we're careful to avoid t.Fatalf here, which re-panics.
-				// Note that the error will be logged to a file, and the stack will
-				// contain the source of the panic.
-				t.Errorf("test panicked: %v", r)
+			if r := recover(); r != nil {
+				if r != errTestFatal {
+					// NB: we're careful to avoid t.Fatalf here, which re-panics.
+					// Note that the error will be logged to a file, and the stack will
+					// contain the source of the panic.
+					t.Errorf("test panicked: %v", r)
+				} else if t.spec.Skip != "" {
+					t.addFailure(fmt.Errorf("can't run skipped test: %s: %s", t.Name(), t.Spec().(*registry.TestSpec).Skip))
+				}
 			}
 		}()
 

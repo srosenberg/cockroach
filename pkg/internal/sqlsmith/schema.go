@@ -298,6 +298,7 @@ FROM
 		var members []string
 		if len(membersRaw) != 0 {
 			arr, _, err := tree.ParseDArrayFromString(&evalCtx, string(membersRaw), types.String)
+
 			if err != nil {
 				return nil, err
 			}

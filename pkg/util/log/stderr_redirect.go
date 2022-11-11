@@ -12,11 +12,11 @@ package log
 
 import (
 	"fmt"
-	"os"
-	"runtime/debug"
-
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/errors"
+	"os"
+	"runtime/debug"
+	"time"
 )
 
 // OrigStderr points to the original stderr stream when the process
@@ -26,12 +26,22 @@ import (
 // log scopes) are active, as the loggers keep track of what they are
 // redirecting themselves in a stack structure.
 var OrigStderr = func() *os.File {
+	debug.PrintStack()
+	os.Stderr.WriteString(fmt.Sprintf("os.Stderr.Fd=%v\n", os.Stderr.Fd()))
 	fd, err := dupFD(os.Stderr.Fd())
 	if err != nil {
 		panic(err)
 	}
+	res := os.NewFile(fd, os.Stderr.Name())
 
-	return os.NewFile(fd, os.Stderr.Name())
+	res.WriteString(fmt.Sprintf("OrigStderr=%v\n", fd))
+
+	fmt.Println(time.Now().UnixNano())
+	fmt.Printf("pid=%v\n", os.Getpid())
+
+	//time.Sleep(60 * time.Second)
+
+	return res
 }()
 
 // hijackStderr replaces stderr with the given file descriptor.
