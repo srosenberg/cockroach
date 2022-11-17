@@ -931,7 +931,7 @@ func (r *testRunner) runTest(
 		defer func() {
 			// We only have to record panics if the panic'd value is not the sentinel
 			// produced by t.Fatal*().
-			if r := recover(); r != nil && r != errTestFatal {
+			if r := recover(); r != nil {
 				// NB: we're careful to avoid t.Fatalf here, which re-panics.
 				// Note that the error will be logged to a file, and the stack will
 				// contain the source of the panic.

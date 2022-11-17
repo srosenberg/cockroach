@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"encoding/json"
 
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/aws"
@@ -45,6 +46,7 @@ type ClusterSpec struct {
 	// CPUs is the number of CPUs per node.
 	CPUs                 int
 	HighMem              bool
+	UseGraviton          bool
 	SSDs                 int
 	RAID0                bool
 	VolumeSize           int
@@ -66,7 +68,7 @@ type ClusterSpec struct {
 
 // MakeClusterSpec makes a ClusterSpec.
 func MakeClusterSpec(cloud string, instanceType string, nodeCount int, opts ...Option) ClusterSpec {
-	spec := ClusterSpec{Cloud: cloud, InstanceType: instanceType, NodeCount: nodeCount}
+	spec := ClusterSpec{Cloud: cloud, InstanceType: instanceType, NodeCount: nodeCount, UseGraviton: true}
 	defaultOpts := []Option{CPU(4), nodeLifetimeOption(12 * time.Hour), ReuseAny()}
 	for _, o := range append(defaultOpts, opts...) {
 		o.apply(&spec)
@@ -94,6 +96,12 @@ func (s ClusterSpec) String() string {
 	return str
 }
 
+func (s ClusterSpec) FullDesc() string {
+	res, _ := json.Marshal(s)
+
+	return string(res)
+}
+
 // checks if an AWS machine supports SSD volumes
 func awsMachineSupportsSSD(machineType string) bool {
 	typeAndSize := strings.Split(machineType, ".")
@@ -114,6 +122,8 @@ func getAWSOpts(machineType string, zones []string, localSSD bool) vm.ProviderOp
 	if len(zones) != 0 {
 		opts.CreateZones = zones
 	}
+	opts.ImageAMI = "ami-016358f52b91190bc"
+	
 	return opts
 }
 
@@ -198,6 +208,7 @@ func (s *ClusterSpec) RoachprodOpts(
 			switch s.Cloud {
 			case AWS:
 				machineType = AWSMachineType(s.CPUs, s.HighMem)
+				machineType = AWSMachineType(s.CPUs, s.UseGraviton)
 			case GCE:
 				machineType = GCEMachineType(s.CPUs, s.HighMem)
 			case Azure:
@@ -252,7 +263,6 @@ func (s *ClusterSpec) RoachprodOpts(
 	case Azure:
 		providerOpts = getAzureOpts(machineType, zones)
 	}
-
 	return createVMOpts, providerOpts, nil
 }
 

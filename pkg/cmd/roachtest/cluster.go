@@ -872,6 +872,7 @@ func (f *clusterFactory) newCluster(
 	// The ClusterName is set below in the retry loop to ensure
 	// that each create attempt gets a unique cluster name.
 	createVMOpts, providerOpts, err := cfg.spec.RoachprodOpts("", cfg.useIOBarrier)
+
 	if err != nil {
 		// We must release the allocation because cluster creation is not possible at this point.
 		cfg.alloc.Release()
@@ -927,6 +928,9 @@ func (f *clusterFactory) newCluster(
 
 		l.PrintfCtx(ctx, "Attempting cluster creation (attempt #%d/%d)", i, maxAttempts)
 		createVMOpts.ClusterName = c.name
+
+		fmt.Printf("Creating cluster %s with VMOpts: %+v, with ProviderOpts[aws]: %+v, clusterSpec: %s\n", c.name, createVMOpts, providerOptsContainer["aws"], cfg.spec.FullDesc())
+
 		err = roachprod.Create(ctx, l, cfg.username, cfg.spec.NodeCount, createVMOpts, providerOptsContainer)
 		if err == nil {
 			if err := f.r.registerCluster(c); err != nil {

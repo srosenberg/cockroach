@@ -12,9 +12,9 @@ package log
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
 	"math"
+	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/util/envutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log/channel"
@@ -71,6 +71,21 @@ func init() {
 	// Reset the "active' flag so that the main commands can reset the
 	// configuration.
 	logging.mu.active = false
+}
+
+func Init() {
+        // By default, we use and apply the test configuration.
+        // This can be overridden to use output to file in tests
+        // using TestLogScope.
+        cfg := getTestConfig(nil /* output to files disabled */, logging.showLogs /* mostly inline */)
+
+        if _, err := ApplyConfig(cfg); err != nil {
+                panic(err)
+        }
+
+        // Reset the "active' flag so that the main commands can reset the
+        // configuration.
+        logging.mu.active = false
 }
 
 // IsActive returns true iff the main logger already has some events

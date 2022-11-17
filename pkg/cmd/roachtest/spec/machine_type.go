@@ -37,6 +37,44 @@ func AWSMachineType(cpus int, highmem bool) string {
 		size = "18xlarge"
 	case cpus <= 96:
 		size = "24xlarge"
+func AWSMachineType(cpus int, isGraviton bool) string {
+	switch {
+	case cpus <= 2:
+		if isGraviton {
+			return "m6g.large"
+		}
+		return "c5d.large"
+	case cpus <= 4:
+		if isGraviton {
+			return "m6g.xlarge"
+		}
+		return "c5d.xlarge"
+	case cpus <= 8:
+		if isGraviton {
+			return "m6g.2xlarge"
+		}
+		return "c5d.2xlarge"
+	case cpus <= 16:
+		if isGraviton {
+			return "m6g.4xlarge"
+		}
+		return "c5d.4xlarge"
+	case cpus <= 36:
+		if isGraviton {
+			return "m6g.8xlarge"
+		}
+		return "c5d.9xlarge"
+	case cpus <= 72:
+		if isGraviton {
+			return "m6g.16xlarge"
+		}
+		return "c5d.18xlarge"
+	case cpus <= 96:
+		if isGraviton {
+			return "m6g.16xlarge"
+		}
+		// There is no c5d.24xlarge.
+		return "m5d.24xlarge"
 	default:
 		panic(fmt.Sprintf("no aws machine type with %d cpus", cpus))
 	}

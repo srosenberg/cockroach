@@ -191,10 +191,13 @@ func (p *workPool) selectTest(ctx context.Context, qp *quotapool.IntPool) (testT
 		candidateIdx := -1
 		candidateCount := 0
 		smallestTest := math.MaxInt64
+		smallestTestName := ""
+
 		for i, t := range p.mu.tests {
 			cpu := t.spec.Cluster.NodeCount * t.spec.Cluster.CPUs
 			if cpu < smallestTest {
 				smallestTest = cpu
+				smallestTestName = t.spec.Name
 			}
 			if uint64(cpu) > pi.Available {
 				continue
@@ -207,7 +210,8 @@ func (p *workPool) selectTest(ctx context.Context, qp *quotapool.IntPool) (testT
 
 		if candidateIdx == -1 {
 			if uint64(smallestTest) > pi.Capacity {
-				return 0, fmt.Errorf("not enough CPU quota to run any of the remaining tests")
+				return 0, fmt.Errorf("not enough CPU quota to run any of the remaining tests; '%s' requires %d CPUs whereas %d is the specified max; increase '--cpu-quota'",
+					smallestTestName, smallestTest, pi.Capacity)
 			}
 
 			return 0, quotapool.ErrNotEnoughQuota
