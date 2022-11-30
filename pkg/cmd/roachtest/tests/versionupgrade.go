@@ -110,6 +110,14 @@ func runVersionUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) {
 		require.NoError(t, err)
 	}
 
+	injectFailureStep := func(ctx context.Context, t test.Test, u *versionUpgradeTest) {
+                // Verify that backups can be created in various configurations. This is
+                // important to test because changes in system tables might cause backups to
+                // fail in mixed-version clusters.
+                _, err := u.conn(ctx, t, 1).ExecContext(ctx, `SELECT crdb_internal.force_log_fatal('EMULATED log.Fatal')`)
+                require.NoError(t, err)
+        }
+
 	// The steps below start a cluster at predecessorVersion (from a fixture),
 	// then start an upgrade that is rolled back, and finally start and finalize
 	// the upgrade. Between each step, we run the feature tests defined in
@@ -171,6 +179,7 @@ func runVersionUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) {
 		// schemaChangeStep,
 		backupStep,
 		waitForUpgradeStep(c.All()),
+		injectFailureStep,
 		testFeaturesStep,
 		// schemaChangeStep,
 		backupStep,

@@ -63,6 +63,8 @@ func addRootUser(
 func optInToDiagnosticsStatReporting(
 	ctx context.Context, _ clusterversion.ClusterVersion, deps upgrade.TenantDeps,
 ) error {
+	fmt.Println("optInToDiagnosticsStatReporting")
+
 	// We're opting-out of the automatic opt-in. See discussion in updates.go.
 	if cluster.TelemetryOptOut() {
 		return nil
@@ -70,6 +72,9 @@ func optInToDiagnosticsStatReporting(
 	_, err := deps.InternalExecutor.Exec(
 		ctx, "optInToDiagnosticsStatReporting", nil, /* txn */
 		`SET CLUSTER SETTING diagnostics.reporting.enabled = true`)
+
+	fmt.Println("Ran optInToDiagnosticsStatReporting")
+
 	return err
 }
 

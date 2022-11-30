@@ -222,9 +222,9 @@ func PanicAsError(depth int, r interface{}) error {
 // when detecting a non-release build.
 var crashReportURL = func() string {
 	var defaultURL string
-	if build.SeemsOfficial() {
+	//if build.SeemsOfficial() {
 		defaultURL = "https://ignored@errors.cockroachdb.com/api/sentry/v2/1111"
-	}
+	//}
 	return envutil.EnvOrDefaultString("COCKROACH_CRASH_REPORTS", defaultURL)
 }()
 
@@ -309,16 +309,23 @@ const (
 func sendCrashReport(
 	ctx context.Context, sv *settings.Values, err error, crashReportType ReportType,
 ) {
+	fmt.Println("sendCrashReport")
+
 	if !ShouldSendReport(sv) {
 		return
 	}
 
 	errEvent, extraDetails := errors.BuildSentryReport(err)
+
+	fmt.Println("SendReport")
+
 	SendReport(ctx, crashReportType, errEvent, extraDetails)
 }
 
 // ShouldSendReport returns true iff SendReport() should be called.
 func ShouldSendReport(sv *settings.Values) bool {
+	fmt.Printf("DiagnosticsReportingEnabled.Get=%v, CrashReports.Get=%v, crashReportingActive=%v\n", DiagnosticsReportingEnabled.Get(sv), CrashReports.Get(sv), crashReportingActive)
+
 	if sv == nil || !DiagnosticsReportingEnabled.Get(sv) || !CrashReports.Get(sv) {
 		return false // disabled via settings.
 	}
@@ -372,6 +379,8 @@ func SendReport(
 	if res != nil {
 		log.Shoutf(ctx, severity.ERROR, "Queued as error %v", string(*res))
 	}
+	fmt.Printf("Captured Report: %+v\n", res)
+
 	if !sentry.Flush(10 * time.Second) {
 		log.Shout(ctx, severity.ERROR, "Timeout trying to submit crash report")
 	}
@@ -388,9 +397,10 @@ func ReportOrPanic(
 	ctx context.Context, sv *settings.Values, format string, reportables ...interface{},
 ) {
 	err := errors.Newf(format, reportables...)
-	if !build.IsRelease() || (sv != nil && PanicOnAssertions.Get(sv)) {
+/*	if !build.IsRelease() || (sv != nil && PanicOnAssertions.Get(sv)) {
 		panic(err)
 	}
+	*/
 	log.Warningf(ctx, "%v", err)
 	sendCrashReport(ctx, sv, err, ReportTypeError)
 }
