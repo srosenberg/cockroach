@@ -1894,6 +1894,7 @@ func (k kafkaManager) consumer(ctx context.Context, topic string) (*topicConsume
 	// kafka is configured with. Kafka notes that this is required in
 	// https://kafka.apache.org/documentation.html#upgrade_11_message_format
 	config.Consumer.Fetch.Default = 1000012
+	config.Consumer.MaxProcessingTime = 200 * time.Millisecond
 	consumer, err := sarama.NewConsumer(kafkaAddrs, config)
 	if err != nil {
 		return nil, err
