@@ -9,6 +9,7 @@ go_library(
     deps = [
         "//pkg/ccl",
         "//pkg/cli",
+	"@io_bazel_rules_go//go/tools/bzltestutil:go_default_library",
     ],
 )
 

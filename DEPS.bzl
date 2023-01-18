@@ -738,11 +738,16 @@ def go_deps():
         name = "com_github_bazelbuild_rules_go",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/bazelbuild/rules_go",
-        sha256 = "0f69d51e54c1012f62434b68e6d49e2e1c1371a493926da58063e8461aa2b9ff",
-        strip_prefix = "github.com/bazelbuild/rules_go@v0.26.0",
-        urls = [
-            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/bazelbuild/rules_go/com_github_bazelbuild_rules_go-v0.26.0.zip",
-        ],
+
+#	sha256 = "0f69d51e54c1012f62434b68e6d49e2e1c1371a493926da58063e8461aa2b9ff",
+#        strip_prefix = "github.com/bazelbuild/rules_go@v0.26.0",
+#        urls = [
+#            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/bazelbuild/rules_go/com_github_bazelbuild_rules_go-v0.26.0.zip",
+#        ],
+
+	vcs = "git",
+	remote = "/home/srosenberg/go/src/github.com/rules_go",
+	commit = "487a261f36a191240c04f30cf6048e89cc34a7ed",
     )
     go_repository(
         name = "com_github_benbjohnson_clock",

@@ -14,18 +14,14 @@ workspace(
 
 # Load the things that let us load other things.
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
 
 # Load go bazel tools. This gives us access to the go bazel SDK/toolchains.
-http_archive(
-    name = "io_bazel_rules_go",
-    sha256 = "f02f82e74033ea42cf81da4319b9f8e0d4c5fa49346537267bba84053dc68ceb",
-    strip_prefix = "cockroachdb-rules_go-993120e",
-    urls = [
-        # cockroachdb/rules_go as of 993120ee175025d8556a4dd8bec330e6c4b9ac13
-        # (upstream release-0.37 plus a few patches).
-        "https://storage.googleapis.com/public-bazel-artifacts/bazel/cockroachdb-rules_go-v0.27.0-240-g993120e.tar.gz",
-    ],
-)
+git_repository(
+        name = "io_bazel_rules_go",
+        remote = "/home/srosenberg/go/src/github.com/rules_go",
+	commit = "487a261f36a191240c04f30cf6048e89cc34a7ed",
+    )
 
 # Like the above, but for nodeJS.
 http_archive(
@@ -59,6 +55,7 @@ http_archive(
 # Load up cockroachdb's go dependencies (the ones listed under go.mod). The
 # `DEPS.bzl` file is kept up to date using `build/bazelutil/bazel-generate.sh`.
 load("//:DEPS.bzl", "go_deps")
+
 
 # VERY IMPORTANT that we call into this function to prefer our pinned versions
 # of the dependencies to any that might be pulled in via functions like
