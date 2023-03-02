@@ -179,9 +179,9 @@ set +e
 # The caller can override the env var on the way in; this default
 # is only used if the env var is not set already.
 DATADRIVEN_QUIET_LOG=${DATADRIVEN_QUIET_LOG-true}
-
+set -x
 # shellcheck disable=SC2086
-docker run --init --privileged -i ${tty-} --rm \
+docker run --init --privileged -it -d \
   -u "$uid:$gid" \
   ${vols} \
   --workdir="/go/src/github.com/cockroachdb/cockroach" \
@@ -199,6 +199,7 @@ docker run --init --privileged -i ${tty-} --rm \
 # Check if it might be the case if "docker run" failed
 res=$?
 set -e
+set -x
 
 if test $res -ne 0 -a \( ${1-x} = "make" -o ${1-x} = "mkrelease" \) ; then
    ram=$(docker run -i --rm \

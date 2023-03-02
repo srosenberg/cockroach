@@ -44,7 +44,7 @@ case "${1-}" in
       TARGET_TRIPLE=x86_64-unknown-linux-gnu
       # -lrt is needed as clock_gettime isn't part of glibc prior to 2.17.
       # If we update to a newer glibc, the -lrt can be removed.
-      LDFLAGS="-static-libgcc -static-libstdc++ -lrt"
+      LDFLAGS="-static-libgcc -static-libasan -static-libstdc++ -lrt"
       SUFFIX=-linux-2.6.32-gnu-amd64
     ) ;;
 
@@ -106,4 +106,4 @@ if [ $# -ge 1 ]; then
     shift
 fi
 
-(set -x && CGO_ENABLED=1 make BUILDTYPE=$BUILDTYPE "${args[@]}" "$@")
+(set -x && CGO_ENABLED=1 make BUILDTYPE=$BUILDTYPE GOFLAGS=-asan TAGS=stdmalloc "${args[@]}" "$@")

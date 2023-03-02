@@ -44,6 +44,7 @@ RUN apt-get update \
     python3.8-venv \
     rsync \
     texinfo \
+    gdb \
  && apt-get clean \
  && update-alternatives --install /usr/bin/clang clang /usr/bin/clang-10 100 \
     --slave /usr/bin/clang++ clang++ /usr/bin/clang++-10
@@ -80,7 +81,9 @@ RUN mkdir -p /usr/local/lib/ccache \
  && ln -s /usr/bin/ccache /usr/local/lib/ccache/s390x-ibm-linux-gnu-c++ \
  && ln -s /usr/bin/ccache /usr/local/lib/ccache/s390x-ibm-linux-gnu-cc \
  && ln -s /usr/bin/ccache /usr/local/lib/ccache/x86_64-apple-darwin19-cc \
- && ln -s /usr/bin/ccache /usr/local/lib/ccache/x86_64-apple-darwin19-c++
+ && ln -s /usr/bin/ccache /usr/local/lib/ccache/x86_64-apple-darwin19-c++ \
+ && ln -s /x-tools/x86_64-unknown-linux-gnu/bin/x86_64-unknown-linux-gnu-gcc /x-tools/x86_64-unknown-linux-gnu/bin/gcc \
+ && ln -s /x-tools/x86_64-unknown-linux-gnu/bin/x86_64-unknown-linux-gnu-g++ /x-tools/x86_64-unknown-linux-gnu/bin/g++
 
 ENV PATH $PATH:/x-tools/x86_64-unknown-linux-gnu/bin:/x-tools/x86_64-w64-mingw32/bin:/x-tools/aarch64-unknown-linux-gnu/bin:/x-tools/s390x-ibm-linux-gnu/bin:/x-tools/x86_64-apple-darwin19/bin
 
