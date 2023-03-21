@@ -196,6 +196,7 @@ go_download_sdk(
 #
 #   go_host_sdk(name = "go_sdk")
 
+
 go_rules_dependencies()
 
 go_register_toolchains(nogo = "@com_github_cockroachdb_cockroach//:crdb_nogo")
@@ -653,3 +654,12 @@ go_download_sdk(
     urls = ["https://storage.googleapis.com/public-bazel-artifacts/go-fips/20230207-040328/{}"],
     version = "1.19.5fips",
 )
+
+go_local_sdk(
+   name = "go_sdk_custom",
+#   path = "/goroot/go",
+   path = "/home/srosenberg/go/src/github.com/go",
+   version = "1.19.7custom",
+)
+
+go_register_toolchains()
