@@ -403,6 +403,10 @@ type Provider interface {
 	// Return the account name associated with the provider
 	FindActiveAccount(l *logger.Logger) (string, error)
 	List(l *logger.Logger, opts ListOptions) (List, error)
+
+	AddLabels(l *logger.Logger, vms List, labels map[string]string) error
+	RemoveLabels(l *logger.Logger, vms List, labels map[string]string) error
+
 	// The name of the Provider, which will also surface in the top-level Providers map.
 	Name() string
 

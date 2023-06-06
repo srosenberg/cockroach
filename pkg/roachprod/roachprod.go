@@ -863,6 +863,43 @@ func DistributeCerts(ctx context.Context, l *logger.Logger, clusterName string) 
 	return c.DistributeCerts(ctx, l)
 }
 
+// Retrieves cluster metadata from the local cache (~/.roachprod/clusters). If the clusterName includes a node
+// selector, e.g., "local:1", then SyncedCluster.Nodes will be populated with only the matching nodes; otherwise, all
+// nodes are populated.
+func syncedCluster(
+	l *logger.Logger, clusterName string, opts ...install.ClusterSettingOption,
+) (*install.SyncedCluster, error) {
+	if err := LoadClusters(); err != nil {
+		return nil, err
+	}
+	c, err := newCluster(l, clusterName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func AddLabels(
+	ctx context.Context, l *logger.Logger, clusterName string, labels map[string]string,
+) error {
+	c, err := syncedCluster(l, clusterName)
+	if err != nil {
+		return err
+	}
+
+	for _, node := range c.Nodes {
+		if err := node.AddLabels(ctx, l, labels); err != nil {
+			return err
+		}
+	}
+}
+
+func RemoveLabels(
+	ctx context.Context, l *logger.Logger, clusterName string, labels map[string]string,
+) error {
+
+}
+
 // Put copies a local file to the nodes in a cluster.
 func Put(
 	ctx context.Context, l *logger.Logger, clusterName, src, dest string, useTreeDist bool,

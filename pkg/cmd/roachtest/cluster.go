@@ -628,12 +628,6 @@ func (r *clusterRegistry) unregisterCluster(c *clusterImpl) bool {
 		return false
 	}
 	delete(r.mu.clusters, c.name)
-	if c.tag != "" {
-		if _, ok := r.mu.tagCount[c.tag]; !ok {
-			panic(fmt.Sprintf("tagged cluster not accounted for: %s", c))
-		}
-		r.mu.tagCount[c.tag]--
-	}
 	return true
 }
 
@@ -815,7 +809,6 @@ type nodeSelector interface {
 // It is safe for concurrent use by multiple goroutines.
 type clusterImpl struct {
 	name string
-	tag  string
 	spec spec.ClusterSpec
 	t    test.Test
 	// r is the registry tracking this cluster. Destroying the cluster will
@@ -866,7 +859,7 @@ func (c *clusterImpl) workerStatus(args ...interface{}) {
 }
 
 func (c *clusterImpl) String() string {
-	return fmt.Sprintf("%s [tag:%s] (%d nodes)", c.name, c.tag, c.Spec().NodeCount)
+	return fmt.Sprintf("%s (%d nodes)", c.name, c.Spec().NodeCount)
 }
 
 type destroyState struct {
@@ -1898,6 +1891,31 @@ func (c *clusterImpl) ApplySnapshots(ctx context.Context, snapshots []vm.VolumeS
 		},
 	}
 	return roachprod.ApplySnapshots(ctx, c.l, c.name, snapshots, opts)
+}
+
+func (c *clusterImpl) AddLabels(
+	ctx context.Context, labels map[string]string, nodes ...option.Option,
+) error {
+	if ctx.Err() != nil {
+		return errors.Wrap(ctx.Err(), "cluster.AddLabels")
+	}
+
+	c.status("adding VM labels")
+	defer c.status("")
+
+	return errors.Wrap(roachprod.AddLabels(ctx, c.l, c.MakeNodes(nodes...), labels))
+}
+func (c *clusterImpl) RemoveLabels(
+	ctx context.Context, labels map[string]string, nodes ...option.Option,
+) {
+	if ctx.Err() != nil {
+		return errors.Wrap(ctx.Err(), "cluster.RemoveLabels")
+	}
+
+	c.status("removing VM labels")
+	defer c.status("")
+
+	return errors.Wrap(roachprod.RemoveLabels(ctx, c.l, c.MakeNodes(nodes...), labels))
 }
 
 // Put a local file to all of the machines in a cluster.

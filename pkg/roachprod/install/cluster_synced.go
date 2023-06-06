@@ -1457,6 +1457,22 @@ fi
 	}, WithDisplay(display))
 }
 
+func (c *SyncedCluster) AddLabels(
+	ctx context.Context, l *logger.Logger, labels map[string]string,
+) error {
+	// N.B. c.VMs are 0-based whereas c.Nodes is 1-based.
+	for _, node := range c.Nodes {
+		// N.B. validate labels can be appended
+		cVM := c.VMs[node-1]
+
+		if err := vm.ForProvider(cVM.Provider, func(provider vm.Provider) error {
+			return provider.AddLabels(l, cVM, labels)
+		}); err != nil {
+
+		}
+	}
+}
+
 // getFile retrieves the given file from the first node in the cluster. The
 // filename is assumed to be relative from the home directory of the node's
 // user.
