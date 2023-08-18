@@ -1447,18 +1447,18 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 		s.grpc.serverInterceptorsInfo, s.rpcContext.ClientInterceptors())
 
 	// Load the TLS configuration for the HTTP server.
-	uiTLSConfig, err := s.rpcContext.GetUIServerTLSConfig()
-	if err != nil {
-		return err
-	}
+	//uiTLSConfig, err := s.rpcContext.GetUIServerTLSConfig()
+	//if err != nil {
+	//	return err
+	//}
 
 	// Start the admin UI server. This opens the HTTP listen socket,
 	// optionally sets up TLS, and dispatches the server worker for the
 	// web UI.
-	if err := startHTTPService(ctx,
-		workersCtx, &s.cfg.BaseConfig, uiTLSConfig, s.stopper, s.serverController.httpMux); err != nil {
-		return err
-	}
+	//if err := startHTTPService(ctx,
+	//	workersCtx, &s.cfg.BaseConfig, uiTLSConfig, s.stopper, s.serverController.httpMux); err != nil {
+	//	return err
+	//}
 
 	// Filter out self from the gossip bootstrap addresses.
 	filtered := s.cfg.FilterGossipBootstrapAddresses(ctx)

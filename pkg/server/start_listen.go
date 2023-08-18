@@ -47,25 +47,33 @@ func startListenRPCAndSQL(
 	startRPCServer func(ctx context.Context),
 	err error,
 ) {
-	rpcChanName := "rpc/sql"
-	if cfg.SplitListenSQL || !enableSQLListener {
-		rpcChanName = "rpc"
-	}
+	//rpcChanName := "rpc/sql"
+	//if cfg.SplitListenSQL || !enableSQLListener {
+	//	rpcChanName = "rpc"
+	//}
 	var ln net.Listener
 	if k := cfg.TestingKnobs.Server; k != nil {
 		knobs := k.(*TestingKnobs)
 		ln = knobs.RPCListener
 	}
+	rpcLoopbackL := netutil.NewLoopbackListener(ctx, stopper)
+	sqlLoopbackL := netutil.NewLoopbackListener(ctx, stopper)
+
 	if ln == nil {
-		var err error
-		ln, err = ListenAndUpdateAddrs(ctx, &cfg.Addr, &cfg.AdvertiseAddr, rpcChanName)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		log.Eventf(ctx, "listening on port %s", cfg.Addr)
+		ln = rpcLoopbackL
 	}
+	//if ln == nil {
+	//	var err error
+	//	ln, err = ListenAndUpdateAddrs(ctx, &cfg.Addr, &cfg.AdvertiseAddr, rpcChanName)
+	//	if err != nil {
+	//		return nil, nil, nil, nil, err
+	//	}
+	//	log.Eventf(ctx, "listening on port %s", cfg.Addr)
+	//}
 
 	var pgL net.Listener
+	enableSQLListener = false
+
 	if cfg.SplitListenSQL && enableSQLListener {
 		pgL, err = ListenAndUpdateAddrs(ctx, &cfg.SQLAddr, &cfg.SQLAdvertiseAddr, "sql")
 		if err != nil {
@@ -130,9 +138,6 @@ func startListenRPCAndSQL(
 		}
 	}
 
-	rpcLoopbackL := netutil.NewLoopbackListener(ctx, stopper)
-	sqlLoopbackL := netutil.NewLoopbackListener(ctx, stopper)
-
 	// The remainder shutdown worker.
 	waitForQuiesce := func(context.Context) {
 		<-stopper.ShouldQuiesce()
@@ -182,5 +187,5 @@ func startListenRPCAndSQL(
 		})
 	}
 
-	return pgL, sqlLoopbackL, rpcLoopbackL.Connect, startRPCServer, nil
+	return sqlLoopbackL, sqlLoopbackL, rpcLoopbackL.Connect, startRPCServer, nil
 }
