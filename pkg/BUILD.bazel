@@ -2231,6 +2231,7 @@ GO_TARGETS = [
     "//pkg/util/ctxutil:ctxutil",
     "//pkg/util/ctxutil:ctxutil_test",
     "//pkg/util/debugutil:debugutil",
+    "//pkg/util/drwmutex:drwmutex",
     "//pkg/util/duration:duration",
     "//pkg/util/duration:duration_test",
     "//pkg/util/encoding/csv:csv",

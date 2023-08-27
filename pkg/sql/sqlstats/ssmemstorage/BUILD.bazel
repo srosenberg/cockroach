@@ -20,6 +20,7 @@ go_library(
         "//pkg/sql/sqlstats",
         "//pkg/sql/sqlstats/insights",
         "//pkg/util",
+        "//pkg/util/drwmutex",
         "//pkg/util/log",
         "//pkg/util/mon",
         "//pkg/util/syncutil",

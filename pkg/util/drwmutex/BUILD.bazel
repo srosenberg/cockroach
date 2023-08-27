@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "drwmutex",
+    srcs = [
+        "cpu.go",
+        "cpu_amd64.go",
+        "cpu_amd64.s",
+        "cpus.go",
+        "cpus_linux.go",
+        "drwmutex.go",
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/util/drwmutex",
+    visibility = ["//visibility:public"],
+)

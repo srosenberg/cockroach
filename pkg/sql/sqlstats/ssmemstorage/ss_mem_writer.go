@@ -200,18 +200,23 @@ func (s *Container) RecordStatement(
 		// We also account for the memory used for s.sampledPlanMetadataCache.
 		// timestamp size + key size + hash.
 		estimatedMemoryAllocBytes += timestampSize + statementKey.sampledPlanKey.size() + 8
-		s.mu.Lock()
-		defer s.mu.Unlock()
 
 		// If the monitor is nil, we do not track memory usage.
-		if s.mu.acc.Monitor() == nil {
+		if s.muAcc.acc.Monitor() == nil {
 			return stats.ID, nil
 		}
 
+		s.muAcc.Lock()
 		// We attempt to account for all the memory we used. If we have exceeded our
 		// memory budget, delete the entry that we just created and report the error.
-		if err := s.mu.acc.Grow(ctx, estimatedMemoryAllocBytes); err != nil {
+		err := s.muAcc.acc.Grow(ctx, estimatedMemoryAllocBytes)
+		s.muAcc.Unlock()
+
+		if err != nil {
+			s.mu.mx.Lock()
 			delete(s.mu.stmts, statementKey)
+			s.mu.mx.Unlock()
+
 			return stats.ID, ErrMemoryPressure
 		}
 	}
@@ -335,17 +340,20 @@ func (s *Container) RecordTransaction(
 	if created {
 		estimatedMemAllocBytes :=
 			stats.sizeUnsafe() + key.Size() + 8 /* hash of transaction key */
-		s.mu.Lock()
 
 		// If the monitor is nil, we do not track memory usage.
-		if s.mu.acc.Monitor() != nil {
-			if err := s.mu.acc.Grow(ctx, estimatedMemAllocBytes); err != nil {
+		if s.muAcc.acc.Monitor() != nil {
+			s.muAcc.Lock()
+			err := s.muAcc.acc.Grow(ctx, estimatedMemAllocBytes)
+			s.muAcc.Unlock()
+			if err != nil {
+				s.mu.mx.Lock()
 				delete(s.mu.txns, key)
-				s.mu.Unlock()
+				s.mu.mx.Unlock()
+
 				return ErrMemoryPressure
 			}
 		}
-		s.mu.Unlock()
 	}
 
 	stats.mu.data.Count++

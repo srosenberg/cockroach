@@ -36,8 +36,9 @@ func NewStmtStatsIterator(
 ) StmtStatsIterator {
 	var stmtKeys stmtList
 	func() {
-		container.mu.RLock()
-		defer container.mu.RUnlock()
+		rlock := container.mu.mx.RLocker()
+		rlock.Lock()
+		defer rlock.Unlock()
 		for k := range container.mu.stmts {
 			stmtKeys = append(stmtKeys, k)
 		}
@@ -129,11 +130,12 @@ type TxnStatsIterator struct {
 // NewTxnStatsIterator returns a new instance of TxnStatsIterator.
 func NewTxnStatsIterator(container *Container, options sqlstats.IteratorOptions) TxnStatsIterator {
 	var txnKeys txnList
-	container.mu.Lock()
+	rlock := container.mu.mx.RLocker()
+	rlock.Lock()
 	for k := range container.mu.txns {
 		txnKeys = append(txnKeys, k)
 	}
-	container.mu.Unlock()
+	rlock.Unlock()
 	if options.SortedKey {
 		sort.Sort(txnKeys)
 	}
