@@ -139,5 +139,6 @@ func TestInternalSQL(t *testing.T) {
 	// Run a random query to check that it all works.
 	r := conn.QueryRow(ctx, "SELECT count(*) FROM system.sqlliveness")
 	var count int
+
 	require.NoError(t, r.Scan(&count))
 }

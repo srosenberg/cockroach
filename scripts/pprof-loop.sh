@@ -48,21 +48,19 @@ while true; do
 	# Be resilient to spurious pprof failures but make sure
 	# to bail eagerly on first time since probably the URL
 	# is just wrong etc.
-	if ! curl --no-progress-meter "${1}" > "${f}"; then
+	if ! curl --no-progress-meter "${1}" > /dev/null; then
 		if [ $first -eq 1 ]; then
 			exit 1
 		fi
 		# Remove garbage files, back off, try again.
 		rm "${f}"
-		sleep 1
+		sleep 10
 		continue
 	fi
 	set -e
 	echo "${f}"
-	if [[ -n "$(which go)" && "${1}" != *"/trace"* ]]; then
-		go tool pprof -nodefraction 0.3 -top "${f}" | head -n 15
-	fi
 	first=0
 	sleep "${extra_sleep}"
+	sleep $((RANDOM % 10))
 done
 

@@ -118,6 +118,8 @@ func NewOutbox(
 	}
 	o.scratch.buf = &bytes.Buffer{}
 	o.scratch.msg = &execinfrapb.ProducerMessage{}
+
+	log.Infof(context.Background(), "outbox created; flowId=%s, evalCtx=%p", flowCtx.ID.String(), flowCtx.EvalCtx)
 	return o, nil
 }
 

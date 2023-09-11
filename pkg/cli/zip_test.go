@@ -46,6 +46,7 @@ import (
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/sync/errgroup"
 )
 
 // TestZipContainsAllInternalTables verifies that we don't add new internal tables
@@ -134,6 +135,39 @@ ORDER BY name ASC`)
 	sort.Strings(exp)
 
 	assert.Equal(t, exp, tables)
+}
+
+// This tests the operation of zip over secure clusters.
+func TestExecWithProfiling(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	//skip.UnderRace(t, "test too slow under race")
+
+	dir, cleanupFn := testutils.TempDir(t)
+	defer cleanupFn()
+
+	c := NewCLITest(TestCLIParams{
+		StoreSpecs: []base.StoreSpec{{
+			Path: dir,
+		}},
+	})
+	defer c.Cleanup()
+
+	g := new(errgroup.Group)
+
+	g.Go(func() error {
+		c.Run("debug zip --concurrency=1 --cpu-profile-duration=2s " + os.DevNull)
+		return nil
+	})
+
+	g.Go(func() error {
+		c.Run("sql --set=errexit=false -f " + datapathutils.TestDataPath(t, "repro.sql"))
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // This tests the operation of zip over secure clusters.

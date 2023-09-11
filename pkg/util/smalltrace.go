@@ -28,10 +28,10 @@ var prefix = func() string {
 
 // GetSmallTrace returns a comma-separated string containing the top
 // 5 callers from a given skip level.
-func GetSmallTrace(skip int) redact.RedactableString {
-	var pcs [5]uintptr
-	runtime.Callers(skip, pcs[:])
-	frames := runtime.CallersFrames(pcs[:])
+func GetSmallTrace2(skip int, depth int) redact.RedactableString {
+	pcs := make([]uintptr, depth)
+	n := runtime.Callers(skip, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
 	var callers redact.StringBuilder
 
 	var callerPrefix redact.RedactableString
@@ -50,4 +50,8 @@ func GetSmallTrace(skip int) redact.RedactableString {
 	}
 
 	return callers.RedactableString()
+}
+
+func GetSmallTrace(skip int) redact.RedactableString {
+	return GetSmallTrace2(skip, 5)
 }

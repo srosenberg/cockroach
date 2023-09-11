@@ -305,6 +305,8 @@ func (ds *ServerImpl) setupFlow(
 		// this allows us to avoid an unnecessary deserialization of the eval
 		// context proto.
 		evalCtx = localState.EvalContext
+		log.Infof(ctx, "reusing existing flowId=%s, evalCtx=%p", req.Flow.FlowID.String(), evalCtx)
+
 		// We're about to mutate the evalCtx and we want to restore its original
 		// state once the flow cleans up. Note that we could have made a copy of
 		// the whole evalContext, but that isn't free, so we choose to restore
@@ -685,6 +687,7 @@ func (ds *ServerImpl) SetupFlow(
 				return err
 			}
 		}
+		log.Infof(ctx, "Running remote flow=%s, %p", f.GetID().String(), f.GetFlowCtx().EvalCtx)
 		return ds.remoteFlowRunner.RunFlow(ctx, f)
 	}(); err != nil {
 		// We return flow deployment errors in the response so that they are

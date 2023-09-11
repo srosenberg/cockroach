@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -33,6 +34,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util"
+	"github.com/cockroachdb/cockroach/pkg/util/allstacks"
 	"github.com/cockroachdb/cockroach/pkg/util/bitarray"
 	"github.com/cockroachdb/cockroach/pkg/util/duration"
 	"github.com/cockroachdb/cockroach/pkg/util/encoding"
@@ -1397,6 +1399,13 @@ type collationEnvironmentCacheEntry struct {
 	collator *collate.Collator
 }
 
+func NewCollationEnv() CollationEnvironment {
+	return CollationEnvironment{
+		cache:  nil,
+		buffer: nil,
+	}
+}
+
 func (env *CollationEnvironment) getCacheEntry(
 	locale string,
 ) (collationEnvironmentCacheEntry, error) {
@@ -1422,6 +1431,19 @@ func (env *CollationEnvironment) getCacheEntry(
 func NewDCollatedString(
 	contents string, locale string, env *CollationEnvironment,
 ) (*DCollatedString, error) {
+	panicked := true
+
+	defer func() {
+		if panicked {
+			fmt.Fprintf(os.Stderr, "error::NewDCollatedString; contents=%q, locale=%q, buf=%p\n", contents, locale, env)
+			fmt.Fprintf(os.Stderr, "all stacks:\n\n%s\n", allstacks.Get())
+		}
+	}()
+
+	//fmt.Printf("NewDCollatedString locale=%s, buf=%p, trace=%v\n", locale, env, util.GetSmallTrace2(2, 30))
+
+	//fmt.Printf("NewDCollatedString, goid=%d, locale=%s, buf=%p, trace=%v\n", goid.Get(), locale, env.buffer, util.GetSmallTrace2(2, 30))
+
 	entry, err := env.getCacheEntry(locale)
 	if err != nil {
 		return nil, err
@@ -1433,6 +1455,9 @@ func NewDCollatedString(
 	d := DCollatedString{contents, entry.locale, make([]byte, len(key))}
 	copy(d.Key, key)
 	env.buffer.Reset()
+
+	panicked = false
+
 	return &d, nil
 }
 

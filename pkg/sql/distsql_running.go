@@ -466,6 +466,8 @@ func (dsp *DistSQLPlanner) setupFlows(
 		// former has the corresponding writer set.
 		batchReceiver = recv
 	}
+	log.Infof(ctx, "setupFlows localState=%v", localState)
+
 	origCtx := ctx
 	ctx, flow, opChains, err := dsp.distSQLSrv.SetupLocalSyncFlow(ctx, evalCtx.Planner.Mon(), &setupReq, recv, batchReceiver, localState)
 	if err == nil && planCtx.saveFlows != nil {
@@ -677,6 +679,7 @@ func (dsp *DistSQLPlanner) Run(
 	finishedSetupFn func(localFlow flowinfra.Flow),
 ) {
 	flows := plan.GenerateFlowSpecs()
+	fmt.Println("flows: ", len(flows))
 	gatewayFlowSpec, ok := flows[dsp.gatewaySQLInstanceID]
 	if !ok {
 		recv.SetError(errors.Errorf("expected to find gateway flow"))

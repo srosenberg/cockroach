@@ -295,6 +295,8 @@ func (f *vectorizedFlow) Resume(recv execinfra.RowReceiver) {
 
 // Run is part of the Flow interface.
 func (f *vectorizedFlow) Run(ctx context.Context, noWait bool) {
+	log.Infof(ctx, "Running local flow=%s, %p", f.ID.String(), f.EvalCtx)
+
 	if f.batchFlowCoordinator == nil {
 		// If we didn't create a BatchFlowCoordinator, then we have a processor
 		// as the root, so we run this flow with the default implementation.
@@ -761,6 +763,7 @@ func (s *vectorizedFlowCreator) setupRemoteOutputStream(
 	}
 
 	s.numOutboxes++
+
 	run := func(ctx context.Context, flowCtxCancel context.CancelFunc) {
 		outbox.Run(
 			ctx,
@@ -815,6 +818,7 @@ func (s *vectorizedFlowCreator) setupRouter(
 	for i := range allocators {
 		allocators[i] = colmem.NewAllocator(ctx, allocatorAccounts[i], factory)
 	}
+
 	diskMon, diskAccounts := s.monitorRegistry.CreateDiskAccounts(ctx, flowCtx, mmName, numOutputs)
 	router, outputs := NewHashRouter(
 		flowCtx, processorID, allocators, input, outputTyps, output.HashColumns, execinfra.GetWorkMemLimit(flowCtx),
@@ -1043,6 +1047,7 @@ func (s *vectorizedFlowCreator) setupOutput(
 	factory coldata.ColumnFactory,
 ) error {
 	output := &pspec.Output[0]
+
 	if output.Type != execinfrapb.OutputRouterSpec_PASS_THROUGH {
 		return s.setupRouter(
 			ctx,

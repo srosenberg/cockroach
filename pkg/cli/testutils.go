@@ -381,7 +381,7 @@ func (c TestCLI) getSQLAddr() string {
 
 // RunWithArgs add args according to TestCLI cfg.
 func (c TestCLI) RunWithArgs(origArgs []string) {
-	TestingReset()
+	//TestingReset()
 
 	if err := func() error {
 		args := append([]string(nil), origArgs[:1]...)

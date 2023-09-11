@@ -462,6 +462,10 @@ func (ec *Context) Copy() *Context {
 	ctxCopy := *ec
 	ctxCopy.iVarContainerStack = make([]tree.IndexedVarContainer, len(ec.iVarContainerStack), cap(ec.iVarContainerStack))
 	copy(ctxCopy.iVarContainerStack, ec.iVarContainerStack)
+	//ctxCopy.CollationEnv = tree.NewCollationEnv()
+
+	//fmt.Printf("evalContext::Copy goid=%d, trace=%v\n", goid.Get(), util.GetSmallTrace2(2, 30))
+
 	return &ctxCopy
 }
 
