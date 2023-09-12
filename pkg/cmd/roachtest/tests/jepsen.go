@@ -297,7 +297,7 @@ func (j jepsenConfig) startTest(
 	} else {
 		go func() {
 			errCh <- run("bash", "-e", "-c", fmt.Sprintf(
-				`"cd /mnt/data1/jepsen/cockroachdb && set -eo pipefail && java -jar %s %s > invoke.log 2>&1"`,
+				`"cd /mnt/data1/jepsen/cockroachdb && set -eo pipefail && java -jar %s %s  > invoke.log 2>&1"`,
 				j.binaryName(), testArgs))
 		}()
 	}

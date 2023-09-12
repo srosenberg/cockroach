@@ -38,8 +38,8 @@ import (
 const (
 	defaultProject      = "cockroach-ephemeral"
 	ProviderName        = "gce"
-	DefaultImage        = "ubuntu-2004-focal-v20230817"
-	ARM64Image          = "ubuntu-2004-focal-arm64-v20230817"
+	DefaultImage        = "ubuntu-2204-jammy-v20230727"
+	ARM64Image          = "ubuntu-2204-jammy-arm64-v20230727"
 	FIPSImage           = "ubuntu-pro-fips-2004-focal-v20230811"
 	defaultImageProject = "ubuntu-os-cloud"
 	FIPSImageProject    = "ubuntu-os-pro-cloud"
@@ -994,6 +994,14 @@ func (p *Provider) Create(
 		imageProject = FIPSImageProject
 		l.Printf("Using FIPS-enabled AMI: %s for machine type: %s", image, providerOpts.MachineType)
 	}
+	// If a non default Ubuntu version was specified, we want to use that instead.
+	if opts.UbuntuVersion.IsOverridden() {
+		image, err = getUbuntuImage(opts.UbuntuVersion, opts.Arch)
+		if err != nil {
+			return err
+		}
+		l.Printf("Overriding default Ubuntu image with %s", image)
+	}
 	args := []string{
 		"compute", "instances", "create",
 		"--subnet", "default",
@@ -1068,7 +1076,7 @@ func (p *Provider) Create(
 	}
 
 	// Create GCE startup script file.
-	filename, err := writeStartupScript(extraMountOpts, opts.SSDOpts.FileSystem, providerOpts.UseMultipleDisks, opts.Arch == string(vm.ArchFIPS))
+	filename, err := writeStartupScript(extraMountOpts, opts.SSDOpts.FileSystem, providerOpts.UseMultipleDisks, opts.Arch == string(vm.ArchFIPS), !opts.UbuntuVersion.IsOverridden())
 	if err != nil {
 		return errors.Wrapf(err, "could not write GCE startup script to temp file")
 	}
@@ -1620,4 +1628,36 @@ func (p *Provider) ProjectActive(project string) bool {
 func lastComponent(url string) string {
 	s := strings.Split(url, "/")
 	return s[len(s)-1]
+}
+
+var (
+	// We define the actual image here because it's different for every provider.
+	focalFossa = vm.UbuntuImages{
+		DefaultImage: "ubuntu-2004-focal-v20230817",
+		ARM64Image:   "ubuntu-2004-focal-arm64-v20230817",
+		FIPSImage:    "ubuntu-pro-fips-2004-focal-v20230811",
+	}
+
+	gceUbuntuImages = map[vm.UbuntuVersion]vm.UbuntuImages{
+		vm.FocalFossa: focalFossa,
+	}
+)
+
+// getUbuntuImage returns the correct Ubuntu image for the specified Ubuntu version and architecture.
+func getUbuntuImage(version vm.UbuntuVersion, arch string) (string, error) {
+	image, ok := gceUbuntuImages[version]
+	if ok {
+		switch arch {
+		case string(vm.ArchAMD64):
+			return image.DefaultImage, nil
+		case string(vm.ArchARM64):
+			return image.ARM64Image, nil
+		case string(vm.ArchFIPS):
+			return image.FIPSImage, nil
+		default:
+			return "", errors.Errorf("Unknown architecture specified.")
+		}
+	}
+
+	return "", errors.Errorf("Unknown Ubuntu version specified.")
 }

@@ -12,6 +12,7 @@ package tests
 
 import (
 	"context"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"regexp"
 
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
@@ -140,7 +141,7 @@ func registerAsyncpg(r registry.Registry) {
 	r.Add(registry.TestSpec{
 		Name:             "asyncpg",
 		Owner:            registry.OwnerSQLFoundations,
-		Cluster:          r.MakeClusterSpec(1, spec.CPU(16)),
+		Cluster:          r.MakeClusterSpec(1, spec.CPU(16), spec.UbuntuVersion(vm.FocalFossa)),
 		CompatibleClouds: registry.AllExceptAWS,
 		Suites:           registry.Suites(registry.Nightly, registry.ORM),
 		Tags:             registry.Tags(`default`, `orm`),

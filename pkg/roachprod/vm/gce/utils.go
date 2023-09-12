@@ -142,6 +142,9 @@ sudo sh -c 'echo "MaxStartups 64:30:128" >> /etc/ssh/sshd_config'
 # Crank up the logging for issues such as:
 # https://github.com/cockroachdb/cockroach/issues/36929
 sudo sed -i'' 's/LogLevel.*$/LogLevel DEBUG3/' /etc/ssh/sshd_config
+{{ if .EnableRSA }}
+sudo sh -c 'echo "PubkeyAcceptedAlgorithms +ssh-rsa" >> /etc/ssh/sshd_config'
+{{ end }}
 sudo service sshd restart
 # increase the default maximum number of open file descriptors for
 # root and non-root users. Load generators running a lot of concurrent
@@ -237,13 +240,14 @@ sudo touch /mnt/data1/.roachprod-initialized
 // extraMountOpts, if not empty, is appended to the default mount options. It is
 // a comma-separated list of options for the "mount -o" flag.
 func writeStartupScript(
-	extraMountOpts string, fileSystem string, useMultiple bool, enableFIPS bool,
+	extraMountOpts string, fileSystem string, useMultiple bool, enableFIPS bool, enableRSA bool,
 ) (string, error) {
 	type tmplParams struct {
 		ExtraMountOpts   string
 		UseMultipleDisks bool
 		Zfs              bool
 		EnableFIPS       bool
+		EnableRSA        bool
 	}
 
 	args := tmplParams{
@@ -251,6 +255,7 @@ func writeStartupScript(
 		UseMultipleDisks: useMultiple,
 		Zfs:              fileSystem == vm.Zfs,
 		EnableFIPS:       enableFIPS,
+		EnableRSA:        enableRSA,
 	}
 
 	tmpfile, err := os.CreateTemp("", "gce-startup-script")
