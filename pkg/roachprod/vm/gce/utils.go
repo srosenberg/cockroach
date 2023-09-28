@@ -151,6 +151,12 @@ sudo service sshd restart
 # workers bump into this often.
 sudo sh -c 'echo "root - nofile 1048576\n* - nofile 1048576" > /etc/security/limits.d/10-roachprod-nofiles.conf'
 
+# N.B. Ubuntu 22.04 changed the location of tcpdump to /usr/bin. Since existing tooling, e.g.,
+# jepsen uses /usr/sbin, we create a symlink. 
+# See https://ubuntu.pkgs.org/22.04/ubuntu-main-amd64/tcpdump_4.99.1-3build2_amd64.deb.html
+#
+sudo ln -s /usr/bin/tcpdump /usr/sbin/tcpdump
+
 # Send TCP keepalives every minute since GCE will terminate idle connections
 # after 10m. Note that keepalives still need to be requested by the application
 # with the SO_KEEPALIVE socket option.
