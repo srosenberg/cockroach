@@ -588,11 +588,11 @@ func (r *testRunner) runWorker(
 				// N.B. FIPS is only supported on 'amd64' at this time.
 				arch = vm.ArchFIPS
 			}
-			if testToRun.spec.Benchmark && testToRun.spec.Cluster.Cloud != spec.Local {
+			//if testToRun.spec.Benchmark && testToRun.spec.Cluster.Cloud != spec.Local {
 				// TODO(srosenberg): enable after https://github.com/cockroachdb/cockroach/issues/104213
-				l.PrintfCtx(ctx, "Disabling randomly chosen arch=%q, %s", arch, testToRun.spec.Name)
-				arch = vm.ArchAMD64
-			}
+			//	l.PrintfCtx(ctx, "Disabling randomly chosen arch=%q, %s", arch, testToRun.spec.Name)
+			//	arch = vm.ArchAMD64
+			//}
 			l.PrintfCtx(ctx, "Using randomly chosen arch=%q, %s", arch, testToRun.spec.Name)
 		} else {
 			l.PrintfCtx(ctx, "Using specified arch=%q, %s", arch, testToRun.spec.Name)

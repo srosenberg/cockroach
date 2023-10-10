@@ -253,13 +253,14 @@ func findBinaryOrLibrary(
 	for _, dir := range dirs {
 		var path string
 
-		if path, err = exec.LookPath(filepath.Join(dir, name+nameSuffix)); err == nil {
-			return validateBinaryFormat(path, arch, checkEA)
-		}
 		for _, archSuffix := range archSuffixes {
+			fmt.Printf("Checking %s/%s\n", dir, name+archSuffix+nameSuffix)
 			if path, err = exec.LookPath(filepath.Join(dir, name+archSuffix+nameSuffix)); err == nil {
 				return validateBinaryFormat(path, arch, checkEA)
 			}
+		}
+		if path, err = exec.LookPath(filepath.Join(dir, name+nameSuffix)); err == nil {
+			return validateBinaryFormat(path, arch, checkEA)
 		}
 	}
 	return "", errBinaryOrLibraryNotFound{name}
@@ -401,11 +402,13 @@ func initBinariesAndLibraries() {
 		}
 		paths := []string(nil)
 
+		fmt.Printf("Finding libs for %q\n", arch)
 		for _, libraryName := range []string{"libgeos", "libgeos_c"} {
 			if libraryFilePath, err := findLibrary(libraryName, defaultOSName, arch); err != nil {
 				fmt.Fprintf(os.Stderr, "WARN: unable to find library %s, ignoring: %s\n", libraryName, err)
 			} else {
 				paths = append(paths, libraryFilePath)
+				fmt.Printf("Found %s\n", libraryFilePath)
 			}
 		}
 		libraryFilePaths[arch] = paths
