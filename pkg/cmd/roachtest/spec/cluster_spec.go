@@ -230,11 +230,14 @@ func getGCEOpts(
 	return opts
 }
 
-func getAzureOpts(machineType string, zones []string) vm.ProviderOpts {
+func getAzureOpts(machineType string, zones []string, volumeSize int) vm.ProviderOpts {
 	opts := azure.DefaultProviderOpts()
 	opts.MachineType = machineType
 	if len(zones) != 0 {
 		opts.Locations = zones
+	}
+	if volumeSize != 0 {
+		opts.NetworkDiskSize = int32(volumeSize)
 	}
 	return opts
 }
@@ -309,11 +312,6 @@ func (s *ClusterSpec) RoachprodOpts(
 		return vm.CreateOpts{}, nil, errors.Errorf("unsupported cloud %v", cloud)
 	}
 
-	if cloud != GCE && cloud != AWS {
-		if s.VolumeSize != 0 {
-			return vm.CreateOpts{}, nil, errors.Errorf("specifying volume size is not yet supported on %s", cloud)
-		}
-	}
 	if cloud != GCE {
 		if s.SSDs != 0 {
 			return vm.CreateOpts{}, nil, errors.Errorf("specifying SSD count is not yet supported on %s", cloud)
@@ -351,7 +349,7 @@ func (s *ClusterSpec) RoachprodOpts(
 			case GCE:
 				machineType, selectedArch = SelectGCEMachineType(s.CPUs, s.Mem, arch)
 			case Azure:
-				machineType, err = SelectAzureMachineType(s.CPUs, s.Mem, preferLocalSSD)
+				machineType, selectedArch, err = SelectAzureMachineType(s.CPUs, s.Mem, arch)
 			}
 
 			if err != nil {
@@ -432,7 +430,7 @@ func (s *ClusterSpec) RoachprodOpts(
 			s.GCE.MinCPUPlatform, vm.ParseArch(createVMOpts.Arch), s.GCE.VolumeType, s.UseSpotVMs,
 		)
 	case Azure:
-		providerOpts = getAzureOpts(machineType, zones)
+		providerOpts = getAzureOpts(machineType, zones, s.VolumeSize)
 	}
 
 	return createVMOpts, providerOpts, nil
