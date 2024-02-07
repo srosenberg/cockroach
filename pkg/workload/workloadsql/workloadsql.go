@@ -13,7 +13,6 @@ package workloadsql
 import (
 	"bytes"
 	"context"
-	gosql "database/sql"
 	"fmt"
 	"sort"
 	"strconv"
@@ -36,7 +35,7 @@ import (
 // SetBytes of benchmarks. The exact definition of this is deferred to the
 // InitialDataLoader implementation.
 func Setup(
-	ctx context.Context, db *gosql.DB, gen workload.Generator, l workload.InitialDataLoader,
+	ctx context.Context, db *workload.WrappedDB, gen workload.Generator, l workload.InitialDataLoader,
 ) (int64, error) {
 	var hooks workload.Hooks
 	if h, ok := gen.(workload.Hookser); ok {
@@ -72,7 +71,7 @@ func Setup(
 
 // maybeDisableMergeQueue disables the merge queue for versions prior to
 // 19.2.
-func maybeDisableMergeQueue(db *gosql.DB) error {
+func maybeDisableMergeQueue(db *workload.WrappedDB) error {
 	var ok bool
 	if err := db.QueryRow(
 		`SELECT count(*) > 0 FROM [ SHOW ALL CLUSTER SETTINGS ] AS _ (v) WHERE v = 'kv.range_merge.queue.enabled'`,
@@ -97,7 +96,9 @@ func maybeDisableMergeQueue(db *gosql.DB) error {
 }
 
 // Split creates the range splits defined by the given table.
-func Split(ctx context.Context, db *gosql.DB, table workload.Table, concurrency int) error {
+func Split(
+	ctx context.Context, db *workload.WrappedDB, table workload.Table, concurrency int,
+) error {
 	// Prevent the merge queue from immediately discarding our splits.
 	if err := maybeDisableMergeQueue(db); err != nil {
 		return err

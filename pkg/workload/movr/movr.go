@@ -12,7 +12,6 @@ package movr
 
 import (
 	"context"
-	gosql "database/sql"
 	"fmt"
 	"math"
 	"sort"
@@ -269,7 +268,7 @@ func (g *movr) Hooks() workload.Hooks {
 			}
 			return nil
 		},
-		PostLoad: func(_ context.Context, db *gosql.DB) error {
+		PostLoad: func(_ context.Context, db *workload.WrappedDB) error {
 			fkStmts := []string{
 				g.maybeFormatWithCity(
 					`ALTER TABLE vehicles ADD FOREIGN KEY
@@ -307,7 +306,7 @@ func (g *movr) Hooks() workload.Hooks {
 		},
 		// This partitioning step is intended for a 3 region cluster, which have the localities region=us-east1,
 		// region=us-west1, region=europe-west1.
-		Partition: func(db *gosql.DB) error {
+		Partition: func(db *workload.WrappedDB) error {
 			if g.multiRegion {
 				var survivalGoal string
 				switch g.survivalGoal {

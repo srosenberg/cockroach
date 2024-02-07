@@ -114,7 +114,9 @@ func (del *delivery) run(ctx context.Context, wID int) (interface{}, error) {
 			}
 			dIDoIDPairsStr := makeInTuples(dIDoIDPairs)
 
-			rows, err := tx.Query(
+			wtx := WrappedTx{TX: tx}
+
+			rows, err := wtx.Query(
 				ctx,
 				fmt.Sprintf(`
 					UPDATE "order"
@@ -147,7 +149,7 @@ func (del *delivery) run(ctx context.Context, wID int) (interface{}, error) {
 			dIDcIDPairsStr := makeInTuples(dIDcIDPairs)
 			dIDToOlTotalStr := makeWhereCases(dIDolTotalPairs)
 
-			if _, err := tx.Exec(
+			if _, err := wtx.Exec(
 				ctx,
 				fmt.Sprintf(`
 					UPDATE customer
@@ -159,7 +161,7 @@ func (del *delivery) run(ctx context.Context, wID int) (interface{}, error) {
 			); err != nil {
 				return err
 			}
-			if _, err := tx.Exec(
+			if _, err := wtx.Exec(
 				ctx,
 				fmt.Sprintf(`
 					DELETE FROM new_order
@@ -170,7 +172,7 @@ func (del *delivery) run(ctx context.Context, wID int) (interface{}, error) {
 				return err
 			}
 
-			_, err = tx.Exec(
+			_, err = wtx.Exec(
 				ctx,
 				fmt.Sprintf(`
 					UPDATE order_line

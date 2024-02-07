@@ -131,7 +131,7 @@ func (m *roachmart) Hooks() workload.Hooks {
 			return nil
 		},
 
-		PreLoad: func(db *gosql.DB) error {
+		PreLoad: func(db *workload.WrappedDB) error {
 			if _, err := db.Exec(zoneLocationsStmt); err != nil {
 				return err
 			}

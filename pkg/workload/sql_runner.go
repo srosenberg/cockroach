@@ -116,6 +116,8 @@ func (h StmtHandle) Exec(ctx context.Context, args ...interface{}) (pgconn.Comma
 	}
 	defer conn.Release()
 
+	//fmt.Println(h.s.sql, args)
+
 	switch h.s.sr.mcp.Method() {
 	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe, pgx.QueryExecModeDescribeExec:
 		return conn.Exec(ctx, h.s.preparedName, args...)
@@ -135,6 +137,9 @@ func (h StmtHandle) ExecTx(
 	ctx context.Context, tx pgx.Tx, args ...interface{},
 ) (pgconn.CommandTag, error) {
 	h.check()
+
+	//fmt.Println(h.s.sql, args)
+
 	switch h.s.sr.mcp.Method() {
 	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe, pgx.QueryExecModeDescribeExec:
 		return tx.Exec(ctx, h.s.preparedName, args...)
@@ -153,6 +158,9 @@ func (h StmtHandle) ExecTx(
 func (h StmtHandle) Query(ctx context.Context, args ...interface{}) (pgx.Rows, error) {
 	h.check()
 	p := h.s.sr.mcp.Get()
+
+	//fmt.Println(h.s.sql, args)
+
 	switch h.s.sr.mcp.Method() {
 	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe, pgx.QueryExecModeDescribeExec:
 		return p.Query(ctx, h.s.preparedName, args...)
@@ -170,6 +178,8 @@ func (h StmtHandle) Query(ctx context.Context, args ...interface{}) (pgx.Rows, e
 // See pgx.Tx.Query.
 func (h StmtHandle) QueryTx(ctx context.Context, tx pgx.Tx, args ...interface{}) (pgx.Rows, error) {
 	h.check()
+
+	//fmt.Println(h.s.sql, args)
 	switch h.s.sr.mcp.Method() {
 	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe, pgx.QueryExecModeDescribeExec:
 		return tx.Query(ctx, h.s.preparedName, args...)
@@ -188,6 +198,8 @@ func (h StmtHandle) QueryTx(ctx context.Context, tx pgx.Tx, args ...interface{})
 func (h StmtHandle) QueryRow(ctx context.Context, args ...interface{}) pgx.Row {
 	h.check()
 	p := h.s.sr.mcp.Get()
+
+	//fmt.Println(h.s.sql, args)
 	switch h.s.sr.mcp.Method() {
 	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe, pgx.QueryExecModeDescribeExec:
 		return p.QueryRow(ctx, h.s.preparedName, args...)
@@ -206,6 +218,8 @@ func (h StmtHandle) QueryRow(ctx context.Context, args ...interface{}) pgx.Row {
 // See pgx.Conn.QueryRow.
 func (h StmtHandle) QueryRowTx(ctx context.Context, tx pgx.Tx, args ...interface{}) pgx.Row {
 	h.check()
+
+	//fmt.Println(h.s.sql, args)
 	switch h.s.sr.mcp.Method() {
 	case pgx.QueryExecModeCacheStatement, pgx.QueryExecModeCacheDescribe, pgx.QueryExecModeDescribeExec:
 		return tx.QueryRow(ctx, h.s.preparedName, args...)

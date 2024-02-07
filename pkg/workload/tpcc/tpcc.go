@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/workload/workloadimpl"
 	"github.com/cockroachdb/errors"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/pflag"
 	"golang.org/x/exp/rand"
 	"golang.org/x/sync/errgroup"
@@ -102,6 +103,22 @@ type tpcc struct {
 
 type waitSetter struct {
 	val *float64
+}
+
+type WrappedTx struct {
+	TX pgx.Tx
+}
+
+func (wrapped *WrappedTx) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	//fmt.Println(sql, args)
+	return wrapped.TX.Query(ctx, sql, args...)
+}
+
+func (wrapped *WrappedTx) Exec(
+	ctx context.Context, sql string, args ...any,
+) (commandTag pgconn.CommandTag, err error) {
+	//fmt.Println(sql, args)
+	return wrapped.TX.Exec(ctx, sql, args...)
 }
 
 // Set implements the pflag.Value interface.
@@ -229,7 +246,7 @@ var tpccMeta = workload.Meta{
 	},
 }
 
-func queryDatabaseRegions(db *gosql.DB) (map[string]struct{}, error) {
+func queryDatabaseRegions(db *workload.WrappedDB) (map[string]struct{}, error) {
 	regions := make(map[string]struct{})
 	rows, err := db.Query(`SELECT region FROM [SHOW REGIONS FROM DATABASE]`)
 	if err != nil {
@@ -368,7 +385,7 @@ func (w *tpcc) Hooks() workload.Hooks {
 			}
 			return initializeMix(w)
 		},
-		PreCreate: func(db *gosql.DB) error {
+		PreCreate: func(db *workload.WrappedDB) error {
 			if len(w.multiRegionCfg.regions) == 0 {
 				// Not a multi-region deployment.
 				return nil
@@ -419,7 +436,7 @@ func (w *tpcc) Hooks() workload.Hooks {
 
 			return nil
 		},
-		PostLoad: func(_ context.Context, db *gosql.DB) error {
+		PostLoad: func(_ context.Context, db *workload.WrappedDB) error {
 			if w.fks {
 				// We avoid validating foreign keys because we just generated
 				// the data set and don't want to scan over the entire thing
@@ -502,7 +519,7 @@ func (w *tpcc) Hooks() workload.Hooks {
 			})
 			return nil
 		},
-		CheckConsistency: func(ctx context.Context, db *gosql.DB) error {
+		CheckConsistency: func(ctx context.Context, db *workload.WrappedDB) error {
 			for _, check := range AllChecks() {
 				if !w.expensiveChecks && check.Expensive {
 					continue
@@ -871,6 +888,12 @@ func (w *tpcc) Ops(
 		// NB: ql.WorkerFns is sized so this never re-allocs.
 		ql.WorkerFns = append(ql.WorkerFns, nil)
 		idx := len(ql.WorkerFns) - 1
+
+		_ = func(ctx context.Context) error {
+			return nil
+		}
+
+		fmt.Printf("starting worker %d for warehouse=%d and url=%s\n", workerIdx, warehouse, db.Get().Config().ConnString())
 		sem <- struct{}{}
 		group.Go(func() error {
 			worker, err := newWorker(ctx, w, db, reg.GetHandle(), w.txCounters, warehouse)
@@ -927,11 +950,12 @@ func (w *tpcc) partitionAndScatter(urls []string) error {
 	if err != nil {
 		return err
 	}
+	foo := &workload.WrappedDB{DB: db}
 	defer db.Close()
-	return w.partitionAndScatterWithDB(db)
+	return w.partitionAndScatterWithDB(foo)
 }
 
-func (w *tpcc) partitionAndScatterWithDB(db *gosql.DB) error {
+func (w *tpcc) partitionAndScatterWithDB(db *workload.WrappedDB) error {
 	if w.partitions > 1 {
 		// Repartitioning can take upwards of 10 minutes, so determine if
 		// the dataset is already partitioned before launching the operation

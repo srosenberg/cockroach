@@ -302,14 +302,15 @@ func runInit(gen workload.Generator, urls []string, dbName string) error {
 	if err != nil {
 		return err
 	}
+	foo := &workload.WrappedDB{DB: initDB}
 
 	startPProfEndPoint(ctx)
 	maybeLogRandomSeed(ctx, gen)
-	return runInitImpl(ctx, gen, initDB, dbName)
+	return runInitImpl(ctx, gen, foo, dbName)
 }
 
 func runInitImpl(
-	ctx context.Context, gen workload.Generator, initDB *gosql.DB, dbName string,
+	ctx context.Context, gen workload.Generator, initDB *workload.WrappedDB, dbName string,
 ) error {
 	if *drop {
 		if _, err := initDB.ExecContext(ctx, `DROP DATABASE IF EXISTS `+dbName); err != nil {
@@ -384,11 +385,12 @@ func runRun(gen workload.Generator, urls []string, dbName string) error {
 	if err != nil {
 		return err
 	}
+	foo := &workload.WrappedDB{DB: initDB}
 	if *doInit || *drop {
 		log.Info(ctx, `DEPRECATION: `+
 			`the --init flag on "workload run" will no longer be supported after 19.2`)
 		for {
-			err = runInitImpl(ctx, gen, initDB, dbName)
+			err = runInitImpl(ctx, gen, foo, dbName)
 			if err == nil {
 				break
 			}

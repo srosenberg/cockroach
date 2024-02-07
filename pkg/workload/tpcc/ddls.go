@@ -11,10 +11,10 @@
 package tpcc
 
 import (
-	gosql "database/sql"
 	"fmt"
 	"strings"
 
+	"github.com/cockroachdb/cockroach/pkg/workload"
 	"github.com/cockroachdb/errors"
 	"golang.org/x/sync/errgroup"
 )
@@ -254,7 +254,7 @@ func makeSchema(base string, opts ...makeSchemaOption) string {
 	return ret
 }
 
-func scatterRanges(db *gosql.DB) error {
+func scatterRanges(db *workload.WrappedDB) error {
 	tables := []string{
 		`customer`,
 		`district`,

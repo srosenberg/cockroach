@@ -104,6 +104,44 @@ type Hookser interface {
 	Hooks() Hooks
 }
 
+type WrappedDB struct {
+	DB *gosql.DB
+}
+
+func (wrapper *WrappedDB) Query(query string, args ...any) (*gosql.Rows, error) {
+	fmt.Println(query)
+	return wrapper.DB.QueryContext(context.Background(), query, args...)
+}
+
+func (wrapper *WrappedDB) QueryRow(query string, args ...any) *gosql.Row {
+	fmt.Println(query)
+	return wrapper.DB.QueryRowContext(context.Background(), query, args...)
+}
+
+func (wrapper *WrappedDB) Exec(query string, args ...any) (gosql.Result, error) {
+	fmt.Println(query)
+	return wrapper.DB.ExecContext(context.Background(), query, args...)
+}
+
+func (wrapper *WrappedDB) ExecContext(
+	ctx context.Context, query string, args ...any,
+) (gosql.Result, error) {
+	fmt.Println(query)
+	return wrapper.DB.ExecContext(ctx, query, args...)
+}
+
+func (wrapper *WrappedDB) Begin() (*gosql.Tx, error) {
+	return wrapper.DB.BeginTx(context.Background(), nil)
+}
+
+func (wrapper *WrappedDB) SetMaxOpenConns(n int) {
+	wrapper.DB.SetMaxOpenConns(n)
+}
+
+func (wrapper *WrappedDB) SetMaxIdleConns(n int) {
+	wrapper.DB.SetMaxIdleConns(n)
+}
+
 // Hooks stores functions to be called at points in the workload lifecycle.
 type Hooks struct {
 	// Validate is called after workload flags are parsed. It should return an
@@ -111,7 +149,7 @@ type Hooks struct {
 	Validate func() error
 	// PreCreate is called before workload tables are created.
 	// Implementations should be idempotent.
-	PreCreate func(*gosql.DB) error
+	PreCreate func(db *WrappedDB) error
 	// PreLoad is called after workload tables are created and before workload
 	// data is loaded. It is not called when storing or loading a fixture.
 	// Implementations should be idempotent.
@@ -120,21 +158,21 @@ type Hooks struct {
 	// It's only used in practice for zone configs, so it should be reasonably
 	// straightforward to make zone configs first class citizens of
 	// workload.Table.
-	PreLoad func(*gosql.DB) error
+	PreLoad func(*WrappedDB) error
 	// PostLoad is called after workload tables are created workload data is
 	// loaded. It called after restoring a fixture. This, for example, is where
 	// creating foreign keys should go. Implementations should be idempotent.
-	PostLoad func(context.Context, *gosql.DB) error
+	PostLoad func(context.Context, *WrappedDB) error
 	// PostRun is called after workload run has ended, with the duration of the
 	// run. This is where any post-run special printing or validation can be done.
 	PostRun func(time.Duration) error
 	// CheckConsistency is called to run generator-specific consistency checks.
 	// These are expected to pass after the initial data load as well as after
 	// running queryload.
-	CheckConsistency func(context.Context, *gosql.DB) error
+	CheckConsistency func(context.Context, *WrappedDB) error
 	// Partition is used to run a partitioning step on the data created by the workload.
 	// TODO (rohany): migrate existing partitioning steps (such as tpcc's) into here.
-	Partition func(*gosql.DB) error
+	Partition func(*WrappedDB) error
 }
 
 // Meta is used to register a Generator at init time and holds meta information
@@ -364,7 +402,7 @@ func ColBatchToRows(cb coldata.Batch) [][]interface{} {
 // TODO(dan): It would be lovely if the number of bytes loaded was comparable
 // between implementations but this is sadly not the case right now.
 type InitialDataLoader interface {
-	InitialDataLoad(context.Context, *gosql.DB, Generator) (int64, error)
+	InitialDataLoad(context.Context, *WrappedDB, Generator) (int64, error)
 }
 
 // ImportDataLoader is a hook for binaries that include CCL code to inject an
@@ -374,7 +412,7 @@ var ImportDataLoader InitialDataLoader = requiresCCLBinaryDataLoader(`IMPORT`)
 type requiresCCLBinaryDataLoader string
 
 func (l requiresCCLBinaryDataLoader) InitialDataLoad(
-	context.Context, *gosql.DB, Generator,
+	context.Context, *WrappedDB, Generator,
 ) (int64, error) {
 	return 0, errors.Errorf(`loading initial data with %s requires a CCL binary`, l)
 }

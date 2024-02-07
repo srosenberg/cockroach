@@ -12,7 +12,6 @@ package indexes
 
 import (
 	"context"
-	gosql "database/sql"
 	"fmt"
 	"math"
 	"math/rand"
@@ -101,7 +100,7 @@ func (w *indexes) Hooks() workload.Hooks {
 			}
 			return nil
 		},
-		PostLoad: func(_ context.Context, sqlDB *gosql.DB) error {
+		PostLoad: func(_ context.Context, sqlDB *workload.WrappedDB) error {
 			// Prevent the merge queue from immediately discarding our splits.
 			if err := maybeDisableMergeQueue(sqlDB); err != nil {
 				return err
@@ -119,7 +118,7 @@ func (w *indexes) Hooks() workload.Hooks {
 	}
 }
 
-func maybeDisableMergeQueue(sqlDB *gosql.DB) error {
+func maybeDisableMergeQueue(sqlDB *workload.WrappedDB) error {
 	var ok bool
 	if err := sqlDB.QueryRow(
 		`SELECT count(*) > 0 FROM [ SHOW ALL CLUSTER SETTINGS ] AS _ (v) WHERE v = 'kv.range_merge.queue.enabled'`,

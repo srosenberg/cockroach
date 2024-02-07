@@ -13,6 +13,7 @@ package tpcc
 import (
 	gosql "database/sql"
 
+	"github.com/cockroachdb/cockroach/pkg/workload"
 	"github.com/cockroachdb/errors"
 )
 
@@ -22,7 +23,7 @@ type Check struct {
 	// If asOfSystemTime is non-empty it will be used to perform the check as
 	// a historical query using the provided value as the argument to the
 	// AS OF SYSTEM TIME clause.
-	Fn func(db *gosql.DB, asOfSystemTime string) error
+	Fn func(db *workload.WrappedDB, asOfSystemTime string) error
 	// If true, the check is "expensive" and may take a long time to run.
 	Expensive bool
 	// If true, the check is only valid immediately after loading the dataset.
@@ -54,7 +55,7 @@ func AllChecks() []Check {
 	}
 }
 
-func check3321(db *gosql.DB, asOfSystemTime string) error {
+func check3321(db *workload.WrappedDB, asOfSystemTime string) error {
 	// 3.3.2.1 Entries in the WAREHOUSE and DISTRICT tables must satisfy the relationship:
 	// W_YTD = sum (D_YTD)
 	return checkNoRows(db, asOfSystemTime, `
@@ -75,7 +76,7 @@ WHERE
 `)
 }
 
-func check3322(db *gosql.DB, asOfSystemTime string) (retErr error) {
+func check3322(db *workload.WrappedDB, asOfSystemTime string) (retErr error) {
 	// Entries in the DISTRICT, ORDER, and NEW-ORDER tables must satisfy the relationship:
 	// D_NEXT_O_ID - 1 = max(O_ID) = max(NO_O_ID)
 	txn, err := beginAsOfSystemTime(db, asOfSystemTime)
@@ -168,7 +169,7 @@ ORDER BY
 	return nil
 }
 
-func check3323(db *gosql.DB, asOfSystemTime string) error {
+func check3323(db *workload.WrappedDB, asOfSystemTime string) error {
 	// max(NO_O_ID) - min(NO_O_ID) + 1 = # of rows in new_order for each warehouse/district
 	return checkNoRows(db, asOfSystemTime, `
 SELECT
@@ -187,7 +188,7 @@ WHERE
 `)
 }
 
-func check3324(db *gosql.DB, asOfSystemTime string) (retErr error) {
+func check3324(db *workload.WrappedDB, asOfSystemTime string) (retErr error) {
 	// sum(O_OL_CNT) = [number of rows in the ORDER-LINE table for this district]
 	txn, err := beginAsOfSystemTime(db, asOfSystemTime)
 	if err != nil {
@@ -253,7 +254,7 @@ ORDER BY
 	return nil
 }
 
-func check3325(db *gosql.DB, asOfSystemTime string) (retErr error) {
+func check3325(db *workload.WrappedDB, asOfSystemTime string) (retErr error) {
 	// We want the symmetric difference between the sets:
 	// (SELECT no_w_id, no_d_id, no_o_id FROM new_order)
 	// (SELECT o_w_id, o_d_id, o_id FROM order@primary WHERE o_carrier_id IS NULL)
@@ -284,7 +285,7 @@ EXCEPT ALL
 	return nil
 }
 
-func check3326(db *gosql.DB, asOfSystemTime string) (retErr error) {
+func check3326(db *workload.WrappedDB, asOfSystemTime string) (retErr error) {
 	// For any row in the ORDER table, O_OL_CNT must equal the number of rows
 	// in the ORDER-LINE table for the corresponding order defined by
 	// (O_W_ID, O_D_ID, O_ID) = (OL_W_ID, OL_D_ID, OL_O_ID).
@@ -320,7 +321,7 @@ EXCEPT ALL
 	return nil
 }
 
-func check3327(db *gosql.DB, asOfSystemTime string) error {
+func check3327(db *workload.WrappedDB, asOfSystemTime string) error {
 	// For any row in the ORDER-LINE table, OL_DELIVERY_D is set to a null
 	// date/time if and only if the corresponding row in the ORDER table defined
 	// by (O_W_ID, O_D_ID, O_ID) = (OL_W_ID, OL_D_ID, OL_O_ID) has
@@ -335,7 +336,7 @@ WHERE ol_o_id IS NULL OR o_id IS NULL
 `)
 }
 
-func check3328(db *gosql.DB, asOfSystemTime string) error {
+func check3328(db *workload.WrappedDB, asOfSystemTime string) error {
 	// Entries in the WAREHOUSE and HISTORY tables must satisfy the relationship:
 	// W_YTD = SUM(H_AMOUNT) for each warehouse defined by (W_ID = H _W_ID).
 	return checkNoRows(db, asOfSystemTime, `
@@ -349,7 +350,7 @@ SELECT count(*) FROM
 `)
 }
 
-func check3329(db *gosql.DB, asOfSystemTime string) error {
+func check3329(db *workload.WrappedDB, asOfSystemTime string) error {
 	// Entries in the DISTRICT and HISTORY tables must satisfy the relationship:
 	// D_YTD=SUM(H_AMOUNT) for each district defined by (D_W_ID,D_ID)=(H_W_ID,H_D_ID)
 	return checkNoRows(db, asOfSystemTime, `
@@ -363,7 +364,7 @@ SELECT count(*) FROM
 `)
 }
 
-func check33210(db *gosql.DB, asOfSystemTime string) error {
+func check33210(db *workload.WrappedDB, asOfSystemTime string) error {
 	// Entries in the CUSTOMER, HISTORY, ORDER, and ORDER-LINE tables must satisfy
 	// the relationship:
 	//
@@ -400,7 +401,7 @@ WHERE c_balance != sum_ol_amount - sum_h_amount
 `)
 }
 
-func check33211(db *gosql.DB, asOfSystemTime string) error {
+func check33211(db *workload.WrappedDB, asOfSystemTime string) error {
 	// Entries in the CUSTOMER, ORDER and NEW-ORDER tables must satisfy the
 	// relationship:
 	//
@@ -422,7 +423,7 @@ WHERE order_count - new_order_count != 2100
 `)
 }
 
-func check33212(db *gosql.DB, asOfSystemTime string) error {
+func check33212(db *workload.WrappedDB, asOfSystemTime string) error {
 	// Entries in the CUSTOMER and ORDER-LINE tables must satisfy the
 	// relationship:
 	//
@@ -447,7 +448,7 @@ WHERE c_balance + c_ytd_payment != sum_ol_amount
 `)
 }
 
-func checkNoRows(db *gosql.DB, asOfSystemTime string, q string) error {
+func checkNoRows(db *workload.WrappedDB, asOfSystemTime string, q string) error {
 	txn, err := beginAsOfSystemTime(db, asOfSystemTime)
 	if err != nil {
 		return err
@@ -468,7 +469,7 @@ func checkNoRows(db *gosql.DB, asOfSystemTime string, q string) error {
 // the provided asOfSystemTime. If asOfSystemTime is empty, the transaction will
 // not be historical. The asOfSystemTime value will be used as literal SQL in a
 // SET TRANSACTION AS OF SYSTEM TIME clause.
-func beginAsOfSystemTime(db *gosql.DB, asOfSystemTime string) (txn *gosql.Tx, err error) {
+func beginAsOfSystemTime(db *workload.WrappedDB, asOfSystemTime string) (txn *gosql.Tx, err error) {
 	txn, err = db.Begin()
 	if err != nil {
 		return nil, err

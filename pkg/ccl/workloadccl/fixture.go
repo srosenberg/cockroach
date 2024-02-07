@@ -217,7 +217,7 @@ func csvServerPaths(
 // gives us only the first half (which is all we want for fixture generation).
 func MakeFixture(
 	ctx context.Context,
-	sqlDB *gosql.DB,
+	sqlDB *workload.WrappedDB,
 	es cloud.ExternalStorage,
 	config FixtureConfig,
 	gen workload.Generator,
@@ -306,7 +306,7 @@ type ImportDataLoader struct {
 
 // InitialDataLoad implements the InitialDataLoader interface.
 func (l ImportDataLoader) InitialDataLoad(
-	ctx context.Context, db *gosql.DB, gen workload.Generator,
+	ctx context.Context, db *workload.WrappedDB, gen workload.Generator,
 ) (int64, error) {
 	if l.FilesPerNode == 0 {
 		l.FilesPerNode = 1
@@ -315,7 +315,7 @@ func (l ImportDataLoader) InitialDataLoad(
 	log.Infof(ctx, "starting import of %d tables", len(gen.Tables()))
 	start := timeutil.Now()
 	bytes, err := ImportFixture(
-		ctx, db, gen, l.dbName, l.FilesPerNode, l.InjectStats, l.CSVServer)
+		ctx, db.DB, gen, l.dbName, l.FilesPerNode, l.InjectStats, l.CSVServer)
 	if err != nil {
 		return 0, errors.Wrap(err, `importing fixture`)
 	}

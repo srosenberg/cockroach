@@ -246,7 +246,7 @@ func waitForDistribution(ctx context.Context, db *gosql.DB) error {
 
 func (t *ttlBench) Hooks() workload.Hooks {
 	return workload.Hooks{
-		PreCreate: func(db *gosql.DB) error {
+		PreCreate: func(db *workload.WrappedDB) error {
 			// Clear the table in case a previous run left records.
 			if _, err := db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s", ttlTableName)); err != nil {
 				return err
@@ -259,10 +259,10 @@ func (t *ttlBench) Hooks() workload.Hooks {
 			return err
 		},
 		// The actual benchmarking happens here.
-		PostLoad: func(ctx context.Context, db *gosql.DB) error {
+		PostLoad: func(ctx context.Context, db *workload.WrappedDB) error {
 
 			postLoadStartTime := timeutil.Now()
-			initialExpiredRowCount, err := getExpiredRowCount(db, postLoadStartTime)
+			initialExpiredRowCount, err := getExpiredRowCount(db.DB, postLoadStartTime)
 			if err != nil {
 				return err
 			}
@@ -274,7 +274,7 @@ func (t *ttlBench) Hooks() workload.Hooks {
 				return err
 			}
 
-			if err := waitForDistribution(ctx, db); err != nil {
+			if err := waitForDistribution(ctx, db.DB); err != nil {
 				return err
 			}
 
@@ -297,7 +297,7 @@ func (t *ttlBench) Hooks() workload.Hooks {
 			pollCount := 0
 			expiredRowCount := initialExpiredRowCount
 			for {
-				expiredRowCount, err = getExpiredRowCount(db, postLoadStartTime)
+				expiredRowCount, err = getExpiredRowCount(db.DB, postLoadStartTime)
 				if err != nil {
 					return err
 				}
@@ -317,7 +317,7 @@ func (t *ttlBench) Hooks() workload.Hooks {
 			pollCount = 0
 			for {
 				pollStartTime := timeutil.Now()
-				expiredRowCount, err = getExpiredRowCount(db, postLoadStartTime)
+				expiredRowCount, err = getExpiredRowCount(db.DB, postLoadStartTime)
 				if err != nil {
 					return err
 				}
@@ -346,7 +346,7 @@ func (t *ttlBench) Hooks() workload.Hooks {
 				pollCount, ttlEndTime.Sub(ttlStartTime).Milliseconds(), ttlEndTime.Format(strfmt.RFC3339Millis),
 			)
 
-			return printJobState(ctx, db)
+			return printJobState(ctx, db.DB)
 		},
 	}
 }

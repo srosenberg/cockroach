@@ -13,7 +13,6 @@ package kv
 import (
 	"context"
 	"crypto/sha1"
-	gosql "database/sql"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -199,7 +198,7 @@ func (w *kv) Flags() workload.Flags { return w.flags }
 // Hooks implements the Hookser interface.
 func (w *kv) Hooks() workload.Hooks {
 	return workload.Hooks{
-		PostLoad: func(_ context.Context, db *gosql.DB) error {
+		PostLoad: func(_ context.Context, db *workload.WrappedDB) error {
 			if w.enum {
 				_, err := db.Exec(`
 CREATE TYPE enum_type AS ENUM ('v');

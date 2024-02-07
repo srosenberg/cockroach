@@ -62,7 +62,7 @@ func init() {
 func check(gen workload.Generator, urls []string, dbName string) error {
 	ctx := context.Background()
 
-	var fn func(context.Context, *gosql.DB) error
+	var fn func(context.Context, *workload.WrappedDB) error
 	if hooks, ok := gen.(workload.Hookser); ok {
 		fn = hooks.Hooks().CheckConsistency
 	}
@@ -78,5 +78,6 @@ func check(gen workload.Generator, urls []string, dbName string) error {
 	if err := sqlDB.Ping(); err != nil {
 		return err
 	}
-	return fn(ctx, sqlDB)
+	foo := &workload.WrappedDB{DB: sqlDB}
+	return fn(ctx, foo)
 }

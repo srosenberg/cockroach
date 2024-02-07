@@ -104,9 +104,10 @@ func (w *tpccChecks) Ops(
 	if err != nil {
 		return workload.QueryLoad{}, errors.Wrapf(err, "could not sanitize urls %v", urls)
 	}
-	dbs := make([]*gosql.DB, len(urls))
+	dbs := make([]*workload.WrappedDB, len(urls))
 	for i, url := range urls {
-		dbs[i], err = gosql.Open(`cockroach`, url)
+		foo, err := gosql.Open(`cockroach`, url)
+		dbs[i] = &workload.WrappedDB{DB: foo}
 		if err != nil {
 			return workload.QueryLoad{}, errors.Wrapf(err, "failed to dial %s", url)
 		}
@@ -133,7 +134,7 @@ func (w *tpccChecks) Ops(
 }
 
 type checkWorker struct {
-	dbs            []*gosql.DB
+	dbs            []*workload.WrappedDB
 	checks         []tpcc.Check
 	histograms     *histogram.Histograms
 	asOfSystemTime string
@@ -143,7 +144,10 @@ type checkWorker struct {
 }
 
 func newCheckWorker(
-	dbs []*gosql.DB, checks []tpcc.Check, histograms *histogram.Histograms, asOfSystemTime string,
+	dbs []*workload.WrappedDB,
+	checks []tpcc.Check,
+	histograms *histogram.Histograms,
+	asOfSystemTime string,
 ) *checkWorker {
 	return &checkWorker{
 		dbs:            dbs,

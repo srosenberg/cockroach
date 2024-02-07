@@ -243,7 +243,10 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 			for i, item := range d.items {
 				itemIDs[i] = fmt.Sprint(item.olIID)
 			}
-			rows, err := tx.Query(
+
+			wtx := WrappedTx{TX: tx}
+
+			rows, err := wtx.Query(
 				ctx,
 				fmt.Sprintf(`
 					SELECT i_price, i_name, i_data
@@ -295,7 +298,7 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 			for i, item := range d.items {
 				stockIDs[i] = fmt.Sprintf("(%d, %d)", item.olIID, item.olSupplyWID)
 			}
-			rows, err = tx.Query(
+			rows, err = wtx.Query(
 				ctx,
 				fmt.Sprintf(`
 					SELECT s_quantity, s_ytd, s_order_cnt, s_remote_cnt, s_data, s_dist_%02[1]d
@@ -375,7 +378,7 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 			}
 
 			// Update the stock table for each item.
-			if _, err := tx.Exec(
+			if _, err := wtx.Exec(
 				ctx,
 				fmt.Sprintf(`
 					UPDATE stock
@@ -414,7 +417,7 @@ func (n *newOrder) run(ctx context.Context, wID int) (interface{}, error) {
 					distInfos[i],     // ol_dist_info
 				)
 			}
-			if _, err := tx.Exec(
+			if _, err := wtx.Exec(
 				ctx,
 				fmt.Sprintf(`
 					INSERT INTO order_line(ol_o_id, ol_d_id, ol_w_id, ol_number, ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_dist_info)

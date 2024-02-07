@@ -247,8 +247,9 @@ func fixturesMake(gen workload.Generator, urls []string, _ string) error {
 			filter: filter,
 		}
 	}
+	foo := &workload.WrappedDB{DB: sqlDB}
 	filesPerNode := *fixturesMakeFilesPerNode
-	fixture, err := workloadccl.MakeFixture(ctx, sqlDB, gcs, config(), gen, filesPerNode)
+	fixture, err := workloadccl.MakeFixture(ctx, foo, gcs, config(), gen, filesPerNode)
 	if err != nil {
 		return err
 	}
@@ -267,11 +268,11 @@ type restoreDataLoader struct {
 
 // InitialDataLoad implements the InitialDataLoader interface.
 func (l restoreDataLoader) InitialDataLoad(
-	ctx context.Context, db *gosql.DB, gen workload.Generator,
+	ctx context.Context, db *workload.WrappedDB, gen workload.Generator,
 ) (int64, error) {
 	log.Infof(ctx, "starting restore of %d tables", len(gen.Tables()))
 	start := timeutil.Now()
-	bytes, err := workloadccl.RestoreFixture(ctx, db, l.fixture, l.database, true /* injectStats */)
+	bytes, err := workloadccl.RestoreFixture(ctx, db.DB, l.fixture, l.database, true /* injectStats */)
 	if err != nil {
 		return 0, errors.Wrap(err, `restoring fixture`)
 	}
@@ -297,20 +298,21 @@ func fixturesLoad(gen workload.Generator, urls []string, dbName string) error {
 		return err
 	}
 
+	foo := &workload.WrappedDB{DB: sqlDB}
 	fixture, err := workloadccl.GetFixture(ctx, gcs, config(), gen)
 	if err != nil {
 		return errors.Wrap(err, `finding fixture`)
 	}
 
 	l := restoreDataLoader{fixture: fixture, database: dbName}
-	if _, err := workloadsql.Setup(ctx, sqlDB, gen, l); err != nil {
+	if _, err := workloadsql.Setup(ctx, foo, gen, l); err != nil {
 		return err
 	}
 
 	if hooks, ok := gen.(workload.Hookser); *fixturesRunChecks && ok {
 		if consistencyCheckFn := hooks.Hooks().CheckConsistency; consistencyCheckFn != nil {
 			log.Info(ctx, "fixture is imported; now running consistency checks (ctrl-c to abort)")
-			if err := consistencyCheckFn(ctx, sqlDB); err != nil {
+			if err := consistencyCheckFn(ctx, foo); err != nil {
 				return err
 			}
 		}
@@ -334,14 +336,15 @@ func fixturesImport(gen workload.Generator, urls []string, dbName string) error 
 		InjectStats:  *fixturesImportInjectStats,
 		CSVServer:    *fixturesMakeImportCSVServerURL,
 	}
-	if _, err := workloadsql.Setup(ctx, sqlDB, gen, l); err != nil {
+	foo := &workload.WrappedDB{DB: sqlDB}
+	if _, err := workloadsql.Setup(ctx, foo, gen, l); err != nil {
 		return err
 	}
 
 	if hooks, ok := gen.(workload.Hookser); *fixturesRunChecks && ok {
 		if consistencyCheckFn := hooks.Hooks().CheckConsistency; consistencyCheckFn != nil {
 			log.Info(ctx, "fixture is restored; now running consistency checks (ctrl-c to abort)")
-			if err := consistencyCheckFn(ctx, sqlDB); err != nil {
+			if err := consistencyCheckFn(ctx, foo); err != nil {
 				return err
 			}
 		}

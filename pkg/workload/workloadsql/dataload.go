@@ -13,7 +13,6 @@ package workloadsql
 import (
 	"bytes"
 	"context"
-	gosql "database/sql"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -36,7 +35,7 @@ type InsertsDataLoader struct {
 
 // InitialDataLoad implements the InitialDataLoader interface.
 func (l InsertsDataLoader) InitialDataLoad(
-	ctx context.Context, db *gosql.DB, gen workload.Generator,
+	ctx context.Context, db *workload.WrappedDB, gen workload.Generator,
 ) (int64, error) {
 	if gen.Meta().Name == `tpch` {
 		return 0, errors.New(
