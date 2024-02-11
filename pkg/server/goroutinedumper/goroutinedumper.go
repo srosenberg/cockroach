@@ -167,7 +167,7 @@ func takeGoroutineDump(path string) error {
 	}
 	defer f.Close()
 	w := gzip.NewWriter(f)
-	if err = pprof.Lookup("goroutine").WriteTo(w, 2); err != nil {
+	if err = pprof.Lookup("goroutine").WriteTo(w, 1); err != nil {
 		return errors.Wrapf(err, "error writing goroutine dump to %s", path)
 	}
 	// Flush and write the gzip header. It doesn't close the underlying writer.

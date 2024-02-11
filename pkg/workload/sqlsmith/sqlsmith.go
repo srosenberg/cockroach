@@ -13,6 +13,7 @@ package sqlsmith
 import (
 	"context"
 	gosql "database/sql"
+	"fmt"
 	"math/rand"
 	"strings"
 
@@ -154,6 +155,7 @@ func (g *sqlSmith) Ops(
 		workerFn := func(ctx context.Context) error {
 			start := timeutil.Now()
 			query := smither.Generate()
+			fmt.Println(query)
 			elapsed := timeutil.Since(start)
 			hists.Get(`generate`).Record(elapsed)
 

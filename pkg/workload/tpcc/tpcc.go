@@ -871,6 +871,8 @@ func (w *tpcc) Ops(
 		// NB: ql.WorkerFns is sized so this never re-allocs.
 		ql.WorkerFns = append(ql.WorkerFns, nil)
 		idx := len(ql.WorkerFns) - 1
+
+		fmt.Printf("starting worker %d for warehouse=%d and url=%s\n", workerIdx, warehouse, db.Get().Config().ConnString())
 		sem <- struct{}{}
 		group.Go(func() error {
 			worker, err := newWorker(ctx, w, db, reg.GetHandle(), w.txCounters, warehouse)

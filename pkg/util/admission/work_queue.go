@@ -282,6 +282,7 @@ type WorkQueue struct {
 	tiedToRange    bool
 	usesAsyncAdmit bool
 	settings       *cluster.Settings
+	Tracer         *tracing.Tracer
 
 	onAdmittedReplicatedWork onAdmittedReplicatedWork
 
@@ -361,6 +362,7 @@ func makeWorkQueue(
 	workKind WorkKind,
 	granter granter,
 	settings *cluster.Settings,
+	tracer *tracing.Tracer,
 	metrics *WorkQueueMetrics,
 	opts workQueueOptions,
 ) requester {
@@ -369,7 +371,7 @@ func makeWorkQueue(
 	if workKind == KVWork {
 		queueKind = "kv-regular-cpu-queue"
 	}
-	initWorkQueue(q, ambientCtx, workKind, queueKind, granter, settings, metrics, opts, nil)
+	initWorkQueue(q, ambientCtx, workKind, queueKind, granter, settings, tracer, metrics, opts, nil)
 	return q
 }
 
@@ -380,6 +382,7 @@ func initWorkQueue(
 	queueKind QueueKind,
 	granter granter,
 	settings *cluster.Settings,
+	tracer *tracing.Tracer,
 	metrics *WorkQueueMetrics,
 	opts workQueueOptions,
 	knobs *TestingKnobs,
@@ -406,6 +409,7 @@ func initWorkQueue(
 	q.tiedToRange = opts.tiedToRange
 	q.usesAsyncAdmit = opts.usesAsyncAdmit
 	q.settings = settings
+	q.Tracer = tracer
 	q.logThreshold = log.Every(5 * time.Minute)
 	q.metrics = metrics
 	q.stopCh = stopCh
@@ -772,6 +776,7 @@ func (q *WorkQueue) Admit(ctx context.Context, info WorkInfo) (enabled bool, err
 
 	// Start waiting for admission.
 	var span *tracing.Span
+
 	ctx, span = tracing.ChildSpan(ctx, "admissionWorkQueueWait")
 	defer span.Finish()
 	defer releaseWaitingWork(work)
@@ -1800,6 +1805,10 @@ func (m *WorkQueueMetrics) recordFinishWait(priority admissionpb.WorkPriority, d
 	priorityStats := m.getOrCreate(priority)
 	priorityStats.WaitQueueLength.Dec(1)
 	priorityStats.WaitDurations.RecordValue(dur.Nanoseconds())
+
+	if dur > time.Minute {
+		log.Infof(context.Background(), "admission control: waited for %v", dur)
+	}
 }
 
 func (m *WorkQueueMetrics) recordBypassedAdmission(priority admissionpb.WorkPriority) {
@@ -2192,6 +2201,7 @@ func makeStoreWorkQueue(
 	storeID roachpb.StoreID,
 	granters [admissionpb.NumWorkClasses]granterWithStoreReplicatedWorkAdmitted,
 	settings *cluster.Settings,
+	tracer *tracing.Tracer,
 	metrics *WorkQueueMetrics,
 	opts workQueueOptions,
 	knobs *TestingKnobs,
@@ -2225,7 +2235,7 @@ func makeStoreWorkQueue(
 		} else if i == int(admissionpb.ElasticWorkClass) {
 			queueKind = "kv-elastic-store-queue"
 		}
-		initWorkQueue(&q.q[i], ambientCtx, KVWork, queueKind, granters[i], settings, metrics, opts, knobs)
+		initWorkQueue(&q.q[i], ambientCtx, KVWork, queueKind, granters[i], settings, tracer, metrics, opts, knobs)
 		q.q[i].onAdmittedReplicatedWork = q
 	}
 	// Arbitrary initial value. This will be replaced before any meaningful

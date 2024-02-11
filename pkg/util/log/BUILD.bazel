@@ -61,6 +61,8 @@ go_library(
         "//pkg/util",
         "//pkg/util/allstacks",
         "//pkg/util/caller",
+	"//pkg/util/goschedstats",
+	"//pkg/util/grunning",
         "//pkg/util/encoding/encodingtype",
         "//pkg/util/envutil",
         "//pkg/util/fileutil",

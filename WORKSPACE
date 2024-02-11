@@ -162,18 +162,18 @@ load(
 
 # To point to a mirrored artifact, use:
 #
-go_download_sdk(
-    name = "go_sdk",
-    sdks = {
-        "darwin_amd64": ("go1.21.5.darwin-amd64.tar.gz", "6878b009493b8b2e5518b090209f63af478a6bdf889c6db4d3c6b68e43839e8e"),
-        "darwin_arm64": ("go1.21.5.darwin-arm64.tar.gz", "1f3673055f681982bda589bfb23938cb83bef4030efd3516bed0dc3ebd125f41"),
-        "linux_amd64": ("go1.21.5.linux-amd64.tar.gz", "78e55b80d0a5ef27e8e0913321cae31ba9509c05ed79c429e489ae3a25c74885"),
-        "linux_arm64": ("go1.21.5.linux-arm64.tar.gz", "89fe32d10a4a3831154bc740bfbc89405a5a8de0655e0cbe91e5ad952dfd6a52"),
-        "windows_amd64": ("go1.21.5.windows-amd64.tar.gz", "350b40fb129d0eac7eafd5ea2044c6dd1ce8b5a43572f22ef02b53e3d999f28a"),
-    },
-    urls = ["https://storage.googleapis.com/public-bazel-artifacts/go/20231206-175156/{}"],
-    version = "1.21.5",
-)
+#go_download_sdk(
+#    name = "go_sdk",
+#    sdks = {
+#        #"darwin_amd64": ("go1.21.5.darwin-amd64.tar.gz", "6878b009493b8b2e5518b090209f63af478a6bdf889c6db4d3c6b68e43839e8e"),
+#        "darwin_arm64": ("go1.21.5.darwin-arm64.tar.gz", "1f3673055f681982bda589bfb23938cb83bef4030efd3516bed0dc3ebd125f41"),
+#        #"linux_amd64": ("go1.21.5.linux-amd64.tar.gz", "78e55b80d0a5ef27e8e0913321cae31ba9509c05ed79c429e489ae3a25c74885"),
+#        #"linux_arm64": ("go1.21.5.linux-arm64.tar.gz", "89fe32d10a4a3831154bc740bfbc89405a5a8de0655e0cbe91e5ad952dfd6a52"),
+#        #"windows_amd64": ("go1.21.5.windows-amd64.tar.gz", "350b40fb129d0eac7eafd5ea2044c6dd1ce8b5a43572f22ef02b53e3d999f28a"),
+#    },
+#    urls = ["https://storage.googleapis.com/public-bazel-artifacts/go/20231206-175156/{}"],
+#    version = "1.21.5",
+#)
 
 # To point to a local SDK path, use the following instead. We'll call the
 # directory into which you cloned the Go repository $GODIR[1]. You'll have to
@@ -181,10 +181,12 @@ go_download_sdk(
 #
 # [1]: https://go.dev/doc/contribute#testing
 #
-#   go_local_sdk(
-#       name = "go_sdk",
-#       path = "<path to $GODIR>",
-#   )
+go_local_sdk(
+    name = "go_sdk",
+    version = "1.21.3custom",
+    path = "/goroot/go_1_21",
+   # path = "/home/srosenberg/go/src/github.com/go_1_21",
+)
 
 # To use your whatever your local SDK is, use the following instead:
 #
@@ -193,6 +195,7 @@ go_download_sdk(
 go_rules_dependencies()
 
 go_register_toolchains(nogo = "@com_github_cockroachdb_cockroach//:crdb_nogo")
+
 
 ###############################
 # end rules_go dependencies #

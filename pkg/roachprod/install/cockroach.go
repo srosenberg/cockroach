@@ -773,7 +773,7 @@ func (c *SyncedCluster) generateStartArgs(
 	// if neither --log nor --log-config-file are present
 	if idx1 == -1 && idx2 == -1 {
 		// Specify exit-on-error=false to work around #62763.
-		args = append(args, "--log", `file-defaults: {dir: '`+logDir+`', exit-on-error: false}`)
+		args = append(args, "--log", `file-defaults: {dir: '`+logDir+`', max-group-size: 500MiB, exit-on-error: false}`)
 	}
 
 	listenHost := ""

@@ -18,7 +18,11 @@
 package goschedstats
 
 import (
+	"runtime"
+	"strconv"
+	"strings"
 	"sync/atomic"
+	"time"
 	_ "unsafe" // required by go:linkname
 )
 
@@ -160,6 +164,78 @@ type schedt struct {
 
 //go:linkname allp runtime.allp
 var allp []*p
+
+//go:linkname nanotime runtime.nanotime
+func nanotime() int64
+
+//go:linkname Fatal runtime.fatal
+func Fatal(s string)
+
+func GStats() string {
+	var buf strings.Builder
+	for _, gp := range runtime.GetGStats() {
+		if gp.Status == "dead" {
+			continue
+		}
+		var sinceLastSched time.Duration
+		if gp.Lastsched != 0 {
+			sinceLastSched = time.Duration(nanotime() - gp.Lastsched)
+		}
+		buf.WriteString("  G")
+		buf.WriteString(strconv.Itoa(int(gp.Goid)))
+		if gp.ParentGoid != 0 {
+			buf.WriteString(" (parent=")
+			buf.WriteString(strconv.Itoa(int(gp.ParentGoid)))
+			buf.WriteString(")")
+		}
+		buf.WriteString(" status=")
+		buf.WriteString(gp.Status)
+		buf.WriteString("(")
+		buf.WriteString(gp.Waitreason)
+		buf.WriteString(") ")
+		buf.WriteString("running=")
+		buf.WriteString(time.Duration(gp.Runningnanos).String())
+		buf.WriteString(" ")
+		buf.WriteString("lastSched=")
+		buf.WriteString(sinceLastSched.String())
+		buf.WriteString("\n")
+	}
+	return buf.String()
+}
+
+func MStats() string {
+	var buf strings.Builder
+	for _, mp := range runtime.GetMStats() {
+		buf.WriteString("  M")
+		buf.WriteString(strconv.Itoa(int(mp.Mid)))
+		if mp.Pid != 0 {
+			buf.WriteString(": p=")
+			buf.WriteString(strconv.Itoa(int(mp.Pid)))
+		}
+		if mp.Goid != 0 {
+			buf.WriteString(" curg=")
+			buf.WriteString(strconv.Itoa(int(mp.Goid)))
+		}
+		buf.WriteString(" mallocing=")
+		buf.WriteString(strconv.Itoa(int(mp.Mallocing)))
+		buf.WriteString(" preemptoff=")
+		buf.WriteString(mp.Preemptoff)
+		buf.WriteString(" locks=")
+		buf.WriteString(strconv.Itoa(int(mp.Locks)))
+		buf.WriteString(" dying=")
+		buf.WriteString(strconv.Itoa(int(mp.Dying)))
+		buf.WriteString(" spinning=")
+		buf.WriteString(strconv.FormatBool(mp.Spinning))
+		buf.WriteString(" blocked=")
+		buf.WriteString(strconv.FormatBool(mp.Blocked))
+		if mp.LockedGoid != 0 {
+			buf.WriteString(" lockedg=")
+			buf.WriteString(strconv.Itoa(int(mp.LockedGoid)))
+		}
+		buf.WriteString("\n")
+	}
+	return buf.String()
+}
 
 //go:linkname sched runtime.sched
 var sched schedt

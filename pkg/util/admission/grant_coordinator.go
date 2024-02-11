@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 )
@@ -201,6 +202,7 @@ func (sgc *StoreGrantCoordinators) initGrantCoordinator(storeID roachpb.StoreID)
 		storeID,
 		granters,
 		sgc.settings,
+		nil,
 		sgc.workQueueMetrics,
 		opts,
 		sgc.knobs,
@@ -377,12 +379,12 @@ func (o *Options) Override(override *Options) {
 }
 
 type makeRequesterFunc func(
-	_ log.AmbientContext, workKind WorkKind, granter granter, settings *cluster.Settings,
+	_ log.AmbientContext, workKind WorkKind, granter granter, settings *cluster.Settings, tracer *tracing.Tracer,
 	metrics *WorkQueueMetrics, opts workQueueOptions) requester
 
 type makeStoreRequesterFunc func(
 	_ log.AmbientContext, storeID roachpb.StoreID, granters [admissionpb.NumWorkClasses]granterWithStoreReplicatedWorkAdmitted,
-	settings *cluster.Settings, metrics *WorkQueueMetrics, opts workQueueOptions, knobs *TestingKnobs,
+	settings *cluster.Settings, tracer *tracing.Tracer, metrics *WorkQueueMetrics, opts workQueueOptions, knobs *TestingKnobs,
 	onLogEntryAdmitted OnLogEntryAdmitted, ioTokensBypassedMetric *metric.Counter, coordMu *syncutil.Mutex,
 ) storeRequester
 
@@ -404,6 +406,7 @@ type makeStoreRequesterFunc func(
 func NewGrantCoordinators(
 	ambientCtx log.AmbientContext,
 	st *cluster.Settings,
+	tracer *tracing.Tracer,
 	opts Options,
 	registry *metric.Registry,
 	onLogEntryAdmitted OnLogEntryAdmitted,
@@ -418,13 +421,16 @@ func NewGrantCoordinators(
 
 	return GrantCoordinators{
 		Stores:  makeStoresGrantCoordinators(ambientCtx, opts, st, metrics, registry, onLogEntryAdmitted, knobs),
-		Regular: makeRegularGrantCoordinator(ambientCtx, opts, st, metrics, registry, knobs),
-		Elastic: makeElasticGrantCoordinator(ambientCtx, st, registry),
+		Regular: makeRegularGrantCoordinator(ambientCtx, opts, st, tracer, metrics, registry, knobs),
+		Elastic: makeElasticGrantCoordinator(ambientCtx, st, tracer, registry),
 	}
 }
 
 func makeElasticGrantCoordinator(
-	ambientCtx log.AmbientContext, st *cluster.Settings, registry *metric.Registry,
+	ambientCtx log.AmbientContext,
+	st *cluster.Settings,
+	tracer *tracing.Tracer,
+	registry *metric.Registry,
 ) *ElasticCPUGrantCoordinator {
 	schedulerLatencyListenerMetrics := makeSchedulerLatencyListenerMetrics()
 	registry.AddMetricStruct(schedulerLatencyListenerMetrics)
@@ -438,7 +444,7 @@ func makeElasticGrantCoordinator(
 	schedulerLatencyListener := newSchedulerLatencyListener(ambientCtx, st, schedulerLatencyListenerMetrics, elasticCPUGranter)
 
 	elasticCPUInternalWorkQueue := &WorkQueue{}
-	initWorkQueue(elasticCPUInternalWorkQueue, ambientCtx, KVWork, "kv-elastic-cpu-queue", elasticCPUGranter, st,
+	initWorkQueue(elasticCPUInternalWorkQueue, ambientCtx, KVWork, "kv-elastic-cpu-queue", elasticCPUGranter, st, tracer,
 		elasticWorkQueueMetrics,
 		workQueueOptions{usesTokens: true}, nil /* knobs */) // will be closed by the embedding *ElasticCPUWorkQueue
 	elasticCPUWorkQueue := makeElasticCPUWorkQueue(st, elasticCPUInternalWorkQueue, elasticCPUGranter, elasticCPUGranterMetrics)
@@ -491,6 +497,7 @@ func makeRegularGrantCoordinator(
 	ambientCtx log.AmbientContext,
 	opts Options,
 	st *cluster.Settings,
+	tracer *tracing.Tracer,
 	metrics GrantCoordinatorMetrics,
 	registry *metric.Registry,
 	knobs *TestingKnobs,
@@ -532,7 +539,7 @@ func makeRegularGrantCoordinator(
 
 	kvSlotAdjuster.granter = kvg
 	wqMetrics := makeWorkQueueMetrics(KVWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
-	req := makeRequester(ambientCtx, KVWork, kvg, st, wqMetrics, makeWorkQueueOptions(KVWork))
+	req := makeRequester(ambientCtx, KVWork, kvg, st, tracer, wqMetrics, makeWorkQueueOptions(KVWork))
 	coord.queues[KVWork] = req
 	kvg.requester = req
 	coord.granters[KVWork] = kvg
@@ -546,7 +553,7 @@ func makeRegularGrantCoordinator(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLKVResponseWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
 	req = makeRequester(
-		ambientCtx, SQLKVResponseWork, tg, st, wqMetrics, makeWorkQueueOptions(SQLKVResponseWork))
+		ambientCtx, SQLKVResponseWork, tg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLKVResponseWork))
 	coord.queues[SQLKVResponseWork] = req
 	tg.requester = req
 	coord.granters[SQLKVResponseWork] = tg
@@ -560,7 +567,7 @@ func makeRegularGrantCoordinator(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLSQLResponseWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
 	req = makeRequester(ambientCtx,
-		SQLSQLResponseWork, tg, st, wqMetrics, makeWorkQueueOptions(SQLSQLResponseWork))
+		SQLSQLResponseWork, tg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLSQLResponseWork))
 	coord.queues[SQLSQLResponseWork] = req
 	tg.requester = req
 	coord.granters[SQLSQLResponseWork] = tg
@@ -574,7 +581,7 @@ func makeRegularGrantCoordinator(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLStatementLeafStartWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
 	req = makeRequester(ambientCtx,
-		SQLStatementLeafStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementLeafStartWork))
+		SQLStatementLeafStartWork, sg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLStatementLeafStartWork))
 	coord.queues[SQLStatementLeafStartWork] = req
 	sg.requester = req
 	coord.granters[SQLStatementLeafStartWork] = sg
@@ -588,7 +595,7 @@ func makeRegularGrantCoordinator(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLStatementRootStartWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
 	req = makeRequester(ambientCtx,
-		SQLStatementRootStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementRootStartWork))
+		SQLStatementRootStartWork, sg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLStatementRootStartWork))
 	coord.queues[SQLStatementRootStartWork] = req
 	sg.requester = req
 	coord.granters[SQLStatementRootStartWork] = sg
@@ -602,7 +609,11 @@ var _ = NewGrantCoordinatorSQL
 // single-tenant SQL node in a multi-tenant cluster. Caller is responsible for
 // hooking this up to receive calls to CPULoad.
 func NewGrantCoordinatorSQL(
-	ambientCtx log.AmbientContext, st *cluster.Settings, registry *metric.Registry, opts Options,
+	ambientCtx log.AmbientContext,
+	st *cluster.Settings,
+	tracer *tracing.Tracer,
+	registry *metric.Registry,
+	opts Options,
 ) *GrantCoordinator {
 	makeRequester := makeWorkQueue
 	if opts.makeRequesterFunc != nil {
@@ -631,7 +642,7 @@ func NewGrantCoordinatorSQL(
 	}
 	wqMetrics := makeWorkQueueMetrics(SQLKVResponseWork.String(), registry)
 	req := makeRequester(ambientCtx,
-		SQLKVResponseWork, tg, st, wqMetrics, makeWorkQueueOptions(SQLKVResponseWork))
+		SQLKVResponseWork, tg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLKVResponseWork))
 	coord.queues[SQLKVResponseWork] = req
 	tg.requester = req
 	coord.granters[SQLKVResponseWork] = tg
@@ -645,7 +656,7 @@ func NewGrantCoordinatorSQL(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLSQLResponseWork.String(), registry)
 	req = makeRequester(ambientCtx,
-		SQLSQLResponseWork, tg, st, wqMetrics, makeWorkQueueOptions(SQLSQLResponseWork))
+		SQLSQLResponseWork, tg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLSQLResponseWork))
 	coord.queues[SQLSQLResponseWork] = req
 	tg.requester = req
 	coord.granters[SQLSQLResponseWork] = tg
@@ -659,7 +670,7 @@ func NewGrantCoordinatorSQL(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLStatementLeafStartWork.String(), registry)
 	req = makeRequester(ambientCtx,
-		SQLStatementLeafStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementLeafStartWork))
+		SQLStatementLeafStartWork, sg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLStatementLeafStartWork))
 	coord.queues[SQLStatementLeafStartWork] = req
 	sg.requester = req
 	coord.granters[SQLStatementLeafStartWork] = sg
@@ -673,7 +684,7 @@ func NewGrantCoordinatorSQL(
 	}
 	wqMetrics = makeWorkQueueMetrics(SQLStatementRootStartWork.String(), registry)
 	req = makeRequester(ambientCtx,
-		SQLStatementRootStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementRootStartWork))
+		SQLStatementRootStartWork, sg, st, tracer, wqMetrics, makeWorkQueueOptions(SQLStatementRootStartWork))
 	coord.queues[SQLStatementRootStartWork] = req
 	sg.requester = req
 	coord.granters[SQLStatementRootStartWork] = sg

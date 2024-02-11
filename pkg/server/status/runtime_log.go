@@ -15,6 +15,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/cockroachdb/cockroach/pkg/util/goschedstats"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/redact"
@@ -45,4 +46,6 @@ func logStats(ctx context.Context, stats *eventpb.RuntimeStats) {
 		return
 	}
 	log.Health.Infof(ctx, "runtime stats: %s", redact.SafeString(buf.String()))
+	log.Health.Infof(ctx, "MStats: %s", redact.SafeString(goschedstats.MStats()))
+	log.Health.Infof(ctx, "GStats: %s", redact.SafeString(goschedstats.GStats()))
 }

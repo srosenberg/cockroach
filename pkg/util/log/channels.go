@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/cli/exit"
+	"github.com/cockroachdb/cockroach/pkg/util/goschedstats"
 	"github.com/cockroachdb/cockroach/pkg/util/log/channel"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logpb"
 	"github.com/cockroachdb/cockroach/pkg/util/log/severity"
@@ -59,20 +60,25 @@ func logfDepthInternal(
 	if sev == severity.FATAL {
 		// Timeout logic should stay at the top of this call to capture all
 		// writes that happen afterwards.
-		exitFunc := func() (exitFunc func(exit.Code, error)) {
-			exitFunc = func(x exit.Code, _ error) { exit.WithCode(x) }
-			logging.mu.Lock()
-			defer logging.mu.Unlock()
-			if logging.mu.exitOverride.f != nil {
-				exitFunc = logging.mu.exitOverride.f
-			}
-			return exitFunc
-		}()
+		//exitFunc := func() (exitFunc func(exit.Code, error)) {
+		//	exitFunc = func(x exit.Code, _ error) { exit.WithCode(x) }
+		//	logging.mu.Lock()
+		//	defer logging.mu.Unlock()
+		//	if logging.mu.exitOverride.f != nil {
+		//		exitFunc = logging.mu.exitOverride.f
+		//	}
+		//	return exitFunc
+		//}()
 
 		// Fatal error handling later already tries to exit even if I/O should
 		// block, but crash reporting might also be in the way.
 		t := time.AfterFunc(ExitTimeoutOnFatalLog, func() {
-			exitFunc(exit.TimeoutAfterFatalError(), nil)
+			print(goschedstats.MStats())
+			print(goschedstats.GStats())
+			print(fmt.Sprintf(format, args...), "\n")
+
+			goschedstats.Fatal(fmt.Sprintf("exit: %d", exit.TimeoutAfterFatalError()))
+			//exitFunc(exit.TimeoutAfterFatalError(), nil)
 		})
 		defer t.Stop()
 

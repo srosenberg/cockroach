@@ -157,6 +157,7 @@ func (d *dev) getDockerRunArgs(
 	args = append(args, "-v", workspace+":/cockroach")
 	args = append(args, "--workdir=/cockroach")
 	args = append(args, "-v", filepath.Join(workspace, "build", "bazelutil", "empty.bazelrc")+":/cockroach/.bazelrc.user")
+	args = append(args, "-v", "/home/srosenberg/go/src/github.com/:/goroot")
 	// Create the artifacts directory.
 	artifacts := filepath.Join(workspace, "artifacts")
 	err = d.os.MkdirAll(artifacts)

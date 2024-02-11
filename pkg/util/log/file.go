@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/cli/exit"
+	"github.com/cockroachdb/cockroach/pkg/util/goschedstats"
 	"github.com/cockroachdb/cockroach/pkg/util/log/severity"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
@@ -261,6 +262,9 @@ func (l *fileSink) flushAndMaybeSyncLocked(doSync bool) {
 		//
 		// See pkg/cli.runStart for where this function is hooked up.
 		MakeProcessUnavailable()
+
+		print(goschedstats.MStats())
+		print(goschedstats.GStats())
 
 		Ops.Shoutf(context.Background(), severity.FATAL,
 			"disk stall detected: unable to sync log files within %s", maxSyncDuration,

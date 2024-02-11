@@ -112,6 +112,7 @@ func NewServerEx(
 		grpc.MaxConcurrentStreams(math.MaxInt32),
 		grpc.KeepaliveParams(serverKeepalive),
 		grpc.KeepaliveEnforcementPolicy(serverEnforcement),
+		grpc.NumStreamWorkers(1000),
 	}
 	if !rpcCtx.ContextOptions.Insecure {
 		tlsConfig, err := rpcCtx.GetServerTLSConfig()

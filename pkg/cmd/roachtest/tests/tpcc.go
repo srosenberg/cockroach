@@ -812,8 +812,8 @@ func registerTPCC(r registry.Registry) {
 	})
 	// These are published benchmarks so we want to be able to recreate them easily on each release.
 	r.Add(registry.TestSpec{
-		Name:  "tpcc/published/local",
-		Owner: registry.OwnerKV,
+		Name:      "tpcc/published/local",
+		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
 			5,
@@ -823,8 +823,8 @@ func registerTPCC(r registry.Registry) {
 			spec.PreferLocalSSD(),
 			spec.ReuseNone(),
 		),
-		CompatibleClouds: registry.AllClouds,
-		Suites: registry.ManualOnly,
+		CompatibleClouds:  registry.AllClouds,
+		Suites:            registry.ManualOnly,
 		EncryptionSupport: registry.EncryptionAlwaysDisabled,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runTPCCPublished(ctx, t, c, tpccPublishedOptions{
@@ -837,8 +837,8 @@ func registerTPCC(r registry.Registry) {
 		},
 	})
 	r.Add(registry.TestSpec{
-		Name:  "tpcc/published/small",
-		Owner: registry.OwnerKV,
+		Name:      "tpcc/published/small",
+		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
 			4,
@@ -848,8 +848,8 @@ func registerTPCC(r registry.Registry) {
 			spec.PreferLocalSSD(),
 			spec.ReuseNone(),
 		),
-		CompatibleClouds: registry.AllClouds,
-		Suites: registry.ManualOnly,
+		CompatibleClouds:  registry.AllClouds,
+		Suites:            registry.ManualOnly,
 		EncryptionSupport: registry.EncryptionAlwaysDisabled,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runTPCCPublished(ctx, t, c, tpccPublishedOptions{
@@ -864,8 +864,8 @@ func registerTPCC(r registry.Registry) {
 	// nodes. This is done to make sure the multi-workload code stays healthy.
 	// It should not significantly change results.
 	r.Add(registry.TestSpec{
-		Name:  "tpcc/published/medium-optimized",
-		Owner: registry.OwnerKV,
+		Name:      "tpcc/published/medium-optimized",
+		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
 			16,
@@ -875,8 +875,8 @@ func registerTPCC(r registry.Registry) {
 			spec.PreferLocalSSD(),
 			spec.ReuseNone(),
 		),
-		CompatibleClouds: registry.AllClouds,
-		Suites: registry.ManualOnly,
+		CompatibleClouds:  registry.AllClouds,
+		Suites:            registry.ManualOnly,
 		EncryptionSupport: registry.EncryptionAlwaysDisabled,
 		Timeout:           6 * time.Hour,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
@@ -889,8 +889,8 @@ func registerTPCC(r registry.Registry) {
 		},
 	})
 	r.Add(registry.TestSpec{
-		Name:  "tpcc/published/medium-vanilla",
-		Owner: registry.OwnerKV,
+		Name:      "tpcc/published/medium-vanilla",
+		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
 			16,
@@ -900,8 +900,8 @@ func registerTPCC(r registry.Registry) {
 			spec.PreferLocalSSD(),
 			spec.ReuseNone(),
 		),
-		CompatibleClouds: registry.AllClouds,
-		Suites: registry.ManualOnly,
+		CompatibleClouds:  registry.AllClouds,
+		Suites:            registry.ManualOnly,
 		EncryptionSupport: registry.EncryptionAlwaysDisabled,
 		Timeout:           6 * time.Hour,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
@@ -913,8 +913,8 @@ func registerTPCC(r registry.Registry) {
 		},
 	})
 	r.Add(registry.TestSpec{
-		Name:  "tpcc/published/large-optimized",
-		Owner: registry.OwnerKV,
+		Name:      "tpcc/published/large-optimized",
+		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
 			82,
@@ -924,8 +924,8 @@ func registerTPCC(r registry.Registry) {
 			spec.PreferLocalSSD(),
 			spec.ReuseNone(),
 		),
-		CompatibleClouds: registry.AllClouds,
-		Suites: registry.ManualOnly,
+		CompatibleClouds:  registry.AllClouds,
+		Suites:            registry.ManualOnly,
 		EncryptionSupport: registry.EncryptionAlwaysDisabled,
 		Timeout:           12 * time.Hour,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
@@ -938,8 +938,8 @@ func registerTPCC(r registry.Registry) {
 		},
 	})
 	r.Add(registry.TestSpec{
-		Name:  "tpcc/published/large-vanilla",
-		Owner: registry.OwnerKV,
+		Name:      "tpcc/published/large-vanilla",
+		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
 			82,
@@ -949,8 +949,8 @@ func registerTPCC(r registry.Registry) {
 			spec.PreferLocalSSD(),
 			spec.ReuseNone(),
 		),
-		CompatibleClouds: registry.AllClouds,
-		Suites: registry.ManualOnly,
+		CompatibleClouds:  registry.AllClouds,
+		Suites:            registry.ManualOnly,
 		EncryptionSupport: registry.EncryptionAlwaysDisabled,
 		Timeout:           12 * time.Hour,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
@@ -1835,7 +1835,7 @@ func runTPCCPublished(
 
 	t.L().Printf("Step 1 - Set up the environment")
 
-	c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
+	//c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
 	settings := install.MakeClusterSettings()
 	settings.NumRacks = crdbNodeCount
 	startOpts := option.DefaultStartOpts()
@@ -1851,9 +1851,9 @@ func runTPCCPublished(
 	// Configure prometheus for cluster and workloadnode for system metrics
 	var promCfg *prometheus.Config
 	var cleanupFunc func()
-	workloadInstances := []workloadInstance {
+	workloadInstances := []workloadInstance{
 		{
-			nodes: crdbNodes,
+			nodes:          crdbNodes,
 			prometheusPort: 2112,
 		},
 	}

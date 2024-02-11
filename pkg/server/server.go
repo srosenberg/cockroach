@@ -583,6 +583,7 @@ func NewServer(cfg Config, stopper *stop.Stopper) (serverctl.ServerStartupInterf
 	gcoords := admission.NewGrantCoordinators(
 		cfg.AmbientCtx,
 		st,
+		cfg.AmbientCtx.Tracer,
 		admissionOptions,
 		nodeRegistry,
 		admittedEntryAdaptor,
