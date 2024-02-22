@@ -618,6 +618,12 @@ func (t *Test) plan() (*TestPlan, error) {
 		bgChans:        t.bgChans,
 	}
 
+	t.logger.Printf("specified upgrade versions: %v", planner.versions)
+	t.logger.Printf("skipping penultimate version: %s", planner.versions[len(planner.versions)-2])
+	// remove penultimate version
+	planner.versions = append(planner.versions[:len(planner.versions)-2], planner.versions[len(planner.versions)-1])
+	t.logger.Printf("upgrade versions: %v", planner.versions)
+
 	return planner.Plan(), nil
 }
 

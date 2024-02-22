@@ -51,7 +51,7 @@ func runSchemaChangeMixedVersions(
 	ctx context.Context, t test.Test, c cluster.Cluster, maxOps int, concurrency int,
 ) {
 	numFeatureRuns := 0
-	mvt := mixedversion.NewTest(ctx, t, t.L(), c, c.All(), mixedversion.NumUpgrades(1))
+	mvt := mixedversion.NewTest(ctx, t, t.L(), c, c.All(), mixedversion.NumUpgrades(2))
 
 	workloadNode := c.Node(c.Spec().NodeCount)
 	c.Put(ctx, t.DeprecatedWorkload(), "./workload", workloadNode)
