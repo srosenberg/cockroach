@@ -63,6 +63,7 @@ go_library(
         "window_aggregator_gen.go",
         "window_framer_gen.go",
         "window_peer_grouper_gen.go",
+	"libfuzzer_shim.go",
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/colexec/execgen/cmd/execgen",
     visibility = ["//visibility:private"],

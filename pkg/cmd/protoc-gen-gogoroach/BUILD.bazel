@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//proto:compiler.bzl", "go_proto_compiler")
 
 go_library(
     name = "protoc-gen-gogoroach_lib",
-    srcs = ["main.go"],
+    srcs = ["main.go", "libfuzzer_shim.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/cmd/protoc-gen-gogoroach",
     visibility = ["//visibility:private"],
     deps = [

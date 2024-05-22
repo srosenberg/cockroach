@@ -2,7 +2,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
     name = "gen_library",
-    srcs = ["main.go"],
+    srcs = ["main.go","libfuzzer_shim.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/util/log/gen",
     visibility = ["//visibility:private"],
     deps = [
