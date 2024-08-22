@@ -15,6 +15,7 @@ go_library(
         "//pkg/sql/types",
         "//pkg/storage/fs",
         "//pkg/util/cancelchecker",
+	"//pkg/util/metamorphic",
         "//pkg/util/metric",
         "//pkg/util/mon",
         "//pkg/util/uuid",

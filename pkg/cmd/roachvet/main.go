@@ -14,8 +14,13 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"strings"
+
 	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/deferunlockcheck"
 	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/errcmp"
+	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/errcover"
 	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/errwrap"
 	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/fmtsafe"
 	"github.com/cockroachdb/cockroach/pkg/testutils/lint/passes/forbiddenmethod"
@@ -50,6 +55,7 @@ import (
 	"golang.org/x/tools/go/analysis/passes/unreachable"
 	"golang.org/x/tools/go/analysis/passes/unsafeptr"
 	"golang.org/x/tools/go/analysis/passes/unusedresult"
+	"golang.org/x/tools/go/analysis/singlechecker"
 	"golang.org/x/tools/go/analysis/unitchecker"
 )
 
@@ -63,6 +69,7 @@ func main() {
 		nocopy.Analyzer,
 		redactcheck.Analyzer,
 		returnerrcheck.Analyzer,
+		errcover.Analyzer,
 		timer.Analyzer,
 		unconvert.Analyzer,
 		fmtsafe.Analyzer,
@@ -101,6 +108,39 @@ func main() {
 	as = append(as,
 		shadow.Analyzer,
 	)
+	maybeRunSingleChecker(as)
 
 	unitchecker.Main(as...)
+}
+
+func maybeRunSingleChecker(as []*analysis.Analyzer) {
+	var singleChecker string
+	prunedArgs := []string{}
+
+	for i := 0; i < len(os.Args); {
+		if os.Args[i] == "-checker" {
+			i++
+			if i < len(os.Args) {
+				singleChecker = os.Args[i]
+				i++
+			}
+		} else {
+			prunedArgs = append(prunedArgs, os.Args[i])
+			i++
+		}
+	}
+	os.Args = prunedArgs
+
+	names := make([]string, 0, len(as))
+	if singleChecker != "" {
+		for _, a := range as {
+			if a.Name == singleChecker {
+				singlechecker.Main(a)
+				return
+			}
+			names = append(names, a.Name)
+		}
+		fmt.Fprintf(os.Stderr, "checker %q is unknown; known checkers: %s\n", singleChecker, strings.Join(names, ","))
+		os.Exit(1)
+	}
 }

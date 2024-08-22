@@ -12,8 +12,12 @@
 package passesutil
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/printer"
+	"go/token"
+	"io"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -69,7 +73,7 @@ func HasNolintComment(pass *analysis.Pass, n ast.Node, nolintName string) bool {
 
 // findNodesInBlock finds all expressions and statements that occur underneath
 // the block or decl closest to n. The idea is that we want to find comments
-// which occur in in the block or decl which includes the ast node n for
+// which occur in the block or decl which includes the ast node n for
 // filtering. We want to filter the comments down to all comments
 // which are associated with n or any expression up to a statement in the
 // closest enclosing block or decl. This is to deal with multi-line
@@ -131,4 +135,16 @@ func (f funcVisitor) Visit(node ast.Node) (w ast.Visitor) {
 		f(node)
 	}
 	return f
+}
+
+func PrettyPrint(node any) string {
+	var b bytes.Buffer
+	writer := io.Writer(&b)
+	printer.Fprint(writer, token.NewFileSet(), node)
+	res := strings.ReplaceAll(strings.ReplaceAll(string(b.Bytes()), "\n", ";"), "\t", "")
+
+	if len(res) > 512 {
+		return res[:512]
+	}
+	return res
 }

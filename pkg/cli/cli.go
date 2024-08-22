@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cli/cliflagcfg"
 	"github.com/cockroachdb/cockroach/pkg/cli/exit"
 	_ "github.com/cockroachdb/cockroach/pkg/cloud/impl" // register cloud storage providers
+	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/testutils/bazelcodecover"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
@@ -339,7 +340,9 @@ func debugSignalSetup() func() {
 				case <-exit:
 					return
 				case <-quitSignalCh:
-					log.DumpStacks(ctx, "SIGQUIT received")
+
+					//log.DumpStacks(ctx, "SIGQUIT received")
+					log.Shoutf(ctx, severity.INFO, "Features: \n%v", telemetry.GetRawFeatureCounts())
 				}
 			}
 		}()

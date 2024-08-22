@@ -8,6 +8,7 @@ go_library(
     deps = [
         "//pkg/testutils/lint/passes/deferunlockcheck",
         "//pkg/testutils/lint/passes/errcmp",
+        "//pkg/testutils/lint/passes/errcover",
         "//pkg/testutils/lint/passes/errwrap",
         "//pkg/testutils/lint/passes/fmtsafe",
         "//pkg/testutils/lint/passes/forbiddenmethod",
@@ -42,7 +43,8 @@ go_library(
         "@org_golang_x_tools//go/analysis/passes/unreachable",
         "@org_golang_x_tools//go/analysis/passes/unsafeptr",
         "@org_golang_x_tools//go/analysis/passes/unusedresult",
-        "@org_golang_x_tools//go/analysis/unitchecker",
+        "@org_golang_x_tools//go/analysis/singlechecker",
+	"@org_golang_x_tools//go/analysis/unitchecker",
     ],
 )
 

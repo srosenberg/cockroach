@@ -2308,6 +2308,7 @@ GO_TARGETS = [
     "//pkg/testutils/lint/passes/errcheck:errcheck",
     "//pkg/testutils/lint/passes/errcmp:errcmp",
     "//pkg/testutils/lint/passes/errcmp:errcmp_test",
+    "//pkg/testutils/lint/passes/errcover:errcover",
     "//pkg/testutils/lint/passes/errwrap:errwrap",
     "//pkg/testutils/lint/passes/errwrap:errwrap_test",
     "//pkg/testutils/lint/passes/fmtsafe:fmtsafe",

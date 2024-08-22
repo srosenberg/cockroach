@@ -117,13 +117,20 @@ Examples:
 			if len(specs) == 0 {
 				return errors.Newf("%s", filter.NoMatchesHintString(hint))
 			}
+			//ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			//defer cancel()
+			//updateSpecForSelectiveTests(ctx, specs)
 
 			for _, s := range specs {
 				var skip string
+				var exempt string
 				if s.Skip != "" {
 					skip = " (skipped: " + s.Skip + ")"
 				}
-				fmt.Printf("%s [%s]%s\n", s.Name, s.Owner, skip)
+				if testExempt(s, roachtestflags.Suite) {
+					exempt = " (exempt: " + "test selector" + ")"
+				}
+				fmt.Printf("%s [%s]%s%s\n", s.Name, s.Owner, skip, exempt)
 			}
 			return nil
 		},
@@ -343,6 +350,10 @@ func testShouldBeSkipped(
 
 	td, ok := testNamesToRun[test.Name]
 	return ok && test.Skip == "" && !td.Selected
+}
+
+func testExempt(test registry.TestSpec, suite string) bool {
+	return test.Randomized || test.TestSelectionOptOutSuites.IsInitialized() && test.TestSelectionOptOutSuites.Contains(suite)
 }
 
 func opsToRun(r testRegistryImpl, filter string) ([]registry.OperationSpec, error) {
