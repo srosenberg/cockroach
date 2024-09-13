@@ -1007,12 +1007,13 @@ func registerTPCC(r registry.Registry) {
 		Nodes: 3,
 		CPUs:  16,
 
-		LoadWarehousesGCE:   3500,
-		LoadWarehousesAWS:   3900,
-		LoadWarehousesAzure: 3900,
-		EstimatedMaxGCE:     3100,
-		EstimatedMaxAWS:     3600,
-		EstimatedMaxAzure:   3600,
+		LoadWarehousesGCE:   4800,
+		LoadWarehousesAWS:   4800,
+		LoadWarehousesAzure: 4800,
+		EstimatedMaxGCE:     4300,
+		EstimatedMaxAWS:     4300,
+		EstimatedMaxAzure:   4300,
+		StepSize:            50,
 		Clouds:              registry.AllClouds,
 		Suites:              registry.Suites(registry.Nightly),
 	})
@@ -1279,6 +1280,7 @@ type tpccBenchSpec struct {
 	EstimatedMaxGCE   int
 	EstimatedMaxAWS   int
 	EstimatedMaxAzure int
+	StepSize          int
 
 	Clouds registry.CloudSet
 	Suites registry.SuiteSet
@@ -1599,6 +1601,10 @@ func runTPCCBench(ctx context.Context, t test.Test, c cluster.Cluster, b tpccBen
 	// threshold, set to a fraction of max tpmC.
 	precision := int(math.Max(1.0, float64(b.LoadWarehouses(c.Cloud())/200)))
 	initStepSize := precision
+	if b.StepSize != 0 {
+		initStepSize = 100
+		precision = b.StepSize
+	}
 
 	// Create a temp directory to store the local copy of results from the
 	// workloads.

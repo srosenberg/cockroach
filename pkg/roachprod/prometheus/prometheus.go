@@ -267,7 +267,7 @@ rm -rf node_exporter && mkdir -p node_exporter && curl -fsSL \
 		// Start node_exporter.
 		if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(cfg.NodeExporter), "init node exporter",
 			`cd node_exporter &&
-sudo systemd-run --unit node_exporter --same-dir ./node_exporter`,
+sudo systemd-run --collect --unit node_exporter --same-dir ./node_exporter`,
 		); err != nil {
 			// TODO(msbutler): download binary for target platform. currently we
 			// hardcode downloading the linux binary.
@@ -328,7 +328,7 @@ sudo systemd-run --unit node_exporter --same-dir ./node_exporter`,
 		install.WithNodes(cfg.PrometheusNode),
 		"start-prometheus",
 		`cd /tmp/prometheus &&
-sudo systemd-run --unit prometheus --same-dir \
+sudo systemd-run --collect --unit prometheus --same-dir \
 	./prometheus --config.file=prometheus.yml --storage.tsdb.path=data/ --web.enable-admin-api`,
 	); err != nil {
 		return nil, err

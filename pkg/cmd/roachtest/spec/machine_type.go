@@ -145,7 +145,7 @@ func SelectGCEMachineType(cpus int, mem MemPerCPU, arch vm.CPUArch) (string, vm.
 		selectedArch = vm.ArchFIPS
 	} else if arch == vm.ArchARM64 {
 		selectedArch = vm.ArchARM64
-		series = "t2a" // Ampere Altra
+		series = "c4a" // Axion
 	}
 	var kind string
 	switch mem {

@@ -24,9 +24,9 @@ curl -fsSL https://github.com/linux-test-project/lcov/releases/download/v2.0/lco
 PATH="$(pwd)/lcov-2.0/bin:$PATH"
 
 profiles=(
-  unit_tests
+#  unit_tests
   roachtests
-  unit_tests_and_roachtests
+#  unit_tests_and_roachtests
 )
 
 for p in "${profiles[@]}"; do

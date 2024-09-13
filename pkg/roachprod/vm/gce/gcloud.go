@@ -1147,7 +1147,8 @@ func (o *ProviderOpts) ConfigureClusterFlags(flags *pflag.FlagSet, opt vm.Multip
 
 // useArmAMI returns true if the machine type is an arm64 machine type.
 func (o *ProviderOpts) useArmAMI() bool {
-	return strings.HasPrefix(strings.ToLower(o.MachineType), "t2a-")
+	return strings.HasPrefix(strings.ToLower(o.MachineType), "t2a-") ||
+		strings.HasPrefix(strings.ToLower(o.MachineType), "c4a-")
 }
 
 // ConfigureClusterCleanupFlags is part of ProviderOpts. This implementation is a no-op.
@@ -1316,7 +1317,7 @@ func (p *Provider) computeInstanceArgs(
 		return nil, cleanUpFn, errors.Errorf("machine type %s is arm64, but requested arch is %s", providerOpts.MachineType, opts.Arch)
 	}
 	if providerOpts.useArmAMI() && opts.SSDOpts.UseLocalSSD {
-		return nil, cleanUpFn, errors.New("local SSDs are not supported with T2A instances, use --local-ssd=false")
+		return nil, cleanUpFn, errors.New("local SSDs are not supported with ARM instances, use --local-ssd=false")
 	}
 	if providerOpts.useArmAMI() {
 		if providerOpts.MinCPUPlatform != "" {
@@ -1338,7 +1339,8 @@ func (p *Provider) computeInstanceArgs(
 		"--scopes", "cloud-platform",
 		"--image", image,
 		"--image-project", imageProject,
-		"--boot-disk-type", "pd-ssd",
+		//"--boot-disk-type", "pd-ssd",
+		"--boot-disk-type", "hyperdisk-balanced",
 	}
 
 	if project == p.defaultProject && p.ServiceAccount == "" {
@@ -1393,6 +1395,9 @@ func (p *Provider) computeInstanceArgs(
 			extraMountOpts = fmt.Sprintf("%s,nobarrier", extraMountOpts)
 		}
 	} else {
+		if strings.HasPrefix(providerOpts.MachineType, "c4a-") {
+			providerOpts.PDVolumeType = "hyperdisk-balanced"
+		}
 		pdProps := []string{
 			fmt.Sprintf("type=%s", providerOpts.PDVolumeType),
 			fmt.Sprintf("size=%dGB", providerOpts.PDVolumeSize),
@@ -2784,6 +2789,9 @@ func populateCostPerHour(l *logger.Logger, vms vm.List) error {
 		}
 		for _, vm := range page {
 			machineType := vm.MachineType
+			if strings.HasPrefix(machineType, "c4a-") {
+				machineType = "t2a-standard-1"
+			}
 			zone := vm.Zone
 
 			workload := cloudbilling.Workload{
