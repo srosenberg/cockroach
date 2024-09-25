@@ -13,6 +13,7 @@ package prometheus
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -20,10 +21,13 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/roachprodutil"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/errors"
+	promapi "github.com/prometheus/client_golang/api"
 	promv1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
+	"google.golang.org/api/idtoken"
 	"gopkg.in/yaml.v2"
 )
 
@@ -607,4 +611,128 @@ func makeYAMLConfig(scrapeConfigs []ScrapeConfig, nodeIPs map[install.Node]strin
 	}
 	ret, err := yaml.Marshal(&cfg)
 	return string(ret), err
+}
+
+type customTransport struct {
+	Transport http.RoundTripper
+	Header    map[string]string
+}
+
+func (c *customTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	for key, value := range c.Header {
+		req.Header.Set(key, value)
+	}
+	return c.Transport.RoundTrip(req)
+}
+
+func NewPromClient(ctx context.Context, host string, secure bool) (Client, error) {
+	headers := map[string]string{}
+	scheme := "http://"
+
+	if secure {
+		scheme = "https://"
+
+		// Read in the service account key and audience, so we can retrieve the identity token.
+		if _, err := roachprodutil.SetServiceAccountCredsEnv(ctx, false); err != nil {
+			return nil, err
+		}
+
+		token, err := roachprodutil.GetServiceAccountToken(ctx, idtoken.NewTokenSource)
+		if err != nil {
+			return nil, err
+		}
+		headers["Authorization"] = fmt.Sprintf("Bearer %s", token)
+	}
+	// Create a new HTTP client with the custom transport
+	httpClient := &http.Client{
+		Transport: &customTransport{
+			Transport: http.DefaultTransport,
+			Header:    headers,
+		},
+	}
+
+	promClient, err := promapi.NewClient(promapi.Config{
+		Address: scheme + host,
+		Client:  httpClient,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return promv1.NewAPI(promClient), nil
+}
+
+// StatPoint represents a cluster metric value at a point in time.
+type StatPoint struct {
+	Time  int64
+	Value float64
+}
+
+// StatSeries is a collection of StatPoints, sorted in ascending order by
+// StatPoint.Time.
+type StatSeries []StatPoint
+
+func QueryRange(
+	ctx context.Context, client Client, query string, from, to time.Time,
+) (map[string]map[string]StatSeries, error) {
+	r := promv1.Range{Start: from, End: to, Step: 30 * time.Second}
+	fromVal, warnings, err := client.QueryRange(ctx, query, r)
+	if err != nil {
+		return nil, err
+	}
+	if len(warnings) > 0 {
+		return nil, errors.Newf("found warnings querying prometheus: %s", warnings)
+	}
+
+	fromMatrixTagged := fromVal.(model.Matrix)
+	if len(fromMatrixTagged) == 0 {
+		return nil, errors.Newf(
+			"Empty matrix result for query %s @ [%s,%s] (%v)",
+			query,
+			from.Format(time.RFC3339),
+			to.Format(time.RFC3339),
+			fromVal,
+		)
+	}
+
+	result := make(map[string]map[string]StatSeries)
+	for _, stream := range fromMatrixTagged {
+		statSeries := make(StatSeries, len(stream.Values))
+		for i := range stream.Values {
+			statSeries[i] = StatPoint{
+				Time:  stream.Values[i].Timestamp.Time().UnixNano(),
+				Value: float64(stream.Values[i].Value),
+			}
+		}
+
+		for labelName, labelValue := range stream.Metric {
+			if _, ok := result[string(labelName)]; !ok {
+				result[string(labelName)] = make(map[string]StatSeries)
+			}
+			result[string(labelName)][string(labelValue)] = statSeries
+		}
+
+		// When there is no tag associated with the result, put in a default
+		// tag for the result.
+		if len(stream.Metric) == 0 {
+			result["default"] = map[string]StatSeries{"default": statSeries}
+		}
+	}
+
+	return result, nil
+}
+
+func FooBar() (map[string]map[string]StatSeries, error) {
+	promClient, err := NewPromClient(context.Background(), "grafana.testeng.crdb.io", true)
+	if err != nil {
+		return nil, err
+	}
+
+	q := "sum(rate(distsender_batches{cluster=~\"teamcity-16977534-1726885598-48-n4cpu16|alicialu-a\"}[5m])) by (cluster)"
+	m, err := QueryRange(context.Background(), promClient, q, time.Now().Add(time.Duration(-60)*time.Minute), time.Now())
+	if err != nil {
+		return nil, err
+	}
+
+	return m, nil
 }
