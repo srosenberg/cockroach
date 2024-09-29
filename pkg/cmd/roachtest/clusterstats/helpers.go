@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/prometheus"
+	prominstaller "github.com/cockroachdb/cockroach/pkg/roachprod/prometheus/prominstaller"
 	"github.com/cockroachdb/cockroach/pkg/util/search"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
@@ -30,7 +31,7 @@ import (
 // configuration. It assumes that a prometheus instance has been created for
 // the configuration already.
 func SetupCollectorPromClient(
-	ctx context.Context, c cluster.Cluster, l *logger.Logger, cfg *prometheus.Config,
+	ctx context.Context, c cluster.Cluster, l *logger.Logger, cfg *prominstaller.Config,
 ) (prometheus.Client, error) {
 	prometheusNodeIP, err := c.ExternalIP(ctx, l, c.Node(int(cfg.PrometheusNode[0])))
 	if err != nil {
