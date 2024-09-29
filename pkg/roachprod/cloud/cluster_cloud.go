@@ -22,7 +22,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/roachprod/config"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
-	"github.com/cockroachdb/cockroach/pkg/roachprod/promhelperclient"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/prometheus/promhelperclient"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/ui"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"

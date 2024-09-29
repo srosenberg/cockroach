@@ -33,10 +33,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/config"
 	rperrors "github.com/cockroachdb/cockroach/pkg/roachprod/errors"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/prometheus"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/roachprodutil"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/ui"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
+	"github.com/cockroachdb/cockroach/pkg/util/sparkline"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/fatih/color"
@@ -330,6 +332,39 @@ hosts file.
 		}
 		sort.Strings(names)
 
+		promClient, err := prometheus.NewPromClient(context.Background(), prometheus.DefaultPromHostUrl, true)
+		if err != nil {
+			return err
+		}
+		//q := "sum(rate(distsender_batches{cluster=~\"teamcity-17076197-1727502458.+\"}[5m])) by (cluster)"
+		//q := "sum(rate(txn_commits{cluster=~\"teamcity-17076197-1727502458.+\"}[5m])) by (cluster)"
+
+		q := "sum(rate(txn_commits{cluster=~\"$CLUSTERS\"}[5m])) by (cluster)"
+		q = strings.ReplaceAll(q, "$CLUSTERS", strings.Join(names, "|"))
+
+		clusterToSparkline := make(map[string]string)
+		m, err := prometheus.QueryRange(context.Background(), promClient, q, time.Now().Add(time.Duration(-60)*time.Minute), time.Now())
+		if err == nil {
+			//fmt.Println(m)
+			for _, labelValToSeries := range m {
+				for clusterName, series := range labelValToSeries {
+					points := prometheus.Values(series)
+					img, err := sparkline.DrawSparkline(points, 200, 25)
+					if img != nil && err == nil {
+						//sparkline.RenderImg(img, os.Stdout)
+						s, err := sparkline.ITermEncodePNGToString(img, "")
+						if err == nil {
+							clusterToSparkline[clusterName] = s
+						} else {
+							fmt.Println(err)
+						}
+					}
+				}
+			}
+		} else {
+			fmt.Println(err)
+		}
+
 		p := message.NewPrinter(language.English)
 		if listJSON {
 			enc := json.NewEncoder(os.Stdout)
@@ -364,17 +399,18 @@ hosts file.
 
 			if !listDetails {
 				// Print header only if we are not printing cluster details.
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n",
-					"Cluster", "Clouds", "Size", "VM", "Arch",
+				//TBD: right align each header.
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n",
+					color.WhiteString("Cluster"+strings.Repeat(" ", maxClusterName-len("Cluster"))), "Clouds", "Size", "VM", "Arch",
 					color.HiWhiteString("$/hour"), color.HiWhiteString("$ Spent"),
 					color.HiWhiteString("Uptime"), color.HiWhiteString("TTL"),
-					color.HiWhiteString("$/TTL"))
+					color.HiWhiteString("$/TTL"), "Txn_Commits")
 				// Print separator.
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n",
-					"", "", "", "",
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t\n",
+					color.WhiteString(""), "", "", "",
 					color.HiWhiteString(""), color.HiWhiteString(""),
 					color.HiWhiteString(""), color.HiWhiteString(""),
-					color.HiWhiteString(""))
+					color.HiWhiteString(""), "")
 			}
 			totalCostPerHour := 0.0
 			for _, name := range names {
@@ -384,9 +420,17 @@ hosts file.
 						return err
 					}
 				} else {
+					formatName := func(s string) string {
+						if c.VMs[0].Preemptible {
+							return color.HiMagentaString(s)
+						} else {
+							return color.WhiteString(s)
+						}
+					}
+
 					// N.B. Tabwriter doesn't support per-column alignment. It looks odd to have the cluster names right-aligned,
 					// so we make it left-aligned.
-					fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s", name+strings.Repeat(" ", maxClusterName-len(name)), c.Clouds(),
+					fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s", formatName(name+strings.Repeat(" ", maxClusterName-len(name))), c.Clouds(),
 						len(c.VMs), machineType(c.VMs), cpuArch(c.VMs))
 					if !c.IsLocal() {
 						colorByCostBucket := func(cost float64) func(string, ...interface{}) string {
@@ -400,13 +444,6 @@ hosts file.
 							}
 						}
 						timeRemaining := c.LifetimeRemaining().Round(time.Second)
-						formatTTL := func(ttl time.Duration) string {
-							if c.VMs[0].Preemptible {
-								return color.HiMagentaString(ttl.String())
-							} else {
-								return color.HiBlueString(ttl.String())
-							}
-						}
 						cost := c.CostPerHour
 						totalCostPerHour += cost
 						alive := timeutil.Since(c.CreatedAt).Round(time.Minute)
@@ -417,18 +454,27 @@ hosts file.
 								color.HiGreenString(p.Sprintf("$%.2f", cost)),
 								colorByCostBucket(costSinceCreation)(p.Sprintf("$%.2f", costSinceCreation)),
 								color.HiWhiteString(alive.String()),
-								formatTTL(timeRemaining),
+								color.HiWhiteString(timeRemaining.String()),
 								colorByCostBucket(costRemaining)(p.Sprintf("$%.2f", costRemaining)))
 						} else {
 							fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t",
 								color.HiGreenString(""),
 								color.HiGreenString(""),
 								color.HiWhiteString(alive.String()),
-								formatTTL(timeRemaining),
+								color.HiWhiteString(timeRemaining.String()),
 								color.HiGreenString(""))
 						}
+						s := clusterToSparkline[name]
+						//fmt.Fprintf(tw, "\t%s", s)
+						if s == "" {
+							fmt.Fprintf(tw, "\t%s", strings.Repeat(" ", 15))
+						} else {
+							fmt.Fprintf(tw, "\t%s", s)
+						}
 					} else {
-						fmt.Fprintf(tw, "\t(-)")
+						//N.B. for proper formatting, we have to use colored strings since those emit terminal escape codes even for the empty string.
+						fmt.Fprintf(tw, "\t%s\t%s\t%s\t%s\t%s\t\t%s", color.HiWhiteString(""), color.HiWhiteString(""),
+							color.HiWhiteString(""), "", color.HiWhiteString(""), strings.Repeat(" ", 15))
 					}
 					fmt.Fprintf(tw, "\n")
 				}
