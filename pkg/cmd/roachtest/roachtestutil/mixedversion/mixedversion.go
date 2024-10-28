@@ -865,7 +865,16 @@ func (t *Test) RunE() (*TestPlan, error) {
 	}
 
 	t.logger.Printf("mixed-version test:\n%s", plan.PrettyPrint())
+	/*
+	for i := 0; i < 1_000_000; i++ {
+		plan, err = t.plan()
+		if err != nil {
+			return nil, err
+		}
 
+		t.logger.Printf("mixed-version test:\n%s", plan.PrettyPrint())
+	}
+*/
 	if override := os.Getenv(dryRunEnv); override != "" {
 		t.logger.Printf("skipping test run in dry-run mode")
 		return plan, nil
@@ -901,7 +910,7 @@ func (t *Test) plan() (plan *TestPlan, retErr error) {
 	var retries int
 	// In case the length of the test plan exceeds `opts.maxNumPlanSteps`, retry up to 100 times.
 	// N.B. Statistically, the expected number of retries is miniscule; see #138014 for more info.
-	for ; retries < 100; retries++ {
+	for ; retries < 10000; retries++ {
 
 		// Pick a random deployment mode to use in this test run among the
 		// list of enabled deployment modes enabled for this test.
@@ -941,6 +950,7 @@ func (t *Test) plan() (plan *TestPlan, retErr error) {
 		// Let's generate a plan.
 		plan, err = planner.Plan()
 		if err != nil {
+			fmt.Println(err)
 			continue
 		}
 		if plan.length <= t.options.maxNumPlanSteps {

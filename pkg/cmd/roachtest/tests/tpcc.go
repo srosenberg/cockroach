@@ -582,10 +582,12 @@ func runTPCCMixedHeadroom(
 		// We test only upgrades from 23.2 in this test because it uses
 		// the `workload fixtures import` command, which is only supported
 		// reliably multi-tenant mode starting from that version.
-		mixedversion.MinimumSupportedVersion("v23.2.0"),
+		mixedversion.MinimumSupportedVersion("v25.2.3"),
 		// We limit the total number of plan steps to 70, which is roughly 80% of all plan lengths.
 		// See #138014 for more details.
-		mixedversion.MaxNumPlanSteps(20),
+		mixedversion.MaxNumPlanSteps(70),
+		mixedversion.MaxUpgrades(1),
+		mixedversion.EnabledDeploymentModes(mixedversion.SystemOnlyDeployment),
 	}, opts...)
 
 	mvt := mixedversion.NewTest(
@@ -643,6 +645,10 @@ func runTPCCMixedHeadroom(
 				workloadDur = 1 * time.Minute
 			}
 		}
+		if h.System.Stage == mixedversion.BackgroundStage {
+			// Set a long duration to keep running indefinitely.
+			workloadDur = 15 * time.Minute
+		}
 		histogramsPath := fmt.Sprintf("%s/%s", t.PerfArtifactsDir(), roachtestutil.GetBenchmarkMetricsFileName(t))
 		var labelsMap map[string]string
 		if t.ExportOpenmetrics() {
@@ -658,6 +664,7 @@ func runTPCCMixedHeadroom(
 			Flag("ramp", rampDur).
 			Flag("prometheus-port", 2112).
 			Flag("pprofport", workloadPProfStartPort).
+			Option("tolerate-errors").
 			String()
 		return c.RunE(ctx, option.WithNodes(c.WorkloadNode()), cmd)
 	}
@@ -670,11 +677,53 @@ func runTPCCMixedHeadroom(
 		return c.RunE(ctx, option.WithNodes(c.WorkloadNode()), cmd)
 	}
 
+	checkBankWorkload := func(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *mixedversion.Helper) error {
+		t.Go(func(ctx context.Context, l *logger.Logger) error {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					var balance int
+					if err := h.QueryRow(
+						rng,
+						"select sum(balance) from bigbank.bank",
+					).Scan(&balance); err != nil {
+						l.Printf("error checking bank workload: %v", err)
+						continue
+					}
+					if balance != 0 {
+						return errors.Newf("expected bank balance to be 0, got %d", balance)
+					}
+				case <-ctx.Done():
+					// Caller told us to stop.
+					return nil
+				}
+			}
+		})
+		return nil
+	}
+
+	runBankWorkload := func(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *mixedversion.Helper) error {
+		cmd := roachtestutil.NewCommand("./cockroach workload run bank").
+			Arg("{pgurl%s}", h.AvailableNodes()).
+			Flag("db", "bigbank").
+			Flag("concurrency", 1).
+			Option("tolerate-errors").
+			String()
+		return c.RunE(ctx, option.WithNodes(c.WorkloadNode()), cmd)
+	}
+
 	mvt.OnStartup("maybe enable tenant features", enableTenantFeatures)
 	mvt.OnStartup("load TPCC dataset", importTPCC)
 	mvt.OnStartup("load bank dataset", importLargeBank)
+	mvt.BackgroundFunc("TPCC workload", runTPCCWorkload)
+	mvt.BackgroundFunc("run bank workload", runBankWorkload)
+	mvt.BackgroundFunc("check bank workload", checkBankWorkload)
 	mvt.InMixedVersion("TPCC workload", runTPCCWorkload)
 	mvt.AfterUpgradeFinalized("check TPCC workload", checkTPCCWorkload)
+	mvt.AfterUpgradeFinalized("check Bank workload", checkBankWorkload)
 	mvt.Run()
 }
 

@@ -1618,7 +1618,10 @@ func (plan *TestPlan) assignIDs() error {
 		return currentID
 	}
 
-	var foundRF, foundPanic bool
+	var rfStep, panicStep int
+	var targetNode option.NodeListOption
+	var hasPartition bool
+	var restartDist = 1000
 
 	plan.mapSingleSteps(func(ss *singleStep, _ bool) []testStep {
 		stepID := nextID()
@@ -1636,11 +1639,20 @@ func (plan *TestPlan) assignIDs() error {
 		}
 		if replicationStep, ok := ss.impl.(alterReplicationFactorStep); ok {
 			if replicationStep.rf == 5 {
-				foundRF = true
+				rfStep = stepID
 			}
 		}
-		if _, ok := ss.impl.(panicNodeStep); ok {
-			foundPanic = true
+		if s, ok := ss.impl.(restartNodeStep); ok && strings.Contains(s.Description(), "panic") {
+			panicStep = stepID
+			targetNode = s.targetNode
+		}
+		if s, ok := ss.impl.(restartWithNewBinaryStep); ok {
+                        if len(targetNode.Difference(option.NodeListOption{s.node})) < len(targetNode) {
+				restartDist = min(restartDist, stepID - panicStep)
+			}
+                }
+		if _, ok := ss.impl.(networkPartitionStep); ok {
+			hasPartition = true
 		}
 
 		ss.ID = stepID
@@ -1649,7 +1661,7 @@ func (plan *TestPlan) assignIDs() error {
 	// Record the length, which corresponds to the last stepID assigned.
 	plan.length = currentID
 
-	if !(foundRF && foundPanic) {
+	if !hasPartition || rfStep == 0 || (panicStep - rfStep) < 15 || restartDist < 5 {
 		return errors.New("invalid plan")
 	}
 	return nil

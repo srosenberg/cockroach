@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -79,6 +80,17 @@ func (n NodeListOption) Intersect(o NodeListOption) NodeListOption {
 	}
 
 	return result
+}
+
+func (n NodeListOption) Difference(o NodeListOption) NodeListOption {
+	seen := make(map[int]struct{}, len(n))
+	for _, node := range o {
+		seen[node] = struct{}{}
+	}
+	return slices.DeleteFunc(n, func(node int) bool {
+		_, ok := seen[node]
+		return ok
+	})
 }
 
 // RandNode returns a random node from the NodeListOption.

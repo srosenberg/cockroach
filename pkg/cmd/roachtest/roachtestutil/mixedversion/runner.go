@@ -256,8 +256,22 @@ func (tr *testRunner) runSingleStep(ctx context.Context, ss *singleStep, l *logg
 		prefix := fmt.Sprintf("FINISHED [%s]", timeutil.Since(start))
 		tr.logStep(prefix, ss, l)
 		annotation := fmt.Sprintf("(%d): %s", ss.ID, ss.impl.Description())
+		tags := []string{}
+		if _, ok := ss.impl.(panicNodeStep); ok {
+			tags = append(tags, "panic")
+		}
+		if _, ok := ss.impl.(networkPartitionStep); ok {
+			tags = append(tags, "network_partition")
+		}
+		if _, ok := ss.impl.(networkPartitionRecoveryStep); ok {
+			tags = append(tags, "network_recovery")
+		}
+		if _, ok := ss.impl.(allowUpgradeStep); ok {
+			tags = append(tags, "upgrade_finalizing")
+		}
 		err := tr.addGrafanaAnnotation(tr.ctx, tr.logger, grafana.AddAnnotationRequest{
 			Text: annotation, StartTime: start.UnixMilli(), EndTime: timeutil.Now().UnixMilli(),
+			Tags: tags,
 		})
 		if err != nil {
 			l.Printf("WARN: Adding Grafana annotation failed: %s", err)

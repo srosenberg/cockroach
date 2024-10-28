@@ -257,6 +257,7 @@ func uploadBinaryVersion(
 	switch binary {
 	case "cockroach":
 		defaultBinary, isOverridden = t.VersionsBinaryOverride()[v.String()]
+		l.Printf("VersionsBinaryOverride=%v, v=%s", t.VersionsBinaryOverride(), v.String())
 		if isOverridden {
 			l.Printf("using cockroach binary override for version %s: %s", v, defaultBinary)
 		} else {

@@ -685,7 +685,7 @@ func (m replicatePanicMutator) Generate(
 ) ([]mutation, error) {
 	var mutations []mutation
 	upgrades := randomUpgrades(rng, plan)
-	idx := newStepIndex(plan)
+	//idx := newStepIndex(plan)
 	nodeList := planner.currentContext.System.Descriptor.Nodes
 
 	for _, upgrade := range upgrades {
@@ -695,29 +695,34 @@ func (m replicatePanicMutator) Generate(
 			// also don't want different failure injections to overlap, so we filter out any steps that are
 			// already in the context of a failure.
 			Filter(func(s *singleStep) bool {
-				return s.context.System.Stage >= InitUpgradeStage && !idx.IsConcurrent(s) && !s.inFailureContext
+				return s.context.System.Stage >= InitUpgradeStage && !s.inFailureContext
+				//&& !idx.IsConcurrent(s) && !s.inFailureContext
 			})
 
-		targetNode := nodeList.SeededRandNode(rng)
+		targetNode, err := nodeList.SeededRandList(rng, 2)
+		if err != nil {
+			return mutations, err
+		}
 		stepToPanic := possiblePointsInTime.RandomStep(rng)
-		hasInvalidConcurrentStep := false
-		var firstStepInConcurrentBlock *singleStep
+		//hasInvalidConcurrentStep := false
+		//var firstStepInConcurrentBlock *singleStep
 
 		isIncompatibleStep := func(s *singleStep) bool {
-			restartImpl, restart := s.impl.(restartWithNewBinaryStep)
+			//restartImpl, restart := s.impl.(restartWithNewBinaryStep)
 			_, waitForStable := s.impl.(waitForStableClusterVersionStep)
 
-			if idx.IsConcurrent(s) {
-				if firstStepInConcurrentBlock == nil {
-					firstStepInConcurrentBlock = s
-				}
-				hasInvalidConcurrentStep = true
-			} else {
-				hasInvalidConcurrentStep = false
-				firstStepInConcurrentBlock = nil
-			}
+			//if idx.IsConcurrent(s) {
+			//	if firstStepInConcurrentBlock == nil {
+			//		firstStepInConcurrentBlock = s
+			//	}
+			//	hasInvalidConcurrentStep = true
+			//} else {
+			//	hasInvalidConcurrentStep = false
+			//	firstStepInConcurrentBlock = nil
+			//}
 
-			return waitForStable || s.inFailureContext || (restart && restartImpl.node == targetNode[0])
+			//return waitForStable || s.inFailureContext || (restart && (restartImpl.node == targetNode[0] || restartImpl.node == targetNode[1] || restartImpl.node == targetNode[2]))
+			return waitForStable || s.inFailureContext
 		}
 
 		// The node should be restarted after the panic, but before any steps that are
@@ -733,13 +738,13 @@ func (m replicatePanicMutator) Generate(
 		// Inserting before a concurrent step will cause the step to run concurrently with that step,
 		// so we remove the concurrent steps from the list of possible insertions if they contain
 		// any invalid steps.
-		if hasInvalidConcurrentStep {
-			validEndStep, _, _ = validEndStep.Cut(func(s *singleStep) bool {
-				return s == firstStepInConcurrentBlock
-			})
-		}
+		//if hasInvalidConcurrentStep {
+		//	validEndStep, _, _ = validEndStep.Cut(func(s *singleStep) bool {
+		//		return s == firstStepInConcurrentBlock
+		//	})
+		//}
 
-		restartDesc := fmt.Sprintf("restarting node %d after panic", targetNode[0])
+		restartDesc := fmt.Sprintf("restarting nodes %d,%d after panic", targetNode[0], targetNode[1])
 
 		addUpReplicateStep := stepToPanic.
 			InsertBefore(alterReplicationFactorStep{5})
@@ -756,7 +761,8 @@ func (m replicatePanicMutator) Generate(
 			addDownReplicateStep = restartStep.
 				InsertBefore(alterReplicationFactorStep{3})
 		} else {
-			restartStep = validEndStep.RandomStep(rng)
+			//restartStep = validEndStep.RandomStep(rng)
+			restartStep = stepSelector{validEndStep[len(validEndStep)-1]}
 
 			addRestartStep = restartStep.
 				InsertBefore(restartNodeStep{planner.currentContext.System.Descriptor.Nodes[0], targetNode, planner.rt, restartDesc})

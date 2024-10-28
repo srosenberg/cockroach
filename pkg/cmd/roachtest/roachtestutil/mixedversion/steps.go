@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"slices"
 	"strings"
 	"time"
 
@@ -796,29 +797,30 @@ type panicNodeStep struct {
 func (s panicNodeStep) Background() shouldStop { return nil }
 
 func (s panicNodeStep) Description() string {
-	return fmt.Sprintf("panicking system interface on node %d", s.targetNode[0])
+	return fmt.Sprintf("panicking system interface on nodes: %s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint([]int(s.targetNode))), ","), "[]"))
 }
 
 func (s panicNodeStep) Run(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *Helper) error {
-
 	h.runner.monitor.ExpectProcessDead(s.targetNode)
 
 	// ExecWithGateway cannot be used here because the monitor marks the target node as expected
 	// dead, and it will be filtered out of the list of available nodes. This a unique case, so
 	// we manually log the SQL statement and execute it directly on the target node.
 	const query = "SELECT crdb_internal.force_panic('expected panic from panicNodeMutator')"
-	db := h.System.Connect(s.targetNode[0])
+	for _, i := range s.targetNode {
+		db := h.System.Connect(i)
 
-	v, err := h.System.NodeVersion(s.targetNode[0])
-	if err != nil {
-		return errors.Wrapf(err, "failed to get node version for %d", s.targetNode[0])
-	}
-	logSQL(
-		h.System.stepLogger, s.targetNode[0], v, h.System.Descriptor.Name, query,
-	)
+		v, err := h.System.NodeVersion(i)
+		if err != nil {
+			return errors.Wrapf(err, "failed to get node version for %d", i)
+		}
+		logSQL(
+			h.System.stepLogger, i, v, h.System.Descriptor.Name, query,
+		)
 
-	if _, err = db.ExecContext(h.System.ctx, query); err == nil {
-		return errors.Errorf("expected panic statement to fail, but it succeeded on %s", s.targetNode)
+		if _, err = db.ExecContext(h.System.ctx, query); err == nil {
+			return errors.Errorf("expected panic statement to fail, but it succeeded on %s", s.targetNode)
+		}
 	}
 
 	return nil
@@ -857,6 +859,14 @@ func (s restartNodeStep) Run(ctx context.Context, l *logger.Logger, _ *rand.Rand
 
 	startCtx, cancel := context.WithTimeout(ctx, startTimeout)
 	defer cancel()
+
+	// N.B. some of the panicked nodes may have already been restarted, hence subtract all available nodes
+	nodes := slices.Clone(s.targetNode)
+	nodes = nodes.Difference(h.runner.getAvailableNodes(h.runner.systemService.descriptor))
+
+	if len(nodes) == 0 {
+		return nil
+	}
 
 	err = h.runner.cluster.StartE(
 		startCtx,
