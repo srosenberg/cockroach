@@ -7,6 +7,7 @@ package concurrency
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/poison"
@@ -21,6 +22,13 @@ type latchManagerImpl struct {
 }
 
 func (m *latchManagerImpl) Acquire(ctx context.Context, req Request) (latchGuard, *Error) {
+	if len(req.Requests) == 1 {
+		if _, ok := req.Requests[0].GetInner().(*kvpb.IncrementRequest); ok {
+			req.LatchSpans.Iterate(func(_ spanset.SpanAccess, _ spanset.SpanScope, span spanset.Span) {
+				fmt.Printf("span: %v\n", span)
+			})
+		}
+	}
 	lg, err := m.m.Acquire(ctx, req.LatchSpans, req.PoisonPolicy, req.BaFmt)
 	if err != nil {
 		return nil, kvpb.NewError(err)

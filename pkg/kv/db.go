@@ -222,7 +222,28 @@ func (s *CrossRangeTxnWrapperSender) Send(
 	}
 
 	br, pErr := s.wrapped.Send(ctx, ba)
+	// check if Increment request is in ba
+	isIncrement := false
+	if len(ba.Requests) == 1 {
+		if _, ok := ba.Requests[0].GetInner().(*kvpb.IncrementRequest); ok {
+			isIncrement = true
+		}
+	}
+
+	if isIncrement {
+		fmt.Printf("ba: %v, br: %v, pErr: %v\n", ba, br, pErr)
+		// print batch response
+		if br != nil {
+			for _, res := range br.Responses {
+				fmt.Printf("\tres: %v\n", res)
+			}
+		}
+	}
+
 	if _, ok := pErr.GetDetail().(*kvpb.OpRequiresTxnError); !ok {
+		if isIncrement {
+			fmt.Println("!ok")
+		}
 		return br, pErr
 	}
 

@@ -7,6 +7,7 @@ package kvserver
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"runtime/pprof"
 	"time"
@@ -1180,6 +1181,9 @@ func (r *Replica) collectSpans(
 	}
 	for _, union := range ba.Requests {
 		inner := union.GetInner()
+		if _, ok := inner.(*kvpb.IncrementRequest); ok {
+			fmt.Println("HERE")
+		}
 		if cmd, ok := batcheval.LookupCommand(inner.Method()); ok {
 			err := cmd.DeclareKeys(desc, &ba.Header, inner, latchSpans, lockSpans, r.Clock().MaxOffset())
 			if err != nil {

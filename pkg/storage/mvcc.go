@@ -14,6 +14,7 @@ import (
 	"math"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +46,12 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 )
+
+var wg = sync.WaitGroup{}
+
+func init() {
+	wg.Add(2)
+}
 
 const (
 	// MVCCVersionTimestampSize is the size of the timestamp portion of MVCC
@@ -2759,6 +2766,18 @@ func mvccPutInternal(
 	// that the meta key is always ordered before the value key and that
 	// RocksDB's skiplist memtable implementation includes a fast-path for
 	// sequential insertion patterns.
+
+	// print key and value
+	if strings.Contains(string(key), "node-idgen") {
+		val, _ := value.GetInt()
+		fmt.Printf("Before PutMVCC, key: %s, value: %d\n", string(key), val)
+
+		if val == 2 {
+			wg.Done()
+			wg.Wait()
+			fmt.Println("After wait")
+		}
+	}
 	if err := writer.PutMVCC(versionKey, versionValue); err != nil {
 		return false, roachpb.LockAcquisition{}, err
 	}
