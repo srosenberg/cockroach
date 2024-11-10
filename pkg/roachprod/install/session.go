@@ -127,6 +127,8 @@ func newRemoteSession(l *logger.Logger, command *remoteCommand) *remoteSession {
 	args = append(args, command.cmd)
 	ctx, cancel := context.WithCancel(context.Background())
 	fullCmd := exec.CommandContext(ctx, "ssh", args...)
+
+	fmt.Println(fullCmd)
 	return &remoteSession{fullCmd, cancel, logfile}
 }
 
