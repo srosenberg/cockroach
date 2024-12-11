@@ -32,7 +32,7 @@ jobs:
             var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
               return artifact.name == "cover"
             })[0]; */
-            var download = await github.actions.downloadArtifact({
+            var download = await github.rest.actions.downloadArtifact({
                owner: 'cockroachdb',
                repo: context.repo.repo,
                artifact_id: '2308185384',
