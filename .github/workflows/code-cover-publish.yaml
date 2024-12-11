@@ -33,7 +33,7 @@ jobs:
               return artifact.name == "cover"
             })[0]; */
             var download = await github.actions.downloadArtifact({
-               owner: context.repo.owner,
+               owner: 'cockroachdb',
                repo: context.repo.repo,
                artifact_id: '2308185384',
                archive_format: 'zip',
