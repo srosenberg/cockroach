@@ -1,6 +1,8 @@
 name: PR code coverage (publish)
 
 on:
+  # for manually testing
+  workflow_dispatch:
   workflow_run:
     workflows: [ "PR code coverage (generate)" ]
     types: [ "completed" ]
