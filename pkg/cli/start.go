@@ -802,6 +802,8 @@ func createAndStartServerAsync(
 		if err := func() error {
 			// Instantiate the server.
 			var err error
+
+			// N.B. newGRPCServer is created in NewServer
 			s, err = newServerFn(ctx, *serverCfg, stopper)
 			if err != nil {
 				return errors.Wrap(err, "failed to start server")
@@ -812,6 +814,7 @@ func createAndStartServerAsync(
 			if serverStatusMu.shutdownInProgress() {
 				return nil
 			}
+			// N.B. Prestart will prestart sql which initializes cluster version!
 
 			// Attempt to start the server.
 			if err := s.PreStart(ctx); err != nil {

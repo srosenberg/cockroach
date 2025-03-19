@@ -6,7 +6,11 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -17,6 +21,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
+	"github.com/gogo/protobuf/jsonpb"
+	"github.com/gogo/protobuf/proto"
 	"google.golang.org/grpc"
 )
 
@@ -111,6 +117,37 @@ func (d disablingClientStream) SendMsg(m interface{}) error {
 	if err := d.partitionCheck(); err != nil {
 		return err
 	}
+	if msg, ok := m.(proto.Message); ok {
+		//// Block all messages other than Gossip
+		//if strings.Contains(proto.MessageName(msg), "gossip.Request") {
+		//	return errors.New("blocked")
+		//}
+
+		if strings.Contains(proto.MessageName(msg), "gossip.Request") {
+			// Convert Protobuf to JSON
+			marshaler := jsonpb.Marshaler{Indent: "  "} // Pretty-print JSON
+			var jsonBuffer bytes.Buffer
+			err := marshaler.Marshal(&jsonBuffer, msg)
+			if err != nil {
+				fmt.Printf("Failed to marshal message to JSON: %v", err)
+			} else {
+				jsonStr := jsonBuffer.String()
+
+				var jsonData map[string]interface{}
+				err := json.Unmarshal([]byte(jsonStr), &jsonData)
+				if err != nil {
+					fmt.Printf("Error parsing JSON: %v", err)
+				} else {
+					fmt.Printf("Sending message: %v\n", jsonData)
+				}
+			}
+		} else {
+			fmt.Printf("Sending message: %v\n", proto.MessageName(msg))
+		}
+	} else {
+		fmt.Printf("Message does not implement proto.Message: %+v", m)
+	}
+
 	return d.ClientStream.SendMsg(m)
 }
 
@@ -198,6 +235,10 @@ func (p *Partitioner) RegisterTestingKnobs(
 				if err := isPartitioned(target); err != nil {
 					return err
 				}
+				if strings.Contains(method, "MuxRangeFeed") {
+					return errors.New("blocked")
+				}
+				fmt.Printf("Calling %s from %s\n", method, target)
 				return invoker(ctx, method, req, reply, cc, opts...)
 			}
 		}
@@ -208,6 +249,10 @@ func (p *Partitioner) RegisterTestingKnobs(
 				if err != nil {
 					return nil, err
 				}
+				if strings.Contains(method, "MuxRangeFeed") {
+					return &disablingClientStream{}, errors.New("blocked")
+				}
+				fmt.Printf("Calling %s from %s\n", method, target)
 				return &disablingClientStream{
 					ClientStream:   cs,
 					partitionCheck: func() error { return isPartitioned(target) },

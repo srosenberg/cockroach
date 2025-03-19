@@ -11,6 +11,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1474,6 +1475,8 @@ func (r *DistSQLReceiver) pushMeta(meta *execinfrapb.ProducerMetadata) execinfra
 		r.SetError(meta.Err)
 	}
 	if len(meta.Ranges) > 0 {
+		fmt.Printf("Pushing metadata ranges: %v\n", meta.Ranges)
+		debug.PrintStack()
 		r.rangeCache.Insert(r.ctx, meta.Ranges...)
 	}
 	if len(meta.TraceData) > 0 {

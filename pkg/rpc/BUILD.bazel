@@ -71,6 +71,7 @@ go_library(
         "@com_github_cockroachdb_logtags//:logtags",
         "@com_github_cockroachdb_redact//:redact",
         "@com_github_gogo_protobuf//proto",
+	"@com_github_gogo_protobuf//jsonpb",
         "@com_github_golang_protobuf//proto",
         "@com_github_golang_snappy//:snappy",
         "@com_github_montanaflynn_stats//:stats",

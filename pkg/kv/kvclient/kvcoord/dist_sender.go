@@ -2650,7 +2650,7 @@ func (ds *DistSender) sendToReplicas(
 		curReplica := transport.NextReplica()
 		if first {
 			if log.ExpensiveLogEnabled(ctx, 2) {
-				log.VEventf(ctx, 2, "r%d: sending batch %s to %s", desc.RangeID, ba.Summary(), curReplica)
+				log.Infof(ctx, "r%d: sending batch %s to %s", desc.RangeID, ba.Summary(), curReplica)
 			}
 		} else {
 			log.VEventf(ctx, 2, "trying next peer %s", curReplica.String())
@@ -2801,7 +2801,7 @@ func (ds *DistSender) sendToReplicas(
 			// We know the request did not start, so the error is not ambiguous.
 
 		} else if err != nil {
-			log.VErrEventf(ctx, 2, "RPC error: %s", err)
+			log.Infof(ctx, "RPC error: %s", err)
 
 			// For most connection errors, we cannot tell whether or not the request
 			// may have succeeded on the remote server (exceptions are captured in the

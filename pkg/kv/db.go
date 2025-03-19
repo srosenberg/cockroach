@@ -938,7 +938,9 @@ func sendAndFill(ctx context.Context, send SenderFunc, b *Batch) error {
 	ba.Requests = b.reqs
 	ba.Header = b.Header
 	ba.AdmissionHeader = b.AdmissionHeader
+	fmt.Printf("sendAndFill::before: %v\n", ba)
 	b.response, b.pErr = send(ctx, ba)
+	fmt.Printf("sendAndFill::after: %v\n", ba)
 	b.fillResults(ctx)
 	if b.pErr == nil {
 		b.pErr = kvpb.NewError(b.resultErr())

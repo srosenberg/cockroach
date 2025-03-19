@@ -129,7 +129,7 @@ func (s *Store) startGossip() {
 		},
 	}
 
-	cannotGossipEvery := log.Every(time.Minute)
+	cannotGossipEvery := log.Every(time.Second)
 	cannotGossipEvery.ShouldLog() // only log next time after waiting out the delay
 
 	// Periodic updates run in a goroutine and signal a WaitGroup upon completion

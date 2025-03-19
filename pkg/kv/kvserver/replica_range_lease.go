@@ -385,6 +385,8 @@ func (p *pendingLeaseRequest) InitOrJoinRequest(
 		BypassSafetyChecks:    bypassSafetyChecks,
 		DesiredLeaseType:      p.repl.desiredLeaseTypeRLocked(),
 	}
+	fmt.Printf("InitOrJoinRequest: %v\n", in)
+
 	out, err := leases.VerifyAndBuild(ctx, st, nl, in)
 	if err != nil {
 		if in.Transfer() {

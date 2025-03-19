@@ -769,10 +769,6 @@ func (s *SQLServerWrapper) PreStart(ctx context.Context) error {
 		}
 	}
 
-	// After setting modeOperational, we can block until all stores are fully
-	// initialized.
-	s.grpc.setMode(modeOperational)
-
 	// Report server listen addresses to logs.
 	log.Ops.Infof(ctx, "starting %s server at %s (use: %s)",
 		redact.Safe(s.sqlServer.cfg.HTTPRequestScheme()),
@@ -799,6 +795,10 @@ func (s *SQLServerWrapper) PreStart(ctx context.Context) error {
 	); err != nil {
 		return err
 	}
+
+	// After setting modeOperational, we can block until all stores are fully
+	// initialized.
+	s.grpc.setMode(modeOperational)
 
 	// Connect the HTTP endpoints. This also wraps the privileged HTTP
 	// endpoints served by gwMux by the HTTP cookie authentication

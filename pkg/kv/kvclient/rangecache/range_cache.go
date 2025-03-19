@@ -873,6 +873,8 @@ func tryLookupImpl(
 	var rs, preRs []roachpb.RangeDescriptor
 	if err := timeutil.RunWithTimeout(ctx, "range lookup", 10*time.Second,
 		func(ctx context.Context) error {
+			fmt.Printf("tryLookupImpl::key=%v\n", key)
+
 			var err error
 			rs, preRs, err = rc.performRangeLookup(ctx, key, consistency, useReverseScan)
 			return err

@@ -138,7 +138,7 @@ func (n *Dialer) DialInternalClient(
 		// If we're dialing the local node, don't go through gRPC.
 		localClient := n.rpcContext.GetLocalInternalClientForAddr(nodeID)
 		if localClient != nil && !n.testingKnobs.TestingNoLocalClientOptimization {
-			log.VEvent(ctx, 2, kvbase.RoutingRequestLocallyMsg)
+			log.Info(ctx, kvbase.RoutingRequestLocallyMsg)
 			return localClient, nil
 		}
 	}
@@ -147,7 +147,7 @@ func (n *Dialer) DialInternalClient(
 	if err != nil {
 		return nil, errors.Wrap(err, "resolver error")
 	}
-	log.VEventf(ctx, 2, "sending request to %s", addr)
+	log.Infof(ctx, "sending request to %s", addr)
 	conn, pool, dconn, drpcBatchStreamPool, err := n.dial(ctx, nodeID, addr, locality, true, class)
 	if err != nil {
 		return nil, err
@@ -336,7 +336,7 @@ var batchStreamPoolingEnabled = settings.RegisterBoolSetting(
 	settings.ApplicationLevel,
 	"rpc.batch_stream_pool.enabled",
 	"if true, use pooled gRPC streams to execute Batch RPCs",
-	metamorphic.ConstantWithTestBool("rpc.batch_stream_pool.enabled", true),
+	metamorphic.ConstantWithTestBool("rpc.batch_stream_pool.enabled", false),
 )
 
 func shouldUseBatchStreamPoolClient(ctx context.Context, st *cluster.Settings) bool {

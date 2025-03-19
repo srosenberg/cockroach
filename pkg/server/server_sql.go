@@ -186,6 +186,8 @@ type SQLServer struct {
 
 	systemConfigWatcher *systemconfigwatcher.Cache
 
+	startGrpc func()
+
 	isMeta1Leaseholder func(context.Context, hlc.ClockTimestamp) (bool, error)
 
 	// isReady is the health status of the node. When true, the node is healthy;
@@ -1533,6 +1535,8 @@ func (s *SQLServer) preStart(
 			return errors.CombineErrors(err, nonRetryableErr)
 		}
 	}
+
+	s.startGrpc()
 
 	// Initialize the settings watcher early in sql server startup. Settings
 	// values are meaningless before the watcher is initialized and most sub

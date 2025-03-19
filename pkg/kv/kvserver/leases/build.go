@@ -7,6 +7,7 @@ package leases
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -351,6 +352,8 @@ func build(st Settings, nl NodeLiveness, i BuildInput) (Output, error) {
 	o := Output{NextLease: nextLease}
 	o.PrevLeaseManipulation = prevLeaseManipulation(st, i, nextLease)
 	o.NodeLivenessManipulation = nodeLivenessManipulation(st, i, nextLease, nextLeaseLiveness)
+
+	fmt.Printf("nextLease: %v\n", nextLease)
 
 	// Validate the output.
 	if err := o.validate(i); err != nil {

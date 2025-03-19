@@ -704,6 +704,7 @@ func (tc *TestCluster) WaitForNStores(t serverutils.TestFataler, n int, g *gossi
 				storesDoneOnce <- err
 				return
 			}
+			fmt.Printf("Store descriptor gossiped: %v\n", desc)
 
 			stores[desc.StoreID] = struct{}{}
 			if len(stores) == n {
@@ -1691,6 +1692,7 @@ func (tc *TestCluster) WaitForNodeStatuses(t serverutils.TestFataler) {
 				return fmt.Errorf("missing StoreStatuses in NodeStatus: %+v", node)
 			}
 			nodeIDs[node.Desc.NodeID] = true
+			fmt.Printf("Received status for n%d\n", node.Desc.NodeID)
 		}
 		for _, s := range tc.Servers {
 			// Not using s.NodeID() here, on purpose. s.NodeID() uses the

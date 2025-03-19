@@ -7,6 +7,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/cockroachdb/cockroach/pkg/rpc"
@@ -97,7 +98,9 @@ func (s *grpcServer) intercept(fullName string) error {
 		return nil
 	}
 	if _, allowed := rpcsAllowedWhileBootstrapping[fullName]; !allowed {
-		return NewWaitingForInitError(fullName)
+		err := NewWaitingForInitError(fullName)
+		fmt.Println(err)
+		return err
 	}
 	return nil
 }

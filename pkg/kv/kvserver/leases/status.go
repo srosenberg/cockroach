@@ -7,6 +7,7 @@ package leases
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
@@ -207,7 +208,9 @@ func Status(ctx context.Context, nl NodeLiveness, i StatusInput) kvserverpb.Leas
 		// If the replica owns the lease, additional verify that the lease's
 		// proposed timestamp is not earlier than the min proposed timestamp.
 		status.State = kvserverpb.LeaseState_PROSCRIBED
-	} else if stasis.LessEq(i.RequestTs) {
+	} else if false {
+		fmt.Println(stasis)
+		//if stasis.LessEq(i.RequestTs) {
 		status.State = kvserverpb.LeaseState_UNUSABLE
 	} else {
 		status.State = kvserverpb.LeaseState_VALID

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
+	"github.com/cockroachdb/cockroach/pkg/gossip"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -24,10 +25,16 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	slpb "github.com/cockroachdb/cockroach/pkg/kv/kvserver/storeliveness/storelivenesspb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/rpc"
+	"github.com/cockroachdb/cockroach/pkg/rpc/nodedialer"
+	"github.com/cockroachdb/cockroach/pkg/rpc/rpcpb"
+	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
+	"github.com/cockroachdb/cockroach/pkg/testutils/testcluster"
+	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logpb"
@@ -35,7 +42,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
+	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 )
 
 // Implements the interceptor interface to intercept log entries.
@@ -463,4 +472,174 @@ func containsPattern(entries *syncutil.Map[uuid.UUID, logpb.Entry], pattern stri
 		return true
 	})
 	return found
+}
+
+// TestClockSkewWithTestCluster tests a clock skew scenario in a full TestCluster,
+// ensuring that Node 1's commit timestamp x is greater than Node 2's read timestamp y.
+func TestClockSkewWithTestCluster(t *testing.T) {
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+
+	// Step 1: Create manual clocks for Node 1 and Node 2.
+	node1Clock := hlc.Node1Clock
+	node2Clock := hlc.Node2Clock
+
+	ctk := rpc.ContextTestingKnobs{}
+	var p rpc.Partitioner
+	// Partition between n1 and n3.
+	p.RegisterTestingKnobs(roachpb.NodeID(1), [][2]roachpb.NodeID{{1, 2}}, &ctk)
+	p.RegisterTestingKnobs(roachpb.NodeID(2), [][2]roachpb.NodeID{{1, 2}}, &ctk)
+
+	ctk.UnaryClientInterceptor = func(target string, class rpcpb.ConnectionClass) grpc.UnaryClientInterceptor {
+		return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			//if strings.Contains(method, "MuxRangeFeed") {
+			//	return errors.New("blocked")
+			//}
+
+			if br, ok := req.(*kvpb.BatchRequest); ok {
+				for _, ru := range br.Requests {
+					fmt.Printf("Request: %v\n", ru.GetInner())
+				}
+			} else if ping, ok := req.(*rpc.PingRequest); ok {
+				fmt.Printf("Request: %v\n", ping)
+			} else {
+				fmt.Printf("Method: %s\n", method)
+			}
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+	}
+
+	ctk.StreamClientInterceptor =
+		func(target string, class rpcpb.ConnectionClass) grpc.StreamClientInterceptor {
+			return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+				cs, err := streamer(ctx, desc, cc, method, opts...)
+				if err != nil {
+					return nil, err
+				}
+				//if strings.Contains(method, "MuxRangeFeed") {
+				//	return &myClientStream{}, errors.New("blocked")
+				//}
+				fmt.Printf("Calling %s from %s\n", method, target)
+				return &myClientStream{
+					ClientStream: cs,
+				}, nil
+			}
+		}
+
+	fmt.Printf("Node 1 clock: %d\n", node1Clock.Now().UnixNano())
+	// Step 2: Set up a TestCluster with two nodes, each using a manual clock.
+	// Increase the MaxOffset to allow for large clock skew.
+	tc := testcluster.StartTestCluster(t, 2, base.TestClusterArgs{
+		ServerArgsPerNode: map[int]base.TestServerArgs{
+			0: {
+				Knobs: base.TestingKnobs{
+					Server: &server.TestingKnobs{
+						WallClock:           node1Clock,
+						ContextTestingKnobs: ctk,
+					},
+					Store: &kvserver.StoreTestingKnobs{
+						//MaxOffset: math.MaxInt64,
+					},
+					DialerKnobs: nodedialer.DialerTestingKnobs{
+						TestingNoLocalClientOptimization: true,
+					},
+				},
+			},
+			1: {
+				Knobs: base.TestingKnobs{
+					Server: &server.TestingKnobs{
+						WallClock:           node2Clock,
+						ContextTestingKnobs: ctk,
+					},
+					Store: &kvserver.StoreTestingKnobs{
+						//MaxOffset: math.MaxInt64,
+					},
+					DialerKnobs: nodedialer.DialerTestingKnobs{
+						TestingNoLocalClientOptimization: true,
+					},
+				},
+			},
+		},
+		// N.B. DefaultTestTenant must be set in ServerArgs.
+		ServerArgs: base.TestServerArgs{
+			DefaultTestTenant: base.TestIsSpecificToStorageLayerAndNeedsASystemTenant,
+		},
+	})
+	defer tc.Stopper().Stop(ctx)
+
+	// Set up the mapping after the nodes have started and we have their
+	// addresses.
+	for i := 0; i < 2; i++ {
+		g := tc.Servers[i].StorageLayer().GossipI().(*gossip.Gossip)
+		addr := g.GetNodeAddr().String()
+		nodeID := g.NodeID.Get()
+		p.RegisterNodeAddr(addr, nodeID)
+		fmt.Printf("Node %d address: %s\n", nodeID, addr)
+	}
+
+	// Enable partitioning to prevent the nodes from synchronizing their clocks.
+	p.EnablePartition(true)
+
+	// Step 3: Advance Node 1's clock by 1 second to simulate clock skew.
+	node1Clock.Increment(1 * time.Second.Nanoseconds())
+
+	hlc.Node3Clock = node1Clock
+
+	// Step 4: Commit a transaction on Node 1.
+	// Use Node 1's KV client to perform the transaction.
+	node1 := tc.Server(0)
+	var commitTimestamp hlc.Timestamp
+
+	err := node1.DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		// Perform an insert.
+		key := roachpb.Key("key-on-node1")
+		fmt.Printf("Transaction id: %s\n", txn.ID())
+		if err := txn.Put(ctx, key, "value"); err != nil {
+			return err
+		}
+		var err error
+		// Record the commit timestamp.
+		commitTimestamp, err = txn.CommitTimestamp()
+		return err
+	})
+	require.NoError(t, err)
+	t.Logf("Node 1 commit timestamp (x): %s", commitTimestamp)
+
+	//time.Sleep(1 * time.Second)
+
+	// Step 5: Read the current timestamp on Node 2.
+	// Use Node 2's HLC clock directly to avoid cluster synchronization.
+	node2 := tc.Server(1)
+	node2ClockFn := node2.Clock().Now
+	readTimestamp := node2ClockFn()
+	t.Logf("Node 2 read timestamp (y): %s", readTimestamp)
+
+	// Step 6: Verify that x > y.
+	require.True(t, commitTimestamp.After(readTimestamp),
+		"expected Node 1 timestamp %s to be greater than Node 2 timestamp %s", commitTimestamp, readTimestamp)
+
+	// to keep server logs
+	t.Fatal("BOO")
+}
+
+type myClientStream struct {
+	grpc.ClientStream
+}
+
+func (d myClientStream) SendMsg(m interface{}) error {
+	if br, ok := m.(*kvpb.BatchRequest); ok {
+		for _, ru := range br.Requests {
+			fmt.Printf("Request(stream): %v\n", ru.GetInner())
+		}
+	} else {
+		msg := m.(proto.Message)
+		fmt.Printf("Message(stream): %s\n", proto.MessageName(msg))
+	}
+
+	return d.ClientStream.SendMsg(m)
+}
+
+func (d myClientStream) RecvMsg(m interface{}) error {
+	return d.ClientStream.RecvMsg(m)
 }

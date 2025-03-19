@@ -7,6 +7,7 @@ package rangefeed
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -101,6 +102,7 @@ func (f *RangeFeed) runInitialScan(
 
 		// Scan the spans.
 		if len(toScan) > 0 {
+			fmt.Printf("Scanning spans: %v\n", toScan)
 			if err := f.client.Scan(ctx, toScan, f.initialTimestamp, onValue, onValues, f.scanConfig); err != nil {
 				if f.onInitialScanError != nil {
 					if shouldStop := f.onInitialScanError(ctx, err); shouldStop {

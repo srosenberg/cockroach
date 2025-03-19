@@ -8,6 +8,7 @@ package hlc
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -427,6 +428,10 @@ func (c *Clock) NowAsClockTimestamp() ClockTimestamp {
 		// The wall time is ahead, so the logical clock ticks.
 		c.mu.timestamp.Logical++
 	} else {
+		if c.WallClock() == Node2Clock && Node3Clock == Node1Clock {
+			fmt.Println("NowAsClockTimestamp")
+			debug.PrintStack()
+		}
 		// Use the physical clock, and reset the logical one.
 		atomic.StoreInt64(&c.mu.timestamp.WallTime, physicalClock)
 		c.mu.timestamp.Logical = 0
@@ -462,6 +467,11 @@ func (c *Clock) PhysicalNow() int64 {
 // PhysicalTime returns a time.Time struct using the local wall time.
 func (c *Clock) PhysicalTime() time.Time { return c.wallClock.Now() }
 
+var Node1Clock = NewHybridManualClock()
+var Node2Clock = NewHybridManualClock()
+
+var Node3Clock = NewHybridManualClock()
+
 // Update takes a hybrid timestamp, usually originating from an event
 // received from another member of a distributed system. The clock is
 // updated to reflect the later of the two. The update does not check
@@ -469,7 +479,6 @@ func (c *Clock) PhysicalTime() time.Time { return c.wallClock.Now() }
 // update in case the remote timestamp is too far into the future, use
 // UpdateAndCheckMaxOffset() instead.
 func (c *Clock) Update(rt ClockTimestamp) {
-
 	// Fast path to avoid grabbing the mutex if the remote time is behind. This
 	// requires c.mu.timestamp.WallTime to be written atomically, even though
 	// the writer has to hold the mutex lock as well.
@@ -482,14 +491,25 @@ func (c *Clock) Update(rt ClockTimestamp) {
 
 	// There is nothing to do if the remote wall time is behind ours. We just keep ours.
 	if rt.WallTime > c.mu.timestamp.WallTime {
+		if c.WallClock() == Node1Clock {
+			fmt.Println("Update Node1Clock")
+		}
 		// The remote clock is ahead of ours, and we update
 		// our own logical clock with theirs.
 		atomic.StoreInt64(&c.mu.timestamp.WallTime, rt.WallTime)
+		if c.mu.timestamp.Logical != rt.Logical {
+			if c.WallClock() == Node2Clock && Node3Clock == Node1Clock {
+				fmt.Println("HERE")
+			}
+		}
 		c.mu.timestamp.Logical = rt.Logical
 	} else if rt.WallTime == c.mu.timestamp.WallTime {
 		// Both wall times are equal, and the larger logical
 		// clock is used for the update.
 		if rt.Logical > c.mu.timestamp.Logical {
+			if c.WallClock() == Node2Clock && Node3Clock == Node1Clock {
+				fmt.Println("HERE")
+			}
 			c.mu.timestamp.Logical = rt.Logical
 		}
 	}

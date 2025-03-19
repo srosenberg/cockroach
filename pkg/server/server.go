@@ -1556,6 +1556,27 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 	// Register the KeyVisualizer Server
 	keyvispb.RegisterKeyVisualizerServer(s.grpc.Server, s.keyVisualizerServer)
 
+	// N.B. gRPC is started before sql
+
+	// Record a walltime that is lower than the lowest hlc timestamp this current
+	// instance of the node can use. We do not use startTime because it is lower
+	// than the timestamp used to create the bootstrap schema.
+	//
+	// TODO(tbg): clarify the contract here and move closer to usage if possible.
+	//orphanedLeasesTimeThresholdNanos := s.clock.Now().WallTime
+	//
+	//if !s.cfg.DisableSQLServer {
+	//	// Start the SQL subsystem.
+	//	if err := s.sqlServer.preStart(
+	//		workersCtx,
+	//		s.stopper,
+	//		s.cfg.TestingKnobs,
+	//		orphanedLeasesTimeThresholdNanos,
+	//	); err != nil {
+	//		return err
+	//	}
+	//}
+
 	// Start the RPC server. This opens the RPC/SQL listen socket,
 	// and dispatches the server worker for the RPC.
 	// The SQL listener is returned, to start the SQL server later
@@ -1841,6 +1862,8 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 
 	advHTTPAddrU := util.NewUnresolvedAddr("tcp", s.cfg.HTTPAdvertiseAddr)
 
+	// N.B. this starts kv store gossip (startGossip) which requires RPC to gossipFirstRange
+	// (see RangeLookup -> GetFirstRangeDescriptor)
 	if err := s.node.start(
 		ctx, workersCtx,
 		advAddrU,
@@ -1936,7 +1959,7 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 
 	// After setting modeOperational, we can block until all stores are fully
 	// initialized.
-	s.grpc.setMode(modeOperational)
+	//s.grpc.setMode(modeOperational)
 
 	s.nodeLiveness.Start(workersCtx)
 
@@ -2002,11 +2025,6 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 
 	log.Event(ctx, "accepting connections")
 
-	// Begin recording status summaries.
-	if err := s.node.startWriteNodeStatus(base.DefaultMetricsSampleInterval); err != nil {
-		return err
-	}
-
 	if subscriber, ok := s.spanConfigSubscriber.(*spanconfigkvsubscriber.KVSubscriber); ok {
 		if err := subscriber.Start(workersCtx, s.stopper); err != nil {
 			return err
@@ -2028,6 +2046,11 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 	s.node.recordJoinEvent(ctx)
 
 	if !s.cfg.DisableSQLServer {
+		s.sqlServer.startGrpc = func() {
+			fmt.Println("GRPC is operational")
+			s.grpc.setMode(modeOperational)
+		}
+
 		// Start the SQL subsystem.
 		if err := s.sqlServer.preStart(
 			workersCtx,
@@ -2037,6 +2060,13 @@ func (s *topLevelServer) PreStart(ctx context.Context) error {
 		); err != nil {
 			return err
 		}
+	}
+
+	//s.grpc.setMode(modeOperational)
+
+	// Begin recording status summaries.
+	if err := s.node.startWriteNodeStatus(base.DefaultMetricsSampleInterval); err != nil {
+		return err
 	}
 
 	// Connect the HTTP endpoints. This also wraps the privileged HTTP

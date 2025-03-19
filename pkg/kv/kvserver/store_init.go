@@ -139,8 +139,8 @@ func WriteInitialClusterData(
 			return err
 		}
 		rangeInitialValues := filterInitialValues(desc)
-		log.VEventf(
-			ctx, 2, "creating range %d [%s, %s). Initial values: %d",
+		log.Infof(
+			ctx, "creating range %d [%s, %s). Initial values: %d",
 			desc.RangeID, desc.StartKey, desc.EndKey, len(rangeInitialValues))
 
 		err := func() error {

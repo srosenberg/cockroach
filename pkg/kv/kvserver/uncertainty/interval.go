@@ -5,7 +5,11 @@
 
 package uncertainty
 
-import "github.com/cockroachdb/cockroach/pkg/util/hlc"
+import (
+	"fmt"
+
+	"github.com/cockroachdb/cockroach/pkg/util/hlc"
+)
 
 // Interval represents a transaction's uncertainty interval.
 //
@@ -59,5 +63,10 @@ func (in Interval) IsUncertain(valueTs hlc.Timestamp, localTs hlc.ClockTimestamp
 		// started before the writer transaction completed, so they are concurrent.
 		return false
 	}
-	return valueTs.LessEq(in.GlobalLimit)
+	res := valueTs.LessEq(in.GlobalLimit)
+
+	if res == true {
+		fmt.Println("IsUncertain!")
+	}
+	return res
 }
