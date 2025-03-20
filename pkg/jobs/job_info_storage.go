@@ -99,13 +99,6 @@ func (i ProgressStorage) Set(
 	ctx, sp := tracing.ChildSpan(ctx, "write-job-progress")
 	defer sp.Finish()
 
-	if _, err := txn.ExecEx(
-		ctx, "write-job-progress-delete", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-		`DELETE FROM system.job_progress WHERE job_id = $1`, i,
-	); err != nil {
-		return err
-	}
-
 	var frac, ts interface{}
 	if !math.IsNaN(fraction) {
 		frac = fraction
@@ -114,12 +107,33 @@ func (i ProgressStorage) Set(
 		ts = resolved.AsOfSystemTime()
 	}
 
-	if _, err := txn.ExecEx(
-		ctx, "write-job-progress-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-		`INSERT INTO system.job_progress (job_id, written, fraction, resolved) VALUES ($1, now(), $2, $3)`,
+	// Optimistically update the job's progress row, but if it does not exist,
+	// insert it. This could have been implemented as a DELETE followed by an
+	// INSERT, but that would have always required two separate SQL operations.
+	rowsUpdated, err := txn.ExecEx(
+		ctx, "write-job-progress-update", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+		`UPDATE system.job_progress SET (written, fraction, resolved) = (now(), $2, $3) WHERE job_id = $1`,
 		i, frac, ts,
-	); err != nil {
-		return err
+	)
+	if err != nil {
+		// Defend against the update failing on a unique violation due to updating
+		// >1 keys with the same id. This shouldn't happen, unless a user manually
+		// inserted into the job_progress table.
+		if _, err := txn.ExecEx(
+			ctx, "write-job-progress-delete-fallback", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+			`DELETE FROM system.job_progress where job_id = $1`,
+			i); err != nil {
+			return err
+		}
+	}
+	if rowsUpdated == 0 {
+		if _, err := txn.ExecEx(
+			ctx, "write-job-progress-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+			`INSERT INTO system.job_progress (job_id, written, fraction, resolved) VALUES ($1, now(), $2, $3)`,
+			i, frac, ts,
+		); err != nil {
+			return err
+		}
 	}
 
 	if _, err := txn.ExecEx(
@@ -180,25 +194,37 @@ func (i StatusStorage) Set(ctx context.Context, txn isql.Txn, status string) err
 	ctx, sp := tracing.ChildSpan(ctx, "write-job-status")
 	defer sp.Finish()
 
-	// Delete any existing status row in the same transaction before replacing it
-	// with the new one.
-	if err := i.Clear(ctx, txn); err != nil {
-		return err
-	}
-
-	if _, err := txn.ExecEx(
-		ctx, "write-job-status-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-		`INSERT INTO system.job_status (job_id, written, status) VALUES ($1, now(), $2)`,
-		i, status,
-	); err != nil {
-		return err
-	}
-
 	if err := MessageStorage(i).Record(ctx, txn, "status", status); err != nil {
 		return err
 	}
 
-	return nil
+	// Optimistically update the job's status row, but if it does not exist,
+	// insert it. This could have been implemented as a DELETE followed by an
+	// INSERT, but that would have always required two separate SQL operations.
+	rowsUpdated, err := txn.ExecEx(
+		ctx, "write-job-status-update", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+		`UPDATE system.job_status SET (written, status) = (now(), $2) WHERE job_id = $1`,
+		i, status,
+	)
+	if rowsUpdated > 0 && err == nil {
+		return nil
+	}
+
+	if err != nil {
+		// Defend against the update failing on a unique violation due to updating
+		// >1 keys with the same id. This should not happen, unless a user manually
+		// inserted into the job_status table.
+		if err := i.Clear(ctx, txn); err != nil {
+			return err
+		}
+	}
+
+	_, err = txn.ExecEx(
+		ctx, "write-job-status-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+		`INSERT INTO system.job_status (job_id, written, status) VALUES ($1, now(), $2)`,
+		i, status,
+	)
+	return err
 }
 
 // Get gets the current status mesasge for a job, if any.
@@ -379,12 +405,12 @@ func (i *InfoStorage) checkClaimSession(ctx context.Context) error {
 	return nil
 }
 
-func (i InfoStorage) get(ctx context.Context, infoKey string) ([]byte, bool, error) {
+func (i InfoStorage) get(ctx context.Context, opName, infoKey string) ([]byte, bool, error) {
 	if i.txn == nil {
 		return nil, false, errors.New("cannot access the job info table without an associated txn")
 	}
 
-	ctx, sp := tracing.ChildSpan(ctx, "get-job-info")
+	ctx, sp := tracing.ChildSpan(ctx, opName)
 	defer sp.Finish()
 
 	j := i.j
@@ -415,24 +441,60 @@ func (i InfoStorage) get(ctx context.Context, infoKey string) ([]byte, bool, err
 	return []byte(*value), true, nil
 }
 
-func (i InfoStorage) write(ctx context.Context, infoKey string, value []byte) error {
+func (i InfoStorage) write(
+	ctx context.Context, infoKey string, value []byte, firstWrite bool,
+) error {
 	return i.doWrite(ctx, func(ctx context.Context, j *Job, txn isql.Txn) error {
-		// First clear out any older revisions of this info.
-		_, err := txn.ExecEx(
-			ctx, "write-job-info-delete", txn.KV(),
-			sessiondata.NodeUserSessionDataOverride,
-			"DELETE FROM system.job_info WHERE job_id = $1 AND info_key::string = $2",
-			j.ID(), infoKey,
-		)
-		if err != nil {
+		if firstWrite {
+			// firstWrite implies that the value is being written for the first time,
+			// so no need to update it.
+			_, err := txn.ExecEx(
+				ctx, "write-job-info-insert", txn.KV(),
+				sessiondata.NodeUserSessionDataOverride,
+				`INSERT INTO system.job_info (job_id, info_key, written, value) VALUES ($1, $2, now(), $3)`,
+				j.ID(), infoKey, value,
+			)
 			return err
 		}
 
+		deleteQuery := "DELETE FROM system.job_info WHERE job_id = $1 AND info_key::string = $2"
 		if value == nil {
-			// Nothing else to do.
+			_, err := txn.ExecEx(
+				ctx, "write-job-info-delete", txn.KV(),
+				sessiondata.NodeUserSessionDataOverride,
+				deleteQuery,
+				j.ID(), infoKey,
+			)
+			return err
+		}
+
+		// Optimistically update the job info row, but if it does not exist,
+		// insert it. This could have been implemented as a DELETE followed by an
+		// INSERT, but that would have always required two separate SQL operations.
+		rowsUpdated, err := txn.ExecEx(
+			ctx, "write-job-info-update", txn.KV(),
+			sessiondata.NodeUserSessionDataOverride,
+			`UPDATE system.job_info SET (written, value) = (now(), $3) WHERE job_id = $1 AND info_key::string = $2`,
+			j.ID(), infoKey, value,
+		)
+		if rowsUpdated > 0 && err == nil {
 			return nil
 		}
-		// Write the new info, using the same transaction.
+
+		if err != nil {
+			// Defend against the update failing on a unique violation due to updating
+			// >1 keys with the same id and info_key. This shouldn't happen, unless a
+			// user manually inserted into the job_info table.
+			if _, err := txn.ExecEx(
+				ctx, "write-job-info-delete-fallback", txn.KV(),
+				sessiondata.NodeUserSessionDataOverride,
+				deleteQuery,
+				j.ID(), infoKey,
+			); err != nil {
+				return err
+			}
+		}
+
 		_, err = txn.ExecEx(
 			ctx, "write-job-info-insert", txn.KV(),
 			sessiondata.NodeUserSessionDataOverride,
@@ -536,8 +598,8 @@ func (i InfoStorage) iterate(
 }
 
 // Get fetches the latest info record for the given job and infoKey.
-func (i InfoStorage) Get(ctx context.Context, infoKey string) ([]byte, bool, error) {
-	return i.get(ctx, infoKey)
+func (i InfoStorage) Get(ctx context.Context, opName, infoKey string) ([]byte, bool, error) {
+	return i.get(ctx, opName, infoKey)
 }
 
 // Write writes the provided value to an info record for the provided jobID and
@@ -548,12 +610,22 @@ func (i InfoStorage) Write(ctx context.Context, infoKey string, value []byte) er
 	if value == nil {
 		return errors.AssertionFailedf("missing value (infoKey %q)", infoKey)
 	}
-	return i.write(ctx, infoKey, value)
+	return i.write(ctx, infoKey, value, false /* firstWrite */)
+}
+
+// WriteFirstKey writes the provided value to an info record for the provided
+// jobID and infoKey via a blind insert. It is the caller's responsibility to
+// ensure that the info record does not already exist.
+func (i InfoStorage) WriteFirstKey(ctx context.Context, infoKey string, value []byte) error {
+	if value == nil {
+		return errors.AssertionFailedf("missing value (infoKey %q)", infoKey)
+	}
+	return i.write(ctx, infoKey, value, true /* firstWrite */)
 }
 
 // Delete removes the info record for the provided infoKey.
 func (i InfoStorage) Delete(ctx context.Context, infoKey string) error {
-	return i.write(ctx, infoKey, nil /* value */)
+	return i.write(ctx, infoKey, nil /* value */, false /* firstWrite */)
 }
 
 // DeleteRange removes the info records between the provided
@@ -651,8 +723,8 @@ func GetLegacyProgressKey() string {
 }
 
 // GetLegacyPayload returns the job's Payload from the system.job_info table.
-func (i InfoStorage) GetLegacyPayload(ctx context.Context) ([]byte, bool, error) {
-	return i.Get(ctx, LegacyPayloadKey)
+func (i InfoStorage) GetLegacyPayload(ctx context.Context, opName string) ([]byte, bool, error) {
+	return i.Get(ctx, opName, LegacyPayloadKey)
 }
 
 // WriteLegacyPayload writes the job's Payload to the system.job_info table.
@@ -661,11 +733,25 @@ func (i InfoStorage) WriteLegacyPayload(ctx context.Context, payload []byte) err
 }
 
 // GetLegacyProgress returns the job's Progress from the system.job_info table.
-func (i InfoStorage) GetLegacyProgress(ctx context.Context) ([]byte, bool, error) {
-	return i.Get(ctx, LegacyProgressKey)
+func (i InfoStorage) GetLegacyProgress(ctx context.Context, opName string) ([]byte, bool, error) {
+	return i.Get(ctx, opName, LegacyProgressKey)
 }
 
 // WriteLegacyProgress writes the job's Progress to the system.job_info table.
 func (i InfoStorage) WriteLegacyProgress(ctx context.Context, progress []byte) error {
 	return i.Write(ctx, LegacyProgressKey, progress)
+}
+
+// writeFirstLegacyProgress writes the job's Progress to the system.job_info table
+// via a blind insert. It is the caller's responsibility to ensure that the
+// info record does not already exist.
+func (i InfoStorage) writeFirstLegacyProgress(ctx context.Context, progress []byte) error {
+	return i.WriteFirstKey(ctx, LegacyProgressKey, progress)
+}
+
+// writeFirstLegacyPayload writes the job's Payload to the system.job_info table
+// via a blind insert. It is the caller's responsibility to ensure that the
+// info record does not already exist.
+func (i InfoStorage) writeFirstLegacyPayload(ctx context.Context, payload []byte) error {
+	return i.WriteFirstKey(ctx, LegacyPayloadKey, payload)
 }

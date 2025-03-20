@@ -54,7 +54,8 @@ UPDATE supermarket
 update supermarket
  └── project
       ├── scan supermarket
-      │    └── constraint: /9: [/'michael' - /'michael']
+      │    ├── constraint: /9: [/'michael' - /'michael']
+      │    └── flags: avoid-full-scan
       └── projections
            └── subquery
                 └── project
@@ -82,6 +83,7 @@ vectorized: true
 │   │ estimated row count: 0 (missing stats)
 │   │ table: supermarket
 │   │ set: aisle
+│   │ auto commit
 │   │
 │   └── • render
 │       │ columns: (person, aisle, starts_with, ends_with, aisle_new)

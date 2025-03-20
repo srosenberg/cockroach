@@ -108,6 +108,9 @@ const (
 	// Usage is an attribute for column compute expression to identify why it's
 	// being added.
 	Usage
+	// PolicyID is an attribute for row-level security policies to uniquely
+	// identify a policy within a table.
+	PolicyID
 
 	// AttrMax is the largest possible Attr value.
 	// Note: add any new enum values before TargetStatus, leave these at the end.
@@ -360,6 +363,38 @@ var elementSchemaOptions = []rel.SchemaOption{
 		rel.EntityAttr(DescID, "TableID"),
 		rel.EntityAttr(TriggerID, "TriggerID"),
 	),
+	// Policy elements
+	rel.EntityMapping(t((*scpb.Policy)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+		rel.EntityAttr(PolicyID, "PolicyID"),
+	),
+	rel.EntityMapping(t((*scpb.PolicyName)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+		rel.EntityAttr(PolicyID, "PolicyID"),
+		rel.EntityAttr(Name, "Name"),
+	),
+	rel.EntityMapping(t((*scpb.PolicyRole)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+		rel.EntityAttr(PolicyID, "PolicyID"),
+		rel.EntityAttr(Name, "RoleName"),
+	),
+	rel.EntityMapping(t((*scpb.PolicyUsingExpr)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+		rel.EntityAttr(PolicyID, "PolicyID"),
+		rel.EntityAttr(Expr, "Expr"),
+	),
+	rel.EntityMapping(t((*scpb.PolicyWithCheckExpr)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+		rel.EntityAttr(PolicyID, "PolicyID"),
+		rel.EntityAttr(Expr, "Expr"),
+	),
+	rel.EntityMapping(t((*scpb.PolicyDeps)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+		rel.EntityAttr(PolicyID, "PolicyID"),
+		rel.EntityAttr(ReferencedTypeIDs, "UsesTypeIDs"),
+		rel.EntityAttr(ReferencedSequenceIDs, "UsesRelationIDs"),
+		rel.EntityAttr(ReferencedFunctionIDs, "UsesFunctionIDs"),
+	),
 	// Common elements.
 	rel.EntityMapping(t((*scpb.Namespace)(nil)),
 		rel.EntityAttr(DescID, "DescriptorID"),
@@ -466,6 +501,12 @@ var elementSchemaOptions = []rel.SchemaOption{
 		rel.EntityAttr(DescID, "TableID"),
 	),
 	rel.EntityMapping(t((*scpb.TableSchemaLocked)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+	),
+	rel.EntityMapping(t((*scpb.RowLevelSecurityEnabled)(nil)),
+		rel.EntityAttr(DescID, "TableID"),
+	),
+	rel.EntityMapping(t((*scpb.RowLevelSecurityForced)(nil)),
 		rel.EntityAttr(DescID, "TableID"),
 	),
 	rel.EntityMapping(t((*scpb.LDRJobIDs)(nil)),

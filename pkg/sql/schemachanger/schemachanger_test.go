@@ -67,9 +67,9 @@ func TestSchemaChangerJobRunningStatus(t *testing.T) {
 				require.NoError(t, err)
 				switch stageIdx {
 				case 0:
-					runningStatus0.Store(job.Progress().RunningStatus)
+					runningStatus0.Store(job.Progress().StatusMessage)
 				case 1:
-					runningStatus1.Store(job.Progress().RunningStatus)
+					runningStatus1.Store(job.Progress().StatusMessage)
 				}
 				return nil
 			},
@@ -129,11 +129,6 @@ func TestSchemaChangerJobErrorDetails(t *testing.T) {
 	tdb.ExpectErr(t, `boom`, `ALTER TABLE db.t ADD COLUMN b INT NOT NULL DEFAULT (123)`)
 	jobID := jobspb.JobID(atomic.LoadInt64(&jobIDValue))
 
-	// Check that the error is featured in the jobs table.
-	results := tdb.QueryStr(t, `SELECT execution_errors FROM crdb_internal.jobs WHERE job_id = $1`, jobID)
-	require.Len(t, results, 1)
-	require.Regexp(t, `^\{\"reverting execution from .* on 1 failed: boom\"\}$`, results[0][0])
-
 	// Check that the error details are also featured in the jobs table.
 	checkErrWithDetails := func(ee *errorspb.EncodedError) {
 		require.NotNil(t, ee)
@@ -146,7 +141,7 @@ func TestSchemaChangerJobErrorDetails(t *testing.T) {
 		require.Regexp(t, "^stages graphviz: https.*", ed[1])
 		require.Regexp(t, "^dependencies graphviz: https.*", ed[2])
 	}
-	results = tdb.QueryStr(t, `SELECT encode(payload, 'hex') FROM crdb_internal.system_jobs WHERE id = $1`, jobID)
+	results := tdb.QueryStr(t, `SELECT encode(payload, 'hex') FROM crdb_internal.system_jobs WHERE id = $1`, jobID)
 	require.Len(t, results, 1)
 	b, err := hex.DecodeString(results[0][0])
 	require.NoError(t, err)
@@ -154,8 +149,6 @@ func TestSchemaChangerJobErrorDetails(t *testing.T) {
 	err = protoutil.Unmarshal(b, &p)
 	require.NoError(t, err)
 	checkErrWithDetails(p.FinalResumeError)
-	require.LessOrEqual(t, 1, len(p.RetriableExecutionFailureLog))
-	checkErrWithDetails(p.RetriableExecutionFailureLog[0].Error)
 
 	// Check that the error is featured in the event log.
 	const eventLogCountQuery = `SELECT count(*) FROM system.eventlog WHERE "eventType" = $1`
@@ -167,7 +160,9 @@ func TestSchemaChangerJobErrorDetails(t *testing.T) {
 	require.EqualValues(t, [][]string{{"1"}}, results)
 	const eventLogErrorQuery = `SELECT (info::JSONB)->>'Error' FROM system.eventlog WHERE "eventType" = 'reverse_schema_change'`
 	results = tdb.QueryStr(t, eventLogErrorQuery)
-	require.EqualValues(t, [][]string{{"boom"}}, results)
+	require.Equal(t, 1, len(results))
+	require.Equal(t, 1, len(results[0]))
+	require.Regexp(t, `^boom`, results[0][0])
 }
 
 func TestInsertDuringAddColumnNotWritingToCurrentPrimaryIndex(t *testing.T) {
@@ -308,17 +303,17 @@ func TestDropJobCancelable(t *testing.T) {
 	}{
 		{
 			"simple drop sequence",
-			"BEGIN;DROP SEQUENCE db.sq1; END;",
+			"BEGIN; SET LOCAL autocommit_before_ddl = false; DROP SEQUENCE db.sq1; END;",
 			false,
 		},
 		{
 			"simple drop view",
-			"BEGIN;DROP VIEW db.v1; END;",
+			"BEGIN; SET LOCAL autocommit_before_ddl = false; DROP VIEW db.v1; END;",
 			false,
 		},
 		{
 			"simple drop table",
-			"BEGIN;DROP TABLE db.t1 CASCADE; END;",
+			"BEGIN; SET LOCAL autocommit_before_ddl = false; DROP TABLE db.t1 CASCADE; END;",
 			false,
 		},
 	}
@@ -381,7 +376,7 @@ CREATE SEQUENCE db.sq1;
 SELECT job_id FROM [SHOW JOBS]
 WHERE 
 	job_type = 'SCHEMA CHANGE' AND 
-	status = $1`, jobs.StatusRunning)
+	status = $1`, jobs.StateRunning)
 			if err != nil {
 				t.Fatalf("unexpected error querying rows %s", err)
 			}
@@ -954,4 +949,200 @@ func TestSchemaChangerFailsOnMissingDesc(t *testing.T) {
 	// Validate the job has hit a terminal state.
 	tdb.CheckQueryResults(t, "SELECT status FROM crdb_internal.jobs WHERE statement LIKE '%ADD COLUMN%'",
 		[][]string{{"failed"}})
+}
+
+// TestCreateObjectConcurrency validates that concurrent create object with
+// independent references never hit txn retry errors. All objects are created
+// under the same schema.
+func TestCreateObjectConcurrency(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	// Validate concurrency behaviour for objects under a schema
+	tests := []struct {
+		name       string
+		setupStmt  string
+		firstStmt  string
+		secondStmt string
+	}{
+		{
+			name: "create table with function references",
+			setupStmt: `
+CREATE FUNCTION public.fn1 (input INT) RETURNS INT8
+                                LANGUAGE SQL
+                                AS $$
+                                SELECT input::INT8;
+                                $$;
+CREATE FUNCTION public.wrap(input INT) RETURNS INT8
+                                LANGUAGE SQL
+                                AS $$
+                                SELECT public.fn1(input);
+                                $$;
+CREATE FUNCTION public.wrap2(input INT) RETURNS INT8
+                                LANGUAGE SQL
+                                AS $$
+                                SELECT public.fn1(input);
+                                $$;
+`,
+			firstStmt:  "CREATE TABLE t1(n int default public.wrap(10))",
+			secondStmt: "CREATE TABLE t2(n int default public.wrap2(10))",
+		},
+		{
+			name: "create table with type reference",
+			setupStmt: `
+CREATE TYPE status AS ENUM ('open', 'closed', 'inactive');
+CREATE TYPE status1 AS ENUM ('open', 'closed', 'inactive');
+`,
+			firstStmt:  "CREATE TABLE t1(n status)",
+			secondStmt: "CREATE TABLE t2(n status1)",
+		},
+		{
+			name: "create view with type references",
+			setupStmt: `
+CREATE TYPE status AS ENUM ('open', 'closed', 'inactive');
+CREATE TYPE status1 AS ENUM ('open', 'closed', 'inactive');
+CREATE FUNCTION public.fn1 (input INT) RETURNS INT8
+                                LANGUAGE SQL
+                                AS $$
+                                SELECT input::INT8;
+                                $$;
+CREATE FUNCTION public.wrap(input INT) RETURNS INT8
+                                LANGUAGE SQL
+                                AS $$
+                                SELECT public.fn1(input);
+                                $$;
+CREATE FUNCTION public.wrap2(input INT) RETURNS INT8
+                                LANGUAGE SQL
+                                AS $$
+                                SELECT public.fn1(input);
+                                $$;
+CREATE TABLE t1(n int default public.wrap(10));
+CREATE TABLE t2(n int default public.wrap2(10));
+`,
+			// Note: Views cannot invoke UDFs directly yet.
+			firstStmt:  "CREATE VIEW v1 AS (SELECT n, 'open'::status FROM public.t1)",
+			secondStmt: "CREATE VIEW v2 AS (SELECT n, 'open'::status1 FROM public.t2)",
+		},
+		{
+			name: "create sequence with ownership",
+			setupStmt: `
+CREATE TABLE t1(n int);
+CREATE TABLE t2(n int);
+`,
+			firstStmt:  "CREATE SEQUENCE sq1 OWNED BY t1.n",
+			secondStmt: "CREATE SEQUENCE sq2 OWNED BY t2.n",
+		},
+		{
+			name:       "create type",
+			firstStmt:  "CREATE TYPE status AS ENUM ('open', 'closed', 'inactive');",
+			secondStmt: "CREATE TYPE status1 AS ENUM ('open', 'closed', 'inactive');",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{
+				// This would work with secondary tenants as well, but the span config
+				// limited logic can hit transaction retries on the span_count table.
+				DefaultTestTenant: base.TestIsForStuffThatShouldWorkWithSecondaryTenantsButDoesntYet(138733),
+			})
+			defer s.Stopper().Stop(ctx)
+
+			runner := sqlutils.MakeSQLRunner(sqlDB)
+
+			// Ensure we don't commit any DDLs in a transaction.
+			runner.Exec(t, `SET CLUSTER SETTING sql.defaults.autocommit_before_ddl.enabled = 'false'`)
+			runner.Exec(t, "SET autocommit_before_ddl = false")
+
+			firstConn, err := sqlDB.Conn(ctx)
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, firstConn.Close())
+			}()
+			secondConn, err := sqlDB.Conn(ctx)
+			require.NoError(t, err)
+			defer func() {
+				require.NoError(t, secondConn.Close())
+			}()
+
+			firstConnReady := make(chan struct{})
+			secondConnReady := make(chan struct{})
+
+			runner.Exec(t, test.setupStmt)
+
+			grp := ctxgroup.WithContext(ctx)
+
+			grp.Go(func() error {
+				defer close(firstConnReady)
+				tx, err := firstConn.BeginTx(ctx, nil)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec(test.firstStmt)
+				if err != nil {
+					return err
+				}
+				firstConnReady <- struct{}{}
+				<-secondConnReady
+				return tx.Commit()
+			})
+			grp.Go(func() error {
+				defer close(secondConnReady)
+				tx, err := secondConn.BeginTx(ctx, nil)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec(test.secondStmt)
+				if err != nil {
+					return err
+				}
+				<-firstConnReady
+				secondConnReady <- struct{}{}
+				return tx.Commit()
+			})
+			require.NoError(t, grp.Wait())
+		})
+	}
+}
+
+// TestPreventCreateDropConcurrently confirms that objects cannot be
+// created under a schema that is being dropped.
+func TestPreventCreateDropConcurrently(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{
+		// This would work with secondary tenants as well, but the span config
+		// limited logic can hit transaction retries on the span_count table.
+		DefaultTestTenant: base.TestIsForStuffThatShouldWorkWithSecondaryTenantsButDoesntYet(138733),
+	})
+	defer s.Stopper().Stop(ctx)
+
+	runner := sqlutils.MakeSQLRunner(sqlDB)
+
+	runner.Exec(t, `
+CREATE SCHEMA other_schema;
+CREATE SCHEMA complex_drop_schema;
+CREATE TABLE complex_drop_schema.t1(n int UNIQUE);
+CREATE TABLE other_schema.t1(n int REFERENCES complex_drop_schema.t1(n));
+`)
+
+	runner.Exec(t, `SET CLUSTER SETTING jobs.debug.pausepoints = 'newschemachanger.before.exec';`)
+	runner.ExpectErr(t, " \\d+ was paused before it completed with reason: pause point \"newschemachanger.before.exec\" hit",
+		"DROP SCHEMA complex_drop_schema CASCADE;")
+
+	grp := ctxgroup.WithContext(ctx)
+	grp.GoCtx(func(ctx context.Context) error {
+		_, err := sqlDB.Exec("CREATE SEQUENCE  complex_drop_schema.sc1")
+		return err
+	})
+
+	runner.Exec(t, `SET CLUSTER SETTING jobs.debug.pausepoints = ''`)
+	runner.Exec(t,
+		`RESUME JOB (SELECT job_id FROM crdb_internal.jobs WHERE description LIKE 'DROP SCHEMA%' AND status='paused' FETCH FIRST 1 ROWS ONLY);`)
+	require.Error(t,
+		grp.Wait(),
+		`cannot create "complex_drop_schema.sc1" because the target database or schema does not exist`)
 }

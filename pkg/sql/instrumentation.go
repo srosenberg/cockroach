@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -17,9 +16,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/settings"
-	"github.com/cockroachdb/cockroach/pkg/sql/appstatspb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execstats"
@@ -68,7 +65,6 @@ var collectTxnStatsSampleRate = settings.RegisterFloatSetting(
 //
 //   - SetDiscardRows(), ShouldDiscardRows(), ShouldSaveFlows(),
 //     ShouldBuildExplainPlan(), RecordExplainPlan(), RecordPlanInfo(),
-//     PlanForStats() can be called at any point during execution.
 //
 //   - Finish() is called after query execution.
 type instrumentationHelper struct {
@@ -91,12 +87,6 @@ type instrumentationHelper struct {
 	// collectBundle is set when we are collecting a diagnostics bundle for a
 	// statement; it triggers saving of extra information like the plan string.
 	collectBundle bool
-
-	// planGistMatchingBundle is set when the bundle collection was enabled for
-	// a request with plan-gist matching enabled. In particular, such a bundle
-	// will be somewhat incomplete (it'll miss the plan string as well as the
-	// trace will miss all the events that happened in the optimizer).
-	planGistMatchingBundle bool
 
 	// collectExecStats is set when we are collecting execution statistics for a
 	// statement.
@@ -147,10 +137,6 @@ type instrumentationHelper struct {
 	topLevelStats topLevelQueryStats
 
 	queryLevelStatsWithErr *execstats.QueryLevelStatsWithErr
-
-	// If savePlanForStats is true and the explainPlan was collected, the
-	// serialized version of the plan will be returned via PlanForStats().
-	savePlanForStats bool
 
 	explainPlan      *explain.Plan
 	distribution     physicalplan.PlanDistribution
@@ -214,13 +200,16 @@ type instrumentationHelper struct {
 	// stats scanned by this query.
 	nanosSinceStatsForecasted time.Duration
 
-	// joinTypeCounts records the number of times each type of logical join was
-	// used in the query.
-	joinTypeCounts map[descpb.JoinType]int
+	// retryCount is the number of times the transaction was retried.
+	retryCount uint64
 
-	// joinAlgorithmCounts records the number of times each type of join algorithm
-	// was used in the query.
-	joinAlgorithmCounts map[exec.JoinAlgorithm]int
+	// joinTypeCounts records the number of times each type of logical join was
+	// used in the query, up to 255.
+	joinTypeCounts [execbuilder.NumRecordedJoinTypes]uint8
+
+	// joinAlgorithmCounts records the number of times each type of join
+	// algorithm was used in the query, up to 255.
+	joinAlgorithmCounts [exec.NumJoinAlgorithms]uint8
 
 	// scanCounts records the number of times scans were used in the query.
 	scanCounts [exec.NumScanCountTypes]int
@@ -419,14 +408,16 @@ func (ih *instrumentationHelper) Setup(
 	statsCollector *sslocal.StatsCollector,
 	p *planner,
 	stmtDiagnosticsRecorder *stmtdiagnostics.Registry,
-	fingerprint string,
+	stmt *Statement,
 	implicitTxn bool,
 	txnPriority roachpb.UserPriority,
 	collectTxnExecStats bool,
+	retryCount int32,
 ) (newCtx context.Context) {
-	ih.fingerprint = fingerprint
+	ih.fingerprint = stmt.StmtNoConstants
 	ih.implicitTxn = implicitTxn
 	ih.txnPriority = txnPriority
+	ih.retryCount = uint64(retryCount)
 	ih.codec = cfg.Codec
 	ih.origCtx = ctx
 	ih.evalCtx = p.EvalContext()
@@ -448,16 +439,13 @@ func (ih *instrumentationHelper) Setup(
 
 	default:
 		ih.collectBundle, ih.diagRequestID, ih.diagRequest =
-			stmtDiagnosticsRecorder.ShouldCollectDiagnostics(ctx, fingerprint, "" /* planGist */)
+			stmtDiagnosticsRecorder.ShouldCollectDiagnostics(ctx, stmt.StmtNoConstants, "" /* planGist */)
 		// IsRedacted will be false when ih.collectBundle is false.
 		ih.explainFlags.RedactValues = ih.explainFlags.RedactValues || ih.diagRequest.IsRedacted()
 	}
 
 	ih.stmtDiagnosticsRecorder = stmtDiagnosticsRecorder
 	ih.withStatementTrace = cfg.TestingKnobs.WithStatementTrace
-
-	var previouslySampled bool
-	previouslySampled, ih.savePlanForStats = statsCollector.ShouldSample(fingerprint, implicitTxn, p.SessionData().Database)
 
 	defer func() { ih.finalizeSetup(newCtx, cfg) }()
 
@@ -475,29 +463,31 @@ func (ih *instrumentationHelper) Setup(
 			ih.needFinish = true
 			return ctx
 		}
+	}
+
+	if collectTxnExecStats {
+		statsCollector.SetStatementSampled(stmt.StmtNoConstants, implicitTxn, p.SessionData().Database)
 	} else {
-		if buildutil.CrdbTestBuild {
-			panic(errors.AssertionFailedf("the context doesn't have a tracing span"))
-		}
+		collectTxnExecStats = func() bool {
+			if stmt.AST.StatementType() == tree.TypeTCL {
+				// We don't collect stats for  statements so there's no need
+				//to trace them.
+				return false
+			}
+
+			// TODO(117690): Unify StmtStatsEnable and TxnStatsEnable into a single cluster setting.
+			if collectTxnStatsSampleRate.Get(&cfg.Settings.SV) == 0 || !sqlstats.StmtStatsEnable.Get(&cfg.Settings.SV) {
+				return false
+			}
+
+			// If this is the first time we see this statement in the current stats
+			// container, we'll collect its execution stats anyway (unless the user
+			// disabled txn or stmt stats collection entirely).
+			return statsCollector.ShouldSampleNewStatement(stmt.StmtNoConstants, implicitTxn, p.SessionData().Database)
+		}()
 	}
 
-	shouldSampleFirstEncounter := func() bool {
-		// If this is the first time we see this statement in the current stats
-		// container, we'll collect its execution stats anyway (unless the user
-		// disabled txn or stmt stats collection entirely).
-		// TODO(117690): Unify StmtStatsEnable and TxnStatsEnable into a single cluster setting.
-		if collectTxnStatsSampleRate.Get(&cfg.Settings.SV) == 0 ||
-			!sqlstats.StmtStatsEnable.Get(&cfg.Settings.SV) {
-			return false
-		}
-
-		// We don't want to collect the stats if the stats container is full,
-		// since previouslySampled will always return false for statements
-		// not already in the container.
-		return !previouslySampled && !statsCollector.StatementsContainerFull()
-	}
-
-	ih.collectExecStats = collectTxnExecStats || shouldSampleFirstEncounter()
+	ih.collectExecStats = collectTxnExecStats
 
 	if !ih.collectBundle && ih.withStatementTrace == nil && ih.outputMode == unmodifiedOutput {
 		if ih.collectExecStats {
@@ -534,46 +524,73 @@ func (ih *instrumentationHelper) Setup(
 // provided fingerprint and plan gist. It assumes that the bundle is not
 // currently being collected.
 func (ih *instrumentationHelper) setupWithPlanGist(
-	ctx context.Context, cfg *ExecutorConfig, fingerprint, planGist string, plan *planTop,
+	ctx context.Context, p *planner, cfg *ExecutorConfig,
 ) context.Context {
+	planGist := ih.planGist.String()
 	ih.collectBundle, ih.diagRequestID, ih.diagRequest =
-		ih.stmtDiagnosticsRecorder.ShouldCollectDiagnostics(ctx, fingerprint, planGist)
-	// IsRedacted will be false when ih.collectBundle is false.
+		ih.stmtDiagnosticsRecorder.ShouldCollectDiagnostics(ctx, p.stmt.StmtNoConstants, planGist)
+	if !ih.collectBundle {
+		return ctx
+	}
 	ih.explainFlags.RedactValues = ih.explainFlags.RedactValues || ih.diagRequest.IsRedacted()
-	if ih.collectBundle {
-		ih.needFinish = true
-		ih.collectExecStats = true
-		ih.planGistMatchingBundle = true
-		if ih.sp == nil || !ih.sp.IsVerbose() {
-			// We will create a verbose span
-			// - if we don't have a span yet, or
-			// - we do have a span, but it's not verbose.
-			//
-			// ih.sp can be non-nil and non-verbose when it was created in Setup
-			// because the stmt got sampled (i.e. ih.collectExecStats was true).
-			// (Note that it couldn't have been EXPLAIN ANALYZE code path in
-			// Setup because it uses a different output mode.) In any case,
-			// we're responsible for finishing this span, so we reassign it to
-			// ih.parentSp to keep track of.
-			//
-			// Note that we don't need to explicitly use ih.sp when creating a
-			// child span because it's implicitly stored in ctx.
-			if ih.sp != nil {
-				ih.parentSp = ih.sp
-			}
-			ctx, ih.sp = tracing.EnsureChildSpan(
-				ctx, cfg.AmbientCtx.Tracer, "plan-gist bundle",
-				tracing.WithRecording(tracingpb.RecordingVerbose),
-			)
-			ih.shouldFinishSpan = true
-			ih.finalizeSetup(ctx, cfg)
-			log.VEventf(ctx, 1, "plan-gist matching bundle collection began after the optimizer finished its part")
+	ih.needFinish = true
+	ih.collectExecStats = true
+	if ih.sp == nil || !ih.sp.IsVerbose() {
+		// We will create a verbose span
+		// - if we don't have a span yet, or
+		// - we do have a span, but it's not verbose.
+		//
+		// ih.sp can be non-nil and non-verbose when it was created in Setup
+		// because the stmt got sampled (i.e. ih.collectExecStats was true).
+		// (Note that it couldn't have been EXPLAIN ANALYZE code path in Setup
+		// because it uses a different output mode.) In any case, we're
+		// responsible for finishing this span, so we reassign it to ih.parentSp
+		// to keep track of.
+		//
+		// Note that we don't need to explicitly use ih.sp when creating a child
+		// span because it's implicitly stored in ctx.
+		if ih.sp != nil {
+			ih.parentSp = ih.sp
+		}
+		ctx, ih.sp = tracing.EnsureChildSpan(
+			ctx, cfg.AmbientCtx.Tracer, "plan-gist bundle",
+			tracing.WithRecording(tracingpb.RecordingVerbose),
+		)
+		ih.shouldFinishSpan = true
+		ih.finalizeSetup(ctx, cfg)
+	}
+	log.VEventf(ctx, 1, "plan-gist matching bundle collection began after the optimizer finished its part")
+	if cfg.TestingKnobs.DeterministicExplain {
+		ih.explainFlags.Deflake = explain.DeflakeAll
+	}
+	// Since we haven't enabled the bundle collection before the optimization,
+	// explain plan wasn't populated. We'll rerun the execbuilder with the
+	// explain factory to get that (the explain factory will be used because we
+	// now have collectBundle set to true).
+	//
+	// Disable telemetry in order to not double count things since we've already
+	// built the plan once.
+	const disableTelemetryAndPlanGists = true
+	// Note that we don't reset the optPlanningCtx because it was already reset
+	// and set up when we created the original optimizer plan - no need to reset
+	// it just for running the execbuild.
+	origPlanComponents := p.curPlan.planComponents
+	err := p.runExecBuild(ctx, p.curPlan.mem, disableTelemetryAndPlanGists)
+	if err != nil {
+		// This seems unexpected, but let's proceed with the original plan.
+		if buildutil.CrdbTestBuild {
+			panic(errors.NewAssertionErrorWithWrappedErrf(err, "unexpectedly got an error when rerun execbuild due to plan-gist match"))
+		} else {
+			log.VEventf(ctx, 1, "hit an error when using explain factory: %v", err)
+			p.curPlan.planComponents = origPlanComponents
 		}
 	} else {
-		// We won't need the memo and the catalog, so free it up.
-		plan.mem = nil
-		plan.catalog = nil
+		// We need to close the original plan since we're going to overwrite it.
+		// Note that the new plan will be closed correctly by the defer in
+		// dispatchToExecutionEngine.
+		origPlanComponents.close(ctx)
 	}
+
 	return ctx
 }
 
@@ -675,45 +692,10 @@ func (ih *instrumentationHelper) Finish(
 				}
 			}
 			planString := ob.BuildString()
-			if ih.planGistMatchingBundle {
-				// We don't have the plan string available since the stmt bundle
-				// collection was enabled _after_ the optimizer was done.
-				// Instead, we do have the gist available, so we'll decode it
-				// and use that as the plan string.
-				var sb strings.Builder
-				sb.WriteString("-- plan is incomplete due to gist matching: ")
-				sb.WriteString(ih.planGist.String())
-				// Perform best-effort decoding ignoring all errors.
-				if it, err := ie.QueryIterator(
-					bundleCtx, "plan-gist-decoding" /* opName */, nil, /* txn */
-					fmt.Sprintf("SELECT * FROM crdb_internal.decode_plan_gist('%s')", ih.planGist.String()),
-				); err == nil {
-					defer func() {
-						_ = it.Close()
-					}()
-					sb.WriteString("\n")
-					// Ignore the errors returned on Next call.
-					for ok, _ = it.Next(bundleCtx); ok; ok, _ = it.Next(bundleCtx) {
-						row := it.Cur()
-						var line string
-						// Be conservative in case the output format changes.
-						if len(row) == 1 {
-							var ds tree.DString
-							ds, ok = tree.AsDString(row[0])
-							line = string(ds)
-						} else {
-							ok = false
-						}
-						if !ok && buildutil.CrdbTestBuild {
-							return errors.AssertionFailedf("unexpected output format for decoding plan gist %s", ih.planGist.String())
-						}
-						if ok {
-							sb.WriteString("\n")
-							sb.WriteString(line)
-						}
-					}
-				}
-				planString = sb.String()
+			if planString == "" {
+				// This should only happen with plan-gist matching where we hit
+				// an error when using the explain factory.
+				planString = "-- plan is missing, probably hit an error with gist matching: " + ih.planGist.String()
 			}
 			bundle = buildStatementBundle(
 				bundleCtx, ih.explainFlags, cfg.DB, p, ie.(*InternalExecutor),
@@ -816,27 +798,6 @@ func (ih *instrumentationHelper) RecordPlanInfo(
 	ih.optimized = optimized
 }
 
-// PlanForStats returns the plan as an ExplainTreePlanNode tree, if it was
-// collected (nil otherwise). It should be called after RecordExplainPlan() and
-// RecordPlanInfo().
-func (ih *instrumentationHelper) PlanForStats(ctx context.Context) *appstatspb.ExplainTreePlanNode {
-	if ih.explainPlan == nil || !ih.savePlanForStats {
-		return nil
-	}
-
-	ob := explain.NewOutputBuilder(explain.Flags{
-		HideValues: true,
-	})
-	ob.AddDistribution(ih.distribution.String())
-	ob.AddVectorized(ih.vectorized)
-	ob.AddPlanType(ih.generic, ih.optimized)
-	if err := emitExplain(ctx, ob, ih.evalCtx, ih.codec, ih.explainPlan); err != nil {
-		log.Warningf(ctx, "unable to emit explain plan tree: %v", err)
-		return nil
-	}
-	return ob.BuildProtoTree()
-}
-
 // emitExplainAnalyzePlanToOutputBuilder creates an explain.OutputBuilder and
 // populates it with the EXPLAIN ANALYZE plan. BuildString/BuildStringRows can
 // be used on the result.
@@ -856,6 +817,8 @@ func (ih *instrumentationHelper) emitExplainAnalyzePlanToOutputBuilder(
 	ob.AddDistribution(ih.distribution.String())
 	ob.AddVectorized(ih.vectorized)
 	ob.AddPlanType(ih.generic, ih.optimized)
+	ob.AddRetryCount(ih.retryCount)
+	ob.AddRetryTime(phaseTimes.GetTransactionRetryLatency())
 
 	if queryStats != nil {
 		if queryStats.KVRowsRead != 0 {
@@ -878,7 +841,7 @@ func (ih *instrumentationHelper) emitExplainAnalyzePlanToOutputBuilder(
 			ob.AddTopLevelField("used follower read", "")
 		}
 
-		if !ih.containsMutation && ih.vectorized && grunning.Supported() {
+		if !ih.containsMutation && ih.vectorized && grunning.Supported {
 			// Currently we cannot separate SQL CPU time from local KV CPU time for
 			// mutations, since they do not collect statistics. Additionally, CPU time
 			// is only collected for vectorized plans since it is gathered by the
@@ -908,7 +871,12 @@ func (ih *instrumentationHelper) emitExplainAnalyzePlanToOutputBuilder(
 	}
 	ob.AddTxnInfo(iso, ih.txnPriority, qos, asOfSystemTime)
 
-	if err := emitExplain(ctx, ob, ih.evalCtx, ih.codec, ih.explainPlan); err != nil {
+	// When building EXPLAIN ANALYZE output we do **not** want to create
+	// post-query plans if they are missing. The fact that they are missing
+	// highlights that they were not executed, so we will only include that into
+	// the output.
+	const createPostQueryPlanIfMissing = false
+	if err := emitExplain(ctx, ob, ih.evalCtx, ih.codec, ih.explainPlan, createPostQueryPlanIfMissing); err != nil {
 		ob.AddField("error emitting plan", fmt.Sprint(err))
 	}
 	return ob
@@ -975,14 +943,19 @@ func (ih *instrumentationHelper) getAssociateNodeWithComponentsFn() func(exec.No
 
 // execNodeTraceMetadata associates exec.Nodes with metadata for corresponding
 // execution components.
-// Currently, we only store info about processors. A node can correspond to
-// multiple processors if the plan is distributed.
+//
+// A single exec.Node might result in multiple stages in the physical plan, and
+// each stage will be represented by a separate execComponents object. The
+// stages are accumulated in the order of creation, meaning that later stages
+// appear later in the slice.
 //
 // TODO(radu): we perform similar processing of execution traces in various
 // parts of the code. Come up with some common infrastructure that makes this
 // easier.
-type execNodeTraceMetadata map[exec.Node]execComponents
+type execNodeTraceMetadata map[exec.Node][]execComponents
 
+// execComponents contains all components that correspond to a single stage of
+// a physical plan.
 type execComponents []execinfrapb.ComponentID
 
 // associateNodeWithComponents is called during planning, as processors are
@@ -990,7 +963,11 @@ type execComponents []execinfrapb.ComponentID
 func (m execNodeTraceMetadata) associateNodeWithComponents(
 	node exec.Node, components execComponents,
 ) {
-	m[node] = components
+	if prevComponents, ok := m[node]; ok {
+		m[node] = append(prevComponents, components)
+	} else {
+		m[node] = []execComponents{components}
+	}
 }
 
 // annotateExplain aggregates the statistics in the trace and annotates
@@ -1017,60 +994,72 @@ func (m execNodeTraceMetadata) annotateExplain(
 	var walk func(n *explain.Node)
 	walk = func(n *explain.Node) {
 		wrapped := n.WrappedNode()
-		if components, ok := m[wrapped]; ok {
+		if componentsMultipleStages, ok := m[wrapped]; ok {
 			var nodeStats exec.ExecutionStats
 
 			incomplete := false
 			var sqlInstanceIDs, kvNodeIDs intsets.Fast
 			var regions []string
-			for _, c := range components {
-				if c.Type == execinfrapb.ComponentID_PROCESSOR {
-					sqlInstanceIDs.Add(int(c.SQLInstanceID))
-					if region := sqlInstanceIDToRegion[int64(c.SQLInstanceID)]; region != "" {
-						// Add only if the region is not an empty string (it
-						// will be an empty string if the region is not setup).
-						regions = util.InsertUnique(regions, region)
+			lastStageIdx := len(componentsMultipleStages) - 1
+		OUTER:
+			for stageIdx, components := range componentsMultipleStages {
+				for _, c := range components {
+					if c.Type == execinfrapb.ComponentID_PROCESSOR {
+						sqlInstanceIDs.Add(int(c.SQLInstanceID))
+						if region := sqlInstanceIDToRegion[int64(c.SQLInstanceID)]; region != "" {
+							// Add only if the region is not an empty string (it
+							// will be an empty string if the region is not
+							// setup).
+							regions = util.InsertUnique(regions, region)
+						}
 					}
+					stats := statsMap[c]
+					if stats == nil {
+						incomplete = true
+						break OUTER
+					}
+					for _, kvNodeID := range stats.KV.NodeIDs {
+						kvNodeIDs.Add(int(kvNodeID))
+					}
+					regions = util.CombineUnique(regions, stats.KV.Regions)
+					if stageIdx == lastStageIdx {
+						// Row count and batch count are special statistics that
+						// we need to populate based only on the last stage of
+						// processors.
+						nodeStats.RowCount.MaybeAdd(stats.Output.NumTuples)
+						nodeStats.VectorizedBatchCount.MaybeAdd(stats.Output.NumBatches)
+					}
+					nodeStats.KVTime.MaybeAdd(stats.KV.KVTime)
+					nodeStats.KVContentionTime.MaybeAdd(stats.KV.ContentionTime)
+					nodeStats.KVBytesRead.MaybeAdd(stats.KV.BytesRead)
+					nodeStats.KVPairsRead.MaybeAdd(stats.KV.KVPairsRead)
+					nodeStats.KVRowsRead.MaybeAdd(stats.KV.TuplesRead)
+					nodeStats.KVBatchRequestsIssued.MaybeAdd(stats.KV.BatchRequestsIssued)
+					nodeStats.UsedStreamer = nodeStats.UsedStreamer || stats.KV.UsedStreamer
+					nodeStats.StepCount.MaybeAdd(stats.KV.NumInterfaceSteps)
+					nodeStats.InternalStepCount.MaybeAdd(stats.KV.NumInternalSteps)
+					nodeStats.SeekCount.MaybeAdd(stats.KV.NumInterfaceSeeks)
+					nodeStats.InternalSeekCount.MaybeAdd(stats.KV.NumInternalSeeks)
+					nodeStats.MaxAllocatedMem.MaybeAdd(stats.Exec.MaxAllocatedMem)
+					nodeStats.MaxAllocatedDisk.MaybeAdd(stats.Exec.MaxAllocatedDisk)
+					if noMutations && !makeDeterministic {
+						// Currently we cannot separate SQL CPU time from local
+						// KV CPU time for mutations, since they do not collect
+						// statistics. Additionally, some platforms do not
+						// support usage of the grunning library, so we can't
+						// show this field when a deterministic output is
+						// required.
+						// TODO(drewk): once the grunning library is fully
+						// supported we can unconditionally display the CPU time
+						// here and in output.go and component_stats.go.
+						nodeStats.SQLCPUTime.MaybeAdd(stats.Exec.CPUTime)
+					}
+					nodeStats.UsedFollowerRead = nodeStats.UsedFollowerRead || stats.KV.UsedFollowerRead
 				}
-				stats := statsMap[c]
-				if stats == nil {
-					incomplete = true
-					break
-				}
-				for _, kvNodeID := range stats.KV.NodeIDs {
-					kvNodeIDs.Add(int(kvNodeID))
-				}
-				regions = util.CombineUnique(regions, stats.KV.Regions)
-				nodeStats.RowCount.MaybeAdd(stats.Output.NumTuples)
-				nodeStats.KVTime.MaybeAdd(stats.KV.KVTime)
-				nodeStats.KVContentionTime.MaybeAdd(stats.KV.ContentionTime)
-				nodeStats.KVBytesRead.MaybeAdd(stats.KV.BytesRead)
-				nodeStats.KVPairsRead.MaybeAdd(stats.KV.KVPairsRead)
-				nodeStats.KVRowsRead.MaybeAdd(stats.KV.TuplesRead)
-				nodeStats.KVBatchRequestsIssued.MaybeAdd(stats.KV.BatchRequestsIssued)
-				nodeStats.UsedStreamer = stats.KV.UsedStreamer
-				nodeStats.StepCount.MaybeAdd(stats.KV.NumInterfaceSteps)
-				nodeStats.InternalStepCount.MaybeAdd(stats.KV.NumInternalSteps)
-				nodeStats.SeekCount.MaybeAdd(stats.KV.NumInterfaceSeeks)
-				nodeStats.InternalSeekCount.MaybeAdd(stats.KV.NumInternalSeeks)
-				nodeStats.VectorizedBatchCount.MaybeAdd(stats.Output.NumBatches)
-				nodeStats.MaxAllocatedMem.MaybeAdd(stats.Exec.MaxAllocatedMem)
-				nodeStats.MaxAllocatedDisk.MaybeAdd(stats.Exec.MaxAllocatedDisk)
-				if noMutations && !makeDeterministic {
-					// Currently we cannot separate SQL CPU time from local KV CPU time
-					// for mutations, since they do not collect statistics. Additionally,
-					// some platforms do not support usage of the grunning library, so we
-					// can't show this field when a deterministic output is required.
-					// TODO(drewk): once the grunning library is fully supported we can
-					// unconditionally display the CPU time here and in output.go and
-					// component_stats.go.
-					nodeStats.SQLCPUTime.MaybeAdd(stats.Exec.CPUTime)
-				}
-				nodeStats.UsedFollowerRead = nodeStats.UsedFollowerRead || stats.KV.UsedFollowerRead
 			}
 			// If we didn't get statistics for all processors, we don't show the
-			// incomplete results. In the future, we may consider an incomplete flag
-			// if we want to show them with a warning.
+			// incomplete results. In the future, we may consider an incomplete
+			// flag if we want to show them with a warning.
 			if !incomplete {
 				for i, ok := sqlInstanceIDs.Next(0); ok; i, ok = sqlInstanceIDs.Next(i + 1) {
 					nodeStats.SQLNodes = append(nodeStats.SQLNodes, fmt.Sprintf("n%d", i))

@@ -48,7 +48,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/rpc"
 	"github.com/cockroachdb/cockroach/pkg/rpc/nodedialer"
 	"github.com/cockroachdb/cockroach/pkg/scheduledjobs"
-	"github.com/cockroachdb/cockroach/pkg/security"
+	"github.com/cockroachdb/cockroach/pkg/security/clientcert"
 	"github.com/cockroachdb/cockroach/pkg/security/clientsecopts"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/server/diagnostics"
@@ -90,6 +90,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire"
 	"github.com/cockroachdb/cockroach/pkg/sql/querycache"
 	"github.com/cockroachdb/cockroach/pkg/sql/rangeprober"
+	"github.com/cockroachdb/cockroach/pkg/sql/regions"
 	"github.com/cockroachdb/cockroach/pkg/sql/rolemembershipcache"
 	"github.com/cockroachdb/cockroach/pkg/sql/scheduledlogging"
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scdeps"
@@ -110,6 +111,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/stmtdiagnostics"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilegecache"
 	tablemetadatacacheutil "github.com/cockroachdb/cockroach/pkg/sql/tablemetadatacache/util"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex"
 	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/ts"
@@ -803,6 +805,9 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 
 	rangeStatsFetcher := rangestats.NewFetcher(cfg.db)
 
+	vecIndexManager := vecindex.NewManager(ctx, cfg.stopper, codec, cfg.internalDB)
+	cfg.registry.AddMetricStruct(vecIndexManager.Metrics())
+
 	// Set up the DistSQL server.
 	distSQLCfg := execinfra.ServerConfig{
 		AmbientContext:   cfg.AmbientCtx,
@@ -846,11 +851,12 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		InternalRowMetrics: &internalRowMetrics,
 		KVStreamerMetrics:  &kvStreamerMetrics,
 
-		SQLLivenessReader: cfg.sqlLivenessProvider.CachedReader(),
-		JobRegistry:       jobRegistry,
-		Gossip:            cfg.gossip,
-		SQLInstanceDialer: cfg.sqlInstanceDialer,
-		LeaseManager:      leaseMgr,
+		SQLLivenessReader:         cfg.sqlLivenessProvider.CachedReader(),
+		BlockingSQLLivenessReader: cfg.sqlLivenessProvider.BlockingReader(),
+		JobRegistry:               jobRegistry,
+		Gossip:                    cfg.gossip,
+		SQLInstanceDialer:         cfg.sqlInstanceDialer,
+		LeaseManager:              leaseMgr,
 
 		ExternalStorage:        cfg.externalStorage,
 		ExternalStorageFromURI: cfg.externalStorageFromURI,
@@ -865,6 +871,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		AdmissionPacerFactory:    cfg.admissionPacerFactory,
 		ExecutorConfig:           execCfg,
 		RootSQLMemoryPoolSize:    cfg.MemoryPoolSize,
+		VecIndexManager:          vecIndexManager,
 	}
 	cfg.TempStorageConfig.Mon.SetMetrics(distSQLMetrics.CurDiskBytesCount, distSQLMetrics.MaxDiskBytesHist)
 	if codec.ForSystemTenant() {
@@ -950,7 +957,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 			return nil, errors.Wrap(err, "initializing certificate manager")
 		}
 		certMgr.RegisterExpirationCache(
-			security.NewClientCertExpirationCache(
+			clientcert.NewClientCertExpirationCache(
 				ctx, cfg.Settings, cfg.stopper, &timeutil.DefaultTimeSource{}, rootSQLMemoryMonitor,
 			),
 		)
@@ -1042,6 +1049,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		),
 
 		QueryCache:                 querycache.New(cfg.QueryCacheSize),
+		VecIndexManager:            vecIndexManager,
 		RowMetrics:                 &rowMetrics,
 		InternalRowMetrics:         &internalRowMetrics,
 		ProtectedTimestampProvider: cfg.protectedtsProvider,
@@ -1263,6 +1271,7 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 		var systemDeps upgrade.SystemDeps
 		keyVisKnobs, _ := cfg.TestingKnobs.KeyVisualizer.(*keyvisualizer.TestingKnobs)
 		sqlStatsKnobs, _ := cfg.TestingKnobs.SQLStatsKnobs.(*sqlstats.TestingKnobs)
+		upgradeKnobs, _ := cfg.TestingKnobs.UpgradeManager.(*upgradebase.TestingKnobs)
 		if codec.ForSystemTenant() {
 			c = upgradecluster.New(upgradecluster.ClusterConfig{
 				NodeLiveness:     nodeLiveness,
@@ -1287,16 +1296,16 @@ func newSQLServer(ctx context.Context, cfg sqlServerArgs) (*SQLServer, error) {
 			KeyVisKnobs:        keyVisKnobs,
 			SQLStatsKnobs:      sqlStatsKnobs,
 			TenantInfoAccessor: cfg.tenantConnect,
+			TestingKnobs:       upgradeKnobs,
 		}
 
-		knobs, _ := cfg.TestingKnobs.UpgradeManager.(*upgradebase.TestingKnobs)
 		upgradeMgr = upgrademanager.NewManager(
 			systemDeps, leaseMgr, cfg.circularInternalExecutor, jobRegistry, codec,
-			cfg.Settings, clusterIDForSQL, knobs, execCfg.LicenseEnforcer,
+			cfg.Settings, clusterIDForSQL, upgradeKnobs, execCfg.LicenseEnforcer,
 		)
 		execCfg.UpgradeJobDeps = upgradeMgr
 		execCfg.VersionUpgradeHook = upgradeMgr.Migrate
-		execCfg.UpgradeTestingKnobs = knobs
+		execCfg.UpgradeTestingKnobs = upgradeKnobs
 	}
 
 	// Instantiate a span config manager.
@@ -1467,6 +1476,7 @@ func (s *SQLServer) preStart(
 		// from KV (or elsewhere).
 		if entry, _ := s.tenantConnect.TenantInfo(); entry.Name != "" {
 			s.cfg.idProvider.SetTenantName(entry.Name)
+			s.execCfg.RPCContext.TenantName = entry.Name
 			s.execCfg.VirtualClusterName = entry.Name
 		}
 		if err := s.startCheckService(ctx, stopper); err != nil {
@@ -1541,7 +1551,7 @@ func (s *SQLServer) preStart(
 			res, err := sql.GetLocalityRegionEnumPhysicalRepresentation(
 				ctx, s.internalDB, keys.SystemDatabaseID, s.distSQLServer.Locality,
 			)
-			if errors.Is(err, sql.ErrNotMultiRegionDatabase) {
+			if errors.Is(err, regions.ErrNotMultiRegionDatabase) {
 				err = nil
 			}
 			return res, err
@@ -1642,7 +1652,7 @@ func (s *SQLServer) preStart(
 	// care about what uses the SQL server before those migrations
 	// run.
 
-	s.leaseMgr.RefreshLeases(ctx, stopper, s.execCfg.DB)
+	s.leaseMgr.StartRefreshLeasesTask(ctx, stopper, s.execCfg.DB)
 	s.leaseMgr.RunBackgroundLeasingTask(ctx)
 
 	if err := s.jobRegistry.Start(ctx, stopper); err != nil {
@@ -1747,7 +1757,7 @@ func (s *SQLServer) preStart(
 
 	// Delete all orphaned table leases created by a prior instance of this
 	// node. This also uses SQL.
-	s.leaseMgr.DeleteOrphanedLeases(ctx, orphanedLeasesTimeThresholdNanos)
+	s.leaseMgr.DeleteOrphanedLeases(ctx, orphanedLeasesTimeThresholdNanos, s.execCfg.Locality)
 
 	if err := s.statsRefresher.Start(ctx, stopper, stats.DefaultRefreshInterval); err != nil {
 		return err

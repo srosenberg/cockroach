@@ -40,6 +40,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/rditer"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/stateloader"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/txnwait"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvtestutils"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/rpc"
@@ -759,8 +760,7 @@ func mergeCheckingTimestampCaches(
 					// Loosely-coupled truncation requires an engine flush to advance
 					// guaranteed durability.
 					require.NoError(t, r.Store().TODOEngine().Flush())
-					firstIndex := r.GetFirstIndex()
-					if firstIndex < truncIndex {
+					if firstIndex := r.GetCompactedIndex() + 1; firstIndex < truncIndex {
 						return errors.Errorf("truncate not applied, %d < %d", firstIndex, truncIndex)
 					}
 				}
@@ -2996,14 +2996,9 @@ func TestStoreRangeMergeAbandonedFollowersAutomaticallyGarbageCollected(t *testi
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	st := cluster.MakeTestingClusterSettings()
-	kvserver.OverrideLeaderLeaseMetamorphism(ctx, &st.SV)
 	tc := testcluster.StartTestCluster(t, 3,
 		base.TestClusterArgs{
 			ReplicationMode: base.ReplicationManual,
-			ServerArgs: base.TestServerArgs{
-				Settings: st,
-			},
 		})
 	defer tc.Stopper().Stop(ctx)
 	scratch := tc.ScratchRange(t)
@@ -3026,6 +3021,13 @@ func TestStoreRangeMergeAbandonedFollowersAutomaticallyGarbageCollected(t *testi
 		}
 		if !rhsRepl.OwnsValidLease(ctx, tc.Servers[2].Clock().NowAsClockTimestamp()) {
 			return errors.New("store2 does not own valid lease for rhs range")
+		}
+
+		// This is important for leader leases to avoid a race between us stopping
+		// Raft traffic below, and Raft attempting to transfer the lease leadership
+		// to the leaseholder.
+		if rhsRepl.RaftStatus().ID != rhsRepl.RaftStatus().Lead {
+			return errors.New("store2 isn't the leader for rhs range")
 		}
 		return nil
 	})
@@ -4140,7 +4142,7 @@ func TestStoreRangeMergeRaftSnapshot(t *testing.T) {
 		index := repl.GetLastIndex()
 		truncArgs := &kvpb.TruncateLogRequest{
 			RequestHeader: kvpb.RequestHeader{Key: keyA},
-			Index:         index,
+			Index:         index + 1,
 			RangeID:       repl.RangeID,
 		}
 		if _, err := kv.SendWrapped(ctx, distSender, truncArgs); err != nil {
@@ -4647,7 +4649,7 @@ func TestMergeQueue(t *testing.T) {
 
 					clearRange(t, lhsStartKey, rhsEndKey)
 					setSplitObjective(secondSplitObjective)
-					if !grunning.Supported() {
+					if !grunning.Supported {
 						// CPU isn't a supported split objective when grunning isn't
 						// supported. Switching the dimension will have no effect, as the
 						// objective gets overridden in such cases to always be QPS.
@@ -5255,7 +5257,7 @@ func setupClusterWithSubsumedRange(
 		testutils.SucceedsSoon(t, func() error {
 			var err error
 			newDesc, err = tc.AddVoters(desc.StartKey.AsRawKey(), tc.Target(1))
-			if kv.IsExpectedRelocateError(err) {
+			if kvtestutils.IsExpectedRelocateError(err) {
 				// Retry.
 				return errors.Wrap(err, "ChangeReplicas received error")
 			}

@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/isolation"
+	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/memo"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/norm"
@@ -294,6 +295,12 @@ func TestMemoIsStale(t *testing.T) {
 	evalCtx.SessionData().DisallowFullTableScans = false
 	notStale()
 
+	// Stale avoid full table scan.
+	evalCtx.SessionData().AvoidFullTableScansInMutations = true
+	stale()
+	evalCtx.SessionData().AvoidFullTableScansInMutations = false
+	notStale()
+
 	// Stale large full scan rows.
 	evalCtx.SessionData().LargeFullScanRows = 1000
 	stale()
@@ -527,6 +534,36 @@ func TestMemoIsStale(t *testing.T) {
 	evalCtx.SessionData().UnsafeAllowTriggersModifyingCascades = false
 	notStale()
 
+	evalCtx.SessionData().LegacyVarcharTyping = true
+	stale()
+	evalCtx.SessionData().LegacyVarcharTyping = false
+	notStale()
+
+	evalCtx.SessionData().OptimizerPreferBoundedCardinality = true
+	stale()
+	evalCtx.SessionData().OptimizerPreferBoundedCardinality = false
+	notStale()
+
+	evalCtx.SessionData().OptimizerMinRowCount = 1.0
+	stale()
+	evalCtx.SessionData().OptimizerMinRowCount = 0
+	notStale()
+
+	evalCtx.SessionData().OptimizerCheckInputMinRowCount = 1.0
+	stale()
+	evalCtx.SessionData().OptimizerCheckInputMinRowCount = 0
+	notStale()
+
+	evalCtx.SessionData().OptimizerPlanLookupJoinsWithReverseScans = true
+	stale()
+	evalCtx.SessionData().OptimizerPlanLookupJoinsWithReverseScans = false
+	notStale()
+
+	evalCtx.SessionData().Internal = true
+	stale()
+	evalCtx.SessionData().Internal = false
+	notStale()
+
 	// User no longer has access to view.
 	catalog.View(tree.NewTableNameWithSchema("t", catconstants.PublicSchemaName, "abcview")).Revoked = true
 	_, err = o.Memo().IsStale(ctx, &evalCtx, catalog)
@@ -585,6 +622,25 @@ func TestMemoIsStale(t *testing.T) {
 	catalog.Function("one").Version = 1
 	stale()
 	catalog.Function("one").Version = 0
+	notStale()
+
+	// User changes (without RLS)
+	oldUser := evalCtx.SessionData().UserProto
+	newUser := username.MakeSQLUsernameFromPreNormalizedString("newuser").EncodeProto()
+	evalCtx.SessionData().UserProto = newUser
+	notStale()
+	evalCtx.SessionData().UserProto = oldUser
+	notStale()
+
+	// User changes (with RLS)
+	o.Memo().Metadata().SetRLSEnabled(evalCtx.SessionData().User(), true, /* admin */
+		1 /* tableID */, false /* isTableOwnerAndNotForced */)
+	notStale()
+	evalCtx.SessionData().UserProto = newUser
+	stale()
+	evalCtx.SessionData().UserProto = oldUser
+	notStale()
+	o.Memo().Metadata().ClearRLSEnabled()
 	notStale()
 }
 

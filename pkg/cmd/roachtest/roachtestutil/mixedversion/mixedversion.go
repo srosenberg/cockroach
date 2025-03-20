@@ -69,9 +69,10 @@ package mixedversion
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
+	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -94,6 +95,7 @@ import (
 
 const (
 	logPrefix                  = "mixed-version-test"
+	beforeClusterStartLabel    = "run before cluster start hooks"
 	startupLabel               = "run startup hooks"
 	backgroundLabel            = "start background hooks"
 	mixedVersionLabel          = "run mixed-version hooks"
@@ -134,6 +136,25 @@ const (
 	SystemOnlyDeployment      = DeploymentMode("system-only")
 	SharedProcessDeployment   = DeploymentMode("shared-process")
 	SeparateProcessDeployment = DeploymentMode("separate-process")
+)
+
+// These env vars are used by the planner to generate plans with
+// certain specs regardless of the seed. This can be useful for
+// forcing certain plans to be generated for debugging without needing
+// trial and error.
+const (
+	// deploymentModeOverrideEnv overrides the deployment mode used.
+	// 	- MVT_DEPLOYMENT_MODE=system
+	deploymentModeOverrideEnv = "MVT_DEPLOYMENT_MODE"
+
+	// upgradePathOverrideEnv is parsed to override the upgrade path used.
+	// Specifying a release series uses the latest patch release.
+	// 	- MVT_UPGRADE_PATH=24.1.5,24.2.0,current
+	// 	- MVT_UPGRADE_PATH=24.1,24.2,current
+	upgradePathOverrideEnv = "MVT_UPGRADE_PATH"
+
+	// Dump the test plan and return, i.e., skipping the actual execution of the test.
+	dryRunEnv = "MVT_DRY_RUN"
 )
 
 var (
@@ -290,6 +311,7 @@ type (
 	// testHooks groups hooks associated with a mixed-version test in
 	// its different stages: startup, mixed-version, and after-test.
 	testHooks struct {
+		beforeClusterStart    hooks
 		startup               hooks
 		background            hooks
 		mixedVersion          hooks
@@ -300,11 +322,19 @@ type (
 	// testOptions contains some options that can be changed by the user
 	// that expose some control over the generated test plan and behaviour.
 	testOptions struct {
-		useFixturesProbability         float64
-		upgradeTimeout                 time.Duration
-		minUpgrades                    int
-		maxUpgrades                    int
-		minimumSupportedVersion        *clusterupgrade.Version
+		useFixturesProbability  float64
+		upgradeTimeout          time.Duration
+		maxNumPlanSteps         int
+		minUpgrades             int
+		maxUpgrades             int
+		minimumSupportedVersion *clusterupgrade.Version
+		// N.B. If unset, then there is no minimum bootstrap version enforced.
+		// We do this over, e.g. setting it to the oldest version we have release data
+		// for, because unit tests can use fake release data much older than that.
+		minimumBootstrapVersion *clusterupgrade.Version
+		// predecessorFunc computes the predecessor of a particular
+		// release. By default, random predecessors are used, but tests
+		// may choose to always use the latest predecessor as well.
 		predecessorFunc                predecessorFunc
 		waitForReplication             bool
 		skipVersionProbability         float64
@@ -343,11 +373,6 @@ type (
 		// Invariant: there is exactly one channel in `bgChans` for each
 		// hook in `Test.hooks.background`.
 		bgChans []shouldStop
-
-		// predecessorFunc computes the predecessor of a particular
-		// release. By default, random predecessors are used, but tests
-		// may choose to always use the latest predecessor as well.
-		predecessorFunc predecessorFunc
 
 		// the following are test-only fields, allowing tests to simulate
 		// cluster properties without passing a cluster.Cluster
@@ -391,6 +416,14 @@ func UpgradeTimeout(timeout time.Duration) CustomOption {
 	}
 }
 
+// MaxNumPlanSteps allows callers to set a maximum number of steps to
+// be performed during a test run.
+func MaxNumPlanSteps(n int) CustomOption {
+	return func(opts *testOptions) {
+		opts.maxNumPlanSteps = n
+	}
+}
+
 // MinUpgrades allows callers to set a minimum number of upgrades each
 // test run should exercise.
 func MinUpgrades(n int) CustomOption {
@@ -425,6 +458,16 @@ func NumUpgrades(n int) CustomOption {
 func MinimumSupportedVersion(v string) CustomOption {
 	return func(opts *testOptions) {
 		opts.minimumSupportedVersion = clusterupgrade.MustParseVersion(v)
+	}
+}
+
+// MinimumBootstrapVersion allows tests to specify that the
+// cluster created should only be bootstrapped on a version
+// `v` or above. May override MaxUpgrades if the minimum bootstrap
+// version does not support that many upgrades.
+func MinimumBootstrapVersion(v string) CustomOption {
+	return func(opts *testOptions) {
+		opts.minimumBootstrapVersion = clusterupgrade.MustParseVersion(v)
 	}
 }
 
@@ -517,8 +560,11 @@ func defaultTestOptions() testOptions {
 	return testOptions{
 		// We use fixtures more often than not as they are more likely to
 		// detect bugs, especially in migrations.
-		useFixturesProbability:  0.7,
-		upgradeTimeout:          clusterupgrade.DefaultUpgradeTimeout,
+		useFixturesProbability: 0.7,
+		upgradeTimeout:         clusterupgrade.DefaultUpgradeTimeout,
+		// N.B. The default is unlimited since a priori we don't know anything
+		// about the test plan.
+		maxNumPlanSteps:         math.MaxInt,
 		minUpgrades:             1,
 		maxUpgrades:             4,
 		minimumSupportedVersion: OldestSupportedVersion,
@@ -527,7 +573,6 @@ func defaultTestOptions() testOptions {
 		// appears to help, but we should be cautious of tests that create a lot
 		// of ranges as this may add significant delay.
 		waitForReplication:             true,
-		predecessorFunc:                randomPredecessor,
 		enabledDeploymentModes:         allDeploymentModes,
 		skipVersionProbability:         0.5,
 		overriddenMutatorProbabilities: make(map[string]float64),
@@ -583,17 +628,16 @@ func NewTest(
 	testCtx, cancel := context.WithCancel(ctx)
 
 	test := &Test{
-		ctx:             testCtx,
-		cancel:          cancel,
-		cluster:         c,
-		logger:          testLogger,
-		crdbNodes:       crdbNodes,
-		options:         opts,
-		rt:              t,
-		prng:            prng,
-		seed:            seed,
-		hooks:           &testHooks{crdbNodes: crdbNodes},
-		predecessorFunc: opts.predecessorFunc,
+		ctx:       testCtx,
+		cancel:    cancel,
+		cluster:   c,
+		logger:    testLogger,
+		crdbNodes: crdbNodes,
+		options:   opts,
+		rt:        t,
+		prng:      prng,
+		seed:      seed,
+		hooks:     &testHooks{crdbNodes: crdbNodes},
 	}
 
 	assertValidTest(test, t.Fatal)
@@ -665,6 +709,18 @@ func (t *Test) InMixedVersion(desc string, fn stepFunc) {
 	}
 
 	t.hooks.AddMixedVersion(versionUpgradeHook{name: desc, predicate: predicate, fn: fn})
+}
+
+// BeforeClusterStart registers a callback that is run before cluster
+// initialization. In the case of multitenant deployments, hooks
+// will be run for both the system and tenant cluster startup. If
+// only one of the two is desired, the caller can check the upgrade
+// stage.
+func (t *Test) BeforeClusterStart(desc string, fn stepFunc) {
+	// Since the callbacks here are only referenced in the setup steps
+	// of the planner, there is no need to have a predicate function
+	// gating them.
+	t.hooks.AddBeforeClusterStart(versionUpgradeHook{name: desc, fn: fn})
 }
 
 // OnStartup registers a callback that is run once the cluster is
@@ -757,6 +813,11 @@ func (t *Test) Run() {
 
 	t.logger.Printf("mixed-version test:\n%s", plan.PrettyPrint())
 
+	if override := os.Getenv(dryRunEnv); override != "" {
+		t.logger.Printf("skipping test run in dry-run mode")
+		return
+	}
+
 	// Mark the deployment mode and versions, so they show up in the github issue. This makes
 	// it easier to group failures together without having to dig into the test logs.
 	t.rt.AddParam("mvtDeploymentMode", string(plan.deploymentMode))
@@ -782,34 +843,57 @@ func (t *Test) plan() (plan *TestPlan, retErr error) {
 			)
 		}
 	}()
+	var retries int
+	// In case the length of the test plan exceeds `opts.maxNumPlanSteps`, retry up to 100 times.
+	// N.B. Statistically, the expected number of retries is miniscule; see #138014 for more info.
+	for ; retries < 100; retries++ {
 
-	// Pick a random deployment mode to use in this test run among the
-	// list of enabled deployment modes enabled for this test.
-	deploymentMode := t.options.enabledDeploymentModes[t.prng.Intn(len(t.options.enabledDeploymentModes))]
-	t.updateOptionsForDeploymentMode(deploymentMode)
+		// Pick a random deployment mode to use in this test run among the
+		// list of enabled deployment modes enabled for this test.
+		deploymentMode := t.deploymentMode()
+		t.updateOptionsForDeploymentMode(deploymentMode)
 
-	previousReleases, err := t.choosePreviousReleases()
-	if err != nil {
-		return nil, err
+		upgradePath, err := t.chooseUpgradePath()
+		if err != nil {
+			return nil, err
+		}
+
+		if override := os.Getenv(upgradePathOverrideEnv); override != "" {
+			upgradePath, err = parseUpgradePathOverride(override)
+			if err != nil {
+				return nil, err
+			}
+			t.logger.Printf("%s override set: %s", upgradePathOverrideEnv, upgradePath)
+		}
+
+		tenantDescriptor := t.tenantDescriptor(deploymentMode)
+		initialRelease := upgradePath[0]
+
+		planner := testPlanner{
+			versions:       upgradePath,
+			deploymentMode: deploymentMode,
+			seed:           t.seed,
+			currentContext: newInitialContext(initialRelease, t.crdbNodes, tenantDescriptor),
+			options:        t.options,
+			rt:             t.rt,
+			isLocal:        t.isLocal(),
+			hooks:          t.hooks,
+			prng:           t.prng,
+			bgChans:        t.bgChans,
+		}
+		// Let's generate a plan.
+		plan = planner.Plan()
+		if plan.length <= t.options.maxNumPlanSteps {
+			break
+		}
 	}
-
-	tenantDescriptor := t.tenantDescriptor(deploymentMode)
-	initialRelease := previousReleases[0]
-
-	planner := testPlanner{
-		versions:       append(previousReleases, clusterupgrade.CurrentVersion()),
-		deploymentMode: deploymentMode,
-		seed:           t.seed,
-		currentContext: newInitialContext(initialRelease, t.crdbNodes, tenantDescriptor),
-		options:        t.options,
-		rt:             t.rt,
-		isLocal:        t.isLocal(),
-		hooks:          t.hooks,
-		prng:           t.prng,
-		bgChans:        t.bgChans,
+	if plan.length > t.options.maxNumPlanSteps {
+		return nil, errors.Newf("unable to generate a test plan with at most %d steps", t.options.maxNumPlanSteps)
 	}
-
-	return planner.Plan(), nil
+	if retries > 0 {
+		t.logger.Printf("WARNING: generated a smaller (%d) test plan after %d retries", plan.length, retries)
+	}
+	return plan, nil
 }
 
 func (t *Test) clusterArch() vm.CPUArch {
@@ -835,14 +919,15 @@ func (t *Test) runCommandFunc(nodes option.NodeListOption, cmd string) stepFunc 
 	}
 }
 
-// choosePreviousReleases returns a list of predecessor releases
-// relative to the current build version. It uses the `predecessorFunc`
-// field to compute the actual list of predecessors. This function
-// may also choose to skip releases when supported. Special care is
-// taken to avoid using releases that are not available under a
-// certain cluster architecture. Specifically, ARM64 builds are
-// only available on v22.2.0+.
-func (t *Test) choosePreviousReleases() ([]*clusterupgrade.Version, error) {
+// chooseUpgradePath returns a valid upgrade path for the test to
+// take. An upgrade path is a list of predecessor versions that can
+// be upgraded into eachother, ending at the current build version.
+// It uses the `predecessorFunc` field to compute the actual list of
+// predecessors. This function may also choose to skip releases when
+// supported. Special care is taken to avoid using releases that are
+// not available under a certain cluster architecture. Specifically,
+// ARM64 builds are only available on v22.2.0+.
+func (t *Test) chooseUpgradePath() ([]*clusterupgrade.Version, error) {
 	skipVersions := t.prng.Float64() < t.options.skipVersionProbability
 	isAvailable := func(v *clusterupgrade.Version) bool {
 		if t.clusterArch() != vm.ArchARM64 {
@@ -860,7 +945,7 @@ func (t *Test) choosePreviousReleases() ([]*clusterupgrade.Version, error) {
 	// function to change in case the rules around what upgrades are
 	// possible in CRDB change.
 	possiblePredecessorsFor := func(v *clusterupgrade.Version) ([]*clusterupgrade.Version, error) {
-		pred, err := t.predecessorFunc(t.prng, v, t.options.minimumSupportedVersion)
+		pred, err := t.options.predecessorFunc(t.prng, v, t.options.minimumSupportedVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -875,7 +960,7 @@ func (t *Test) choosePreviousReleases() ([]*clusterupgrade.Version, error) {
 			return []*clusterupgrade.Version{pred}, nil
 		}
 
-		predPred, err := t.predecessorFunc(t.prng, pred, t.options.minimumSupportedVersion)
+		predPred, err := t.options.predecessorFunc(t.prng, pred, t.options.minimumSupportedVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -894,35 +979,79 @@ func (t *Test) choosePreviousReleases() ([]*clusterupgrade.Version, error) {
 		return []*clusterupgrade.Version{pred, predPred}, nil
 	}
 
+	// possibleUpgradePathsMap maps a version to the possible upgrade paths that
+	// can be taken with exactly n upgrades.
+	possibleUpgradePathsMap := make(map[*clusterupgrade.Version]map[int][][]*clusterupgrade.Version)
+	// findPossibleUpgradePaths finds all legal upgrade paths ending at version `v` with
+	// exactly `numUpgrades` upgrades.
+	var findPossibleUpgradePaths func(v *clusterupgrade.Version, numUpgrades int) ([][]*clusterupgrade.Version, error)
+	findPossibleUpgradePaths = func(v *clusterupgrade.Version, numUpgrades int) ([][]*clusterupgrade.Version, error) {
+		// If there are no upgrades, then the only possible path is the current version.
+		if numUpgrades == 0 {
+			return [][]*clusterupgrade.Version{{v}}, nil
+		}
+		// Check if we have already computed the possible upgrade paths for this version.
+		if _, ok := possibleUpgradePathsMap[v]; !ok {
+			possibleUpgradePathsMap[v] = make(map[int][][]*clusterupgrade.Version)
+		} else if paths, ok := possibleUpgradePathsMap[v][numUpgrades]; ok {
+			return paths, nil
+		}
+
+		// The possible upgrade paths for this version with exactly `numUpgrades` upgrades
+		// is the possible upgrade paths of `v's` predecessors with `numUpgrades-1`
+		// upgrades plus version `v`.
+		var paths [][]*clusterupgrade.Version
+		predecessors, err := possiblePredecessorsFor(v)
+		if err != nil {
+			return nil, err
+		}
+		for _, pred := range predecessors {
+			// If the predecessor is older than the minimum bootstrapped version, then
+			// it's not a legal upgrade path.
+			if t.options.minimumBootstrapVersion != nil && pred.LessThan(t.options.minimumBootstrapVersion) {
+				continue
+			}
+			predPaths, err := findPossibleUpgradePaths(pred, numUpgrades-1)
+			if err != nil {
+				return nil, err
+			}
+			for _, p := range predPaths {
+				paths = append(paths, append(p, v))
+			}
+		}
+
+		possibleUpgradePathsMap[v][numUpgrades] = paths
+		return paths, nil
+	}
+
 	currentVersion := clusterupgrade.CurrentVersion()
 	var upgradePath []*clusterupgrade.Version
 	numUpgrades := t.numUpgrades()
 
-	for j := 0; j < numUpgrades; j++ {
-		predecessors, err := possiblePredecessorsFor(currentVersion)
+	// Best effort to find a valid upgrade path with exactly numUpgrades. If one is
+	// not found because some release is not available for the cluster architecture,
+	// retry with fewer upgrades. We log a warning  below in case we have a shorter
+	// upgrade path than requested because of this.
+	for j := numUpgrades; j > 0; j-- {
+		// N.B. We need to enumerate all possible upgrade paths in order to respect the
+		// minimum bootstrap version of the test. Due to skip upgrades, we can't just
+		// greedily pick the first path we find with `numUpgrades` upgrades.
+		possibleUpgradePaths, err := findPossibleUpgradePaths(currentVersion, j)
 		if err != nil {
 			return nil, err
 		}
-
-		// If there are no valid predecessors, it means some release is
-		// not available for the cluster architecture. We log a warning
-		// below in case we have a shorter upgrade path than requested
-		// because of this.
-		if len(predecessors) == 0 {
+		if possibleUpgradePaths != nil {
+			upgradePath = possibleUpgradePaths[t.prng.Intn(len(possibleUpgradePaths))]
 			break
 		}
-
-		chosenPredecessor := predecessors[t.prng.Intn(len(predecessors))]
-		upgradePath = append(upgradePath, chosenPredecessor)
-		currentVersion = chosenPredecessor
 	}
 
 	if len(upgradePath) < numUpgrades {
+		if t.clusterArch() != vm.ArchARM64 {
+			return nil, errors.Newf("unable to find a valid upgrade path with %d upgrades", numUpgrades)
+		}
 		t.logger.Printf("WARNING: skipping upgrades as ARM64 is only supported on %s+", minSupportedARM64Version)
 	}
-
-	// The upgrade path to be returned is from oldest to newest release.
-	slices.Reverse(upgradePath)
 	return upgradePath, nil
 }
 
@@ -933,6 +1062,15 @@ func (t *Test) numUpgrades() int {
 	return t.prng.Intn(
 		t.options.maxUpgrades-t.options.minUpgrades+1,
 	) + t.options.minUpgrades
+}
+
+func (t *Test) deploymentMode() DeploymentMode {
+	deploymentMode := t.options.enabledDeploymentModes[t.prng.Intn(len(t.options.enabledDeploymentModes))]
+	if deploymentModeOverride := os.Getenv(deploymentModeOverrideEnv); deploymentModeOverride != "" {
+		deploymentMode = DeploymentMode(deploymentModeOverride)
+		t.logger.Printf("%s override set: %s", deploymentModeOverrideEnv, deploymentModeOverride)
+	}
+	return deploymentMode
 }
 
 // latestPredecessor is an implementation of `predecessorFunc` that
@@ -978,7 +1116,7 @@ func randomPredecessor(
 		)
 	}
 
-	// If the patch version of `minSupporrted` is 0, it means that we
+	// If the patch version of `minSupported` is 0, it means that we
 	// can choose any patch release in the predecessor series. It is
 	// also safe to return `predV` here if the `minSupported` version is
 	// a pre-release: we already validated that `predV`is at least
@@ -1018,14 +1156,18 @@ func (t *Test) updateOptionsForDeploymentMode(mode DeploymentMode) {
 		}
 	}
 
-	if mode == SeparateProcessDeployment {
-		// We use latest predecessors in separate-process deployments
-		// since they are more prone to flake (due to the relative lack of
-		// testing historically). In addition, production separate-process
-		// deployments (Serverless) run in much more controlled
-		// environments than self-hosted and are generally running the
-		// latest patch releases.
-		t.options.predecessorFunc = latestPredecessor
+	if t.options.predecessorFunc == nil {
+		switch mode {
+		case SeparateProcessDeployment:
+			// We use latest predecessors in separate-process deployments since separate-process
+			// is more prone to flake (due to the relative lack of testing historically). In
+			// addition, production separate-process deployments (Serverless) run in much more
+			// controlled environments than self-hosted and are generally running the latest
+			// patch releases.
+			t.options.predecessorFunc = latestPredecessor
+		default:
+			t.options.predecessorFunc = randomPredecessor
+		}
 	}
 }
 
@@ -1156,6 +1298,10 @@ func (h hooks) AsSteps(prng *rand.Rand, testContext *Context, stopChans []should
 	return steps
 }
 
+func (th *testHooks) AddBeforeClusterStart(hook versionUpgradeHook) {
+	th.beforeClusterStart = append(th.beforeClusterStart, hook)
+}
+
 func (th *testHooks) AddStartup(hook versionUpgradeHook) {
 	th.startup = append(th.startup, hook)
 }
@@ -1170,6 +1316,10 @@ func (th *testHooks) AddMixedVersion(hook versionUpgradeHook) {
 
 func (th *testHooks) AddAfterUpgradeFinalized(hook versionUpgradeHook) {
 	th.afterUpgradeFinalized = append(th.afterUpgradeFinalized, hook)
+}
+
+func (th *testHooks) BeforeClusterStartSteps(testContext *Context, rng *rand.Rand) []testStep {
+	return th.beforeClusterStart.AsSteps(rng, testContext, nil)
 }
 
 func (th *testHooks) StartupSteps(testContext *Context, rng *rand.Rand) []testStep {
@@ -1252,6 +1402,8 @@ func assertValidTest(test *Test, fatalFunc func(...interface{})) {
 	fail := func(err error) {
 		fatalFunc(errors.Wrap(err, "mixedversion.NewTest"))
 	}
+	minUpgrades := test.options.minUpgrades
+	maxUpgrades := test.options.maxUpgrades
 
 	if test.options.useFixturesProbability > 0 && len(test.crdbNodes) != numNodesInFixtures {
 		fail(
@@ -1262,11 +1414,11 @@ func assertValidTest(test *Test, fatalFunc func(...interface{})) {
 		)
 	}
 
-	if test.options.minUpgrades > test.options.maxUpgrades {
+	if minUpgrades > maxUpgrades {
 		fail(
 			fmt.Errorf(
 				"invalid test options: maxUpgrades (%d) must be greater than minUpgrades (%d)",
-				test.options.maxUpgrades, test.options.minUpgrades,
+				maxUpgrades, minUpgrades,
 			),
 		)
 	}
@@ -1328,4 +1480,75 @@ func assertValidTest(test *Test, fatalFunc func(...interface{})) {
 			SeparateProcessDeployment, minSeparateProcessNodes,
 		))
 	}
+
+	// Validate that the minimum bootstrap version if set.
+	if minBootstrapVersion := test.options.minimumBootstrapVersion; minBootstrapVersion != nil {
+		// The minimum bootstrap version should be from an older major
+		// version or, if from the same major version, from an older minor
+		// version.
+		validVersion = minBootstrapVersion.Major() < currentVersion.Major() ||
+			(minBootstrapVersion.Major() == currentVersion.Major() && minBootstrapVersion.Minor() < currentVersion.Minor())
+
+		if !validVersion {
+			fail(
+				fmt.Errorf(
+					"invalid test options: minimum bootstrap version (%s) should be from an older release series than current version (%s)",
+					minBootstrapVersion.Version.String(), currentVersion.Version.String(),
+				),
+			)
+		}
+
+		// The minimum bootstrap version should be compatible with the min and max upgrades.
+		maxUpgradesFromBootstrapVersion, err := release.MajorReleasesBetween(&minBootstrapVersion.Version, &currentVersion.Version)
+		if err != nil {
+			fail(err)
+		}
+		if maxUpgradesFromBootstrapVersion < minUpgrades {
+			fail(errors.Newf(
+				"invalid test options: minimum bootstrap version (%s) does not allow for min %d upgrades",
+				minBootstrapVersion, minUpgrades,
+			))
+		}
+		// Override the max upgrades if the minimum bootstrap version does not allow for that
+		// many upgrades.
+		if maxUpgrades > maxUpgradesFromBootstrapVersion {
+			test.logger.Printf("WARN: overriding maxUpgrades, minimum bootstrap version (%s) allows for at most %d upgrades", minBootstrapVersion, maxUpgradesFromBootstrapVersion)
+			test.options.maxUpgrades = maxUpgradesFromBootstrapVersion
+		}
+	}
+}
+
+// parseUpgradePathOverride parses the upgrade path override and returns it as a list
+// of versions for the framework to use instead of generating a path based on
+// the seed. It assumes the user knows what it's doing and forgoes validation
+// of legal upgrade paths.
+func parseUpgradePathOverride(override string) ([]*clusterupgrade.Version, error) {
+	versions := strings.Split(override, ",")
+	var upgradePath []*clusterupgrade.Version
+	for _, v := range versions {
+		// Special case for the current version, as the current version on
+		// master is usually a long prerelease.
+		if v == "current" || v == "<current>" {
+			upgradePath = append(upgradePath, clusterupgrade.CurrentVersion())
+			continue
+		}
+
+		parsedVersion, err := clusterupgrade.ParseVersion(v)
+		if err == nil {
+			upgradePath = append(upgradePath, parsedVersion)
+			continue
+		}
+
+		// If the supplied version is invalid, it might be a release series.
+		// Support parsing release series as well since the user might not
+		// care about the exact patch version.
+		parsedVersion, err = clusterupgrade.LatestPatchRelease(v)
+		if err != nil {
+			return nil, errors.Newf("unable to parse version: %s", v)
+		}
+
+		upgradePath = append(upgradePath, parsedVersion)
+	}
+
+	return upgradePath, nil
 }

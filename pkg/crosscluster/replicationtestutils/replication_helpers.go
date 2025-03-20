@@ -16,12 +16,14 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster"
+	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/desctestutils"
+	"github.com/cockroachdb/cockroach/pkg/testutils/pgurlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
@@ -256,7 +258,7 @@ func NewReplicationHelper(
 		`SET CLUSTER SETTING stream_replication.min_checkpoint_frequency = '10ms'`)
 
 	// Sink to read data from.
-	sink, cleanupSink := sqlutils.PGUrl(t, s.AdvSQLAddr(), t.Name(), url.User(username.RootUser))
+	sink, cleanupSink := pgurlutils.PGUrl(t, s.AdvSQLAddr(), t.Name(), url.User(username.RootUser))
 
 	rng, seed := randutil.NewPseudoRand()
 	t.Logf("Replication helper seed %d", seed)
@@ -314,9 +316,9 @@ func (rh *ReplicationHelper) StartReplicationStream(
 	return replicationProducerSpec
 }
 
-func (rh *ReplicationHelper) MaybeGenerateInlineURL(t *testing.T) *url.URL {
+func (rh *ReplicationHelper) MaybeGenerateInlineURL(t *testing.T) streamclient.ClusterUri {
 	if rh.rng.Float64() > 0.5 {
-		return &rh.PGUrl
+		return streamclient.MakeTestClusterUri(rh.PGUrl)
 	}
 
 	t.Log("using inline certificates")
@@ -331,5 +333,5 @@ func (rh *ReplicationHelper) MaybeGenerateInlineURL(t *testing.T) *url.URL {
 	}
 	v.Set("sslinline", "true")
 	ret.RawQuery = v.Encode()
-	return &ret
+	return streamclient.MakeTestClusterUri(ret)
 }

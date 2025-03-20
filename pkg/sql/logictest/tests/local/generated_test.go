@@ -661,6 +661,13 @@ func TestLogic_distsql_srfs(
 	runLogicTest(t, "distsql_srfs")
 }
 
+func TestLogic_do(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "do")
+}
+
 func TestLogic_drop_database(
 	t *testing.T,
 ) {
@@ -1249,6 +1256,20 @@ func TestLogic_json_index(
 	runLogicTest(t, "json_index")
 }
 
+func TestLogic_jsonb_path_query(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "jsonb_path_query")
+}
+
+func TestLogic_jsonpath(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "jsonpath")
+}
+
 func TestLogic_kv_builtin_functions(
 	t *testing.T,
 ) {
@@ -1765,6 +1786,13 @@ func TestLogic_routine_schema_change(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "routine_schema_change")
+}
+
+func TestLogic_row_level_security(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "row_level_security")
 }
 
 func TestLogic_row_level_ttl(
@@ -2726,6 +2754,13 @@ func TestLogic_values(
 	runLogicTest(t, "values")
 }
 
+func TestLogic_vector_index(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "vector_index")
+}
+
 func TestLogic_vectorize(
 	t *testing.T,
 ) {
@@ -2780,13 +2815,6 @@ func TestLogic_vectorize_window(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "vectorize_window")
-}
-
-func TestLogic_vectoross(
-	t *testing.T,
-) {
-	defer leaktest.AfterTest(t)()
-	runLogicTest(t, "vectoross")
 }
 
 func TestLogic_views(

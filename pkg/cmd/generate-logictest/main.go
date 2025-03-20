@@ -27,13 +27,22 @@ type testFileTemplateConfig struct {
 	CockroachGoTestserverTest     bool
 	Ccl                           bool
 	ForceProductionValues         bool
-	SkipCclUnderRace              bool
-	UseHeavyPool                  bool
+	SkipUnderRace                 bool
+	UseHeavyPool                  useHeavyPoolCondition
 	Package, TestRuleName, RelDir string
 	ConfigIdx                     int
 	TestCount                     int
 	NumCPU                        int
 }
+
+type useHeavyPoolCondition int
+
+const (
+	useHeavyPoolNever useHeavyPoolCondition = iota
+	// useHeavyPoolForExpensiveConfig is used for tests running under deadlock or race.
+	useHeavyPoolForExpensiveConfig
+	useHeavyPoolAlways
+)
 
 var outDir = flag.String("out-dir", "", "path to the root of the cockroach workspace")
 
@@ -175,20 +184,28 @@ func (t *testdir) dump() error {
 		// allocate the tests which use 3-node clusters 2 vCPUs, and
 		// the ones which use more a bit more.
 		tplCfg.NumCPU = (cfg.NumNodes / 2) + 1
-		if cfg.Name == "3node-tenant" || strings.HasPrefix(cfg.Name, "multiregion-") {
-			tplCfg.SkipCclUnderRace = true
+		if strings.Contains(cfg.Name, "cockroach-go-testserver") {
+			tplCfg.NumCPU = 3
 		}
+		if cfg.Name == "3node-tenant" || strings.HasPrefix(cfg.Name, "multiregion-") {
+			tplCfg.SkipUnderRace = true
+		}
+		tplCfg.UseHeavyPool = useHeavyPoolNever
 		if strings.Contains(cfg.Name, "5node") ||
 			strings.Contains(cfg.Name, "fakedist") ||
 			(strings.HasPrefix(cfg.Name, "local-") && !tplCfg.Ccl) ||
 			(cfg.Name == "local" && !tplCfg.Ccl) {
-			tplCfg.UseHeavyPool = true
+			tplCfg.UseHeavyPool = useHeavyPoolForExpensiveConfig
+		} else if strings.Contains(cfg.Name, "cockroach-go-testserver") ||
+			strings.Contains(cfg.Name, "3node-tenant") {
+			tplCfg.UseHeavyPool = useHeavyPoolAlways
 		}
 		subdir := filepath.Join(t.dir, cfg.Name)
 		f, buildF, cleanup, err := openTestSubdir(subdir)
 		if err != nil {
 			return err
 		}
+		//nolint:deferloop TODO(#137605)
 		defer cleanup()
 		err = testFileTpl.Execute(f, tplCfg)
 		if err != nil {

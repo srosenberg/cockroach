@@ -19,32 +19,39 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/row"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/errors"
 )
 
 func (b *Builder) buildMutationInput(
 	mutExpr, inputExpr memo.RelExpr, colList opt.ColList, p *memo.MutationPrivate,
-) (_ execPlan, outputCols colOrdMap, err error) {
-	toLock, err := b.shouldApplyImplicitLockingToMutationInput(mutExpr)
+) (_ execPlan, lockedIndexes cat.IndexOrdinals, err error) {
+	toLock, toLockIndexes, err := b.shouldApplyImplicitLockingToMutationInput(mutExpr)
 	if err != nil {
-		return execPlan{}, colOrdMap{}, err
+		return execPlan{}, nil, err
 	}
 	if toLock != 0 {
-		if b.forceForUpdateLocking.Contains(int(toLock)) {
-			return execPlan{}, colOrdMap{}, errors.AssertionFailedf(
-				"unexpectedly found table %v in forceForUpdateLocking set", toLock,
-			)
+		if b.forceForUpdateLocking != 0 {
+			if b.evalCtx.SessionData().BufferedWritesEnabled || buildutil.CrdbTestBuild {
+				// We currently don't expect this to happen, so we return an
+				// assertion failure in test builds. Additionally, we will rely
+				// on forceForUpdateLocking set properly when buffered writes
+				// are enabled for correctness.
+				return execPlan{}, nil, errors.AssertionFailedf(
+					"unexpectedly already locked %d, also want to lock %d", b.forceForUpdateLocking, toLock,
+				)
+			}
 		}
-		b.forceForUpdateLocking.Add(int(toLock))
+		b.forceForUpdateLocking = toLock
 		defer func() {
-			b.forceForUpdateLocking.Remove(int(toLock))
+			b.forceForUpdateLocking = 0
 		}()
 	}
 
 	input, inputCols, err := b.buildRelational(inputExpr)
 	if err != nil {
-		return execPlan{}, colOrdMap{}, err
+		return execPlan{}, nil, err
 	}
 
 	// TODO(mgartner/radu): This can incorrectly append columns in a FK cascade
@@ -61,25 +68,39 @@ func (b *Builder) buildMutationInput(
 		}
 	}
 
+	// Currently, the execution engine requires one input column for each fetch,
+	// insert, update, and delete expression, so use ensureColumns to map and
+	// reorder columns so that they correspond to target table columns.
+	// For example:
+	//
+	//   UPDATE xyz SET x=1, y=1
+	//
+	// Here, the input has just one column (because the constant is shared), and
+	// so must be mapped to two separate update columns.
+	//
+	// TODO(andyk): Using ensureColumns here can result in an extra Render.
+	// Upgrade execution engine to not require this.
 	input, inputCols, err = b.ensureColumns(
 		input, inputCols, inputExpr, colList,
 		inputExpr.ProvidedPhysical().Ordering, true, /* reuseInputCols */
 	)
 	if err != nil {
-		return execPlan{}, colOrdMap{}, err
+		return execPlan{}, nil, err
 	}
 
 	if p.WithID != 0 {
 		label := fmt.Sprintf("buffer %d", p.WithID)
 		bufferNode, err := b.factory.ConstructBuffer(input.root, label)
 		if err != nil {
-			return execPlan{}, colOrdMap{}, err
+			return execPlan{}, nil, err
 		}
 
 		b.addBuiltWithExpr(p.WithID, inputCols, bufferNode)
 		input.root = bufferNode
+	} else {
+		b.colOrdsAlloc.Free(inputCols)
 	}
-	return input, inputCols, nil
+	return input, toLockIndexes, nil
 }
 
 func (b *Builder) buildInsert(ins *memo.InsertExpr) (_ execPlan, outputCols colOrdMap, err error) {
@@ -88,10 +109,10 @@ func (b *Builder) buildInsert(ins *memo.InsertExpr) (_ execPlan, outputCols colO
 	}
 	// Construct list of columns that only contains columns that need to be
 	// inserted (e.g. delete-only mutation columns don't need to be inserted).
-	colList := make(opt.ColList, 0, len(ins.InsertCols)+len(ins.CheckCols)+len(ins.PartialIndexPutCols))
-	colList = appendColsWhenPresent(colList, ins.InsertCols)
-	colList = appendColsWhenPresent(colList, ins.CheckCols)
-	colList = appendColsWhenPresent(colList, ins.PartialIndexPutCols)
+	colList := appendColsWhenPresent(
+		ins.InsertCols, ins.CheckCols, ins.PartialIndexPutCols,
+		ins.VectorIndexPutPartitionCols, ins.VectorIndexPutQuantizedVecCols,
+	)
 	input, _, err := b.buildMutationInput(ins, ins.Input, colList, &ins.MutationPrivate)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -113,6 +134,7 @@ func (b *Builder) buildInsert(ins *memo.InsertExpr) (_ execPlan, outputCols colO
 		ins.UniqueWithTombstoneIndexes,
 		b.allowAutoCommit && len(ins.UniqueChecks) == 0 &&
 			len(ins.FKChecks) == 0 && len(ins.FKCascades) == 0 && ins.AfterTriggers == nil,
+		ins.VectorInsert,
 	)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -160,6 +182,10 @@ func (b *Builder) tryBuildFastPathInsert(
 	}
 	// Do not attempt the fast path if there are any triggers.
 	if ins.AfterTriggers != nil {
+		return execPlan{}, colOrdMap{}, false, nil
+	}
+	// Do not attempt the fast path for a vectorized insert.
+	if ins.VectorInsert {
 		return execPlan{}, colOrdMap{}, false, nil
 	}
 
@@ -321,10 +347,10 @@ func (b *Builder) tryBuildFastPathInsert(
 		}
 	}
 
-	colList := make(opt.ColList, 0, len(ins.InsertCols)+len(ins.CheckCols)+len(ins.PartialIndexPutCols))
-	colList = appendColsWhenPresent(colList, ins.InsertCols)
-	colList = appendColsWhenPresent(colList, ins.CheckCols)
-	colList = appendColsWhenPresent(colList, ins.PartialIndexPutCols)
+	colList := appendColsWhenPresent(
+		ins.InsertCols, ins.CheckCols, ins.PartialIndexPutCols,
+		ins.VectorIndexDelPartitionCols, ins.VectorIndexPutQuantizedVecCols,
+	)
 	rows, err := b.buildValuesRows(values)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, false, err
@@ -392,33 +418,22 @@ func rearrangeColumns(
 }
 
 func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (_ execPlan, outputCols colOrdMap, err error) {
-	// Currently, the execution engine requires one input column for each fetch
-	// and update expression, so use ensureColumns to map and reorder columns so
-	// that they correspond to target table columns. For example:
-	//
-	//   UPDATE xyz SET x=1, y=1
-	//
-	// Here, the input has just one column (because the constant is shared), and
-	// so must be mapped to two separate update columns.
-	//
-	// TODO(andyk): Using ensureColumns here can result in an extra Render.
-	// Upgrade execution engine to not require this.
-	cnt := len(upd.FetchCols) + len(upd.UpdateCols) + len(upd.PassthroughCols) +
-		len(upd.CheckCols) + len(upd.PartialIndexPutCols) + len(upd.PartialIndexDelCols)
-	colList := make(opt.ColList, 0, cnt)
-	colList = appendColsWhenPresent(colList, upd.FetchCols)
-	colList = appendColsWhenPresent(colList, upd.UpdateCols)
-	// The RETURNING clause of the Update can refer to the columns
-	// in any of the FROM tables. As a result, the Update may need
-	// to passthrough those columns so the projection above can use
-	// them.
+	var neededPassThroughCols opt.OptionalColList
 	if upd.NeedResults() {
-		colList = append(colList, upd.PassthroughCols...)
+		// The RETURNING clause of the Update can refer to the columns
+		// in any of the FROM tables. As a result, the Update may need
+		// to passthrough those columns so the projection above can use
+		// them.
+		neededPassThroughCols = opt.OptionalColList(upd.PassthroughCols)
 	}
-	colList = appendColsWhenPresent(colList, upd.CheckCols)
-	colList = appendColsWhenPresent(colList, upd.PartialIndexPutCols)
-	colList = appendColsWhenPresent(colList, upd.PartialIndexDelCols)
+	colList := appendColsWhenPresent(
+		upd.FetchCols, upd.UpdateCols, neededPassThroughCols, upd.CheckCols,
+		upd.PartialIndexPutCols, upd.PartialIndexDelCols,
+		upd.VectorIndexPutPartitionCols, upd.VectorIndexPutQuantizedVecCols,
+		upd.VectorIndexDelPartitionCols,
+	)
 
+	// TODO(yuzefovich): use lockedIndexes to optimize locking behavior.
 	input, _, err := b.buildMutationInput(upd, upd.Input, colList, &upd.MutationPrivate)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -482,38 +497,19 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (_ execPlan, outputCols colO
 }
 
 func (b *Builder) buildUpsert(ups *memo.UpsertExpr) (_ execPlan, outputCols colOrdMap, err error) {
-	// Currently, the execution engine requires one input column for each insert,
-	// fetch, and update expression, so use ensureColumns to map and reorder
-	// columns so that they correspond to target table columns. For example:
-	//
-	//   INSERT INTO xyz (x, y) VALUES (1, 1)
-	//   ON CONFLICT (x) DO UPDATE SET x=2, y=2
-	//
-	// Here, both insert values and update values come from the same input column
-	// (because the constants are shared), and so must be mapped to separate
-	// output columns.
-	//
 	// If CanaryCol = 0, then this is the "blind upsert" case, which uses a KV
 	// "Put" to insert new rows or blindly overwrite existing rows. Existing rows
 	// do not need to be fetched or separately updated (i.e. ups.FetchCols and
 	// ups.UpdateCols are both empty).
-	//
-	// TODO(andyk): Using ensureColumns here can result in an extra Render.
-	// Upgrade execution engine to not require this.
-	cnt := len(ups.InsertCols) + len(ups.FetchCols) + len(ups.UpdateCols) + len(ups.CheckCols) +
-		len(ups.PartialIndexPutCols) + len(ups.PartialIndexDelCols) + 1
-	colList := make(opt.ColList, 0, cnt)
-	colList = appendColsWhenPresent(colList, ups.InsertCols)
-	colList = appendColsWhenPresent(colList, ups.FetchCols)
-	colList = appendColsWhenPresent(colList, ups.UpdateCols)
-	if ups.CanaryCol != 0 {
-		colList = append(colList, ups.CanaryCol)
-	}
-	colList = appendColsWhenPresent(colList, ups.CheckCols)
-	colList = appendColsWhenPresent(colList, ups.PartialIndexPutCols)
-	colList = appendColsWhenPresent(colList, ups.PartialIndexDelCols)
+	colList := appendColsWhenPresent(
+		ups.InsertCols, ups.FetchCols, ups.UpdateCols, opt.OptionalColList{ups.CanaryCol},
+		ups.CheckCols, ups.PartialIndexPutCols, ups.PartialIndexDelCols,
+		ups.VectorIndexPutPartitionCols, ups.VectorIndexPutQuantizedVecCols,
+		ups.VectorIndexDelPartitionCols,
+	)
 
-	input, inputCols, err := b.buildMutationInput(ups, ups.Input, colList, &ups.MutationPrivate)
+	// TODO(yuzefovich): use lockedIndexes to optimize locking behavior.
+	input, _, err := b.buildMutationInput(ups, ups.Input, colList, &ups.MutationPrivate)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -523,9 +519,13 @@ func (b *Builder) buildUpsert(ups *memo.UpsertExpr) (_ execPlan, outputCols colO
 	tab := md.Table(ups.Table)
 	canaryCol := exec.NodeColumnOrdinal(-1)
 	if ups.CanaryCol != 0 {
-		canaryCol, err = getNodeColumnOrdinal(inputCols, ups.CanaryCol)
-		if err != nil {
-			return execPlan{}, colOrdMap{}, err
+		// The canary column comes after the insert, fetch, and update columns.
+		canaryCol = exec.NodeColumnOrdinal(
+			ups.InsertCols.Len() + ups.FetchCols.Len() + ups.UpdateCols.Len(),
+		)
+		if colList[canaryCol] != ups.CanaryCol {
+			return execPlan{}, colOrdMap{},
+				errors.AssertionFailedf("canary column not found")
 		}
 	}
 	insertColOrds := ordinalSetFromColList(ups.InsertCols)
@@ -584,22 +584,19 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (_ execPlan, outputCols colO
 	if ep, ok, err := b.tryBuildDeleteRange(del); err != nil || ok {
 		return ep, colOrdMap{}, err
 	}
-
-	// Ensure that order of input columns matches order of target table columns.
-	//
-	// TODO(andyk): Using ensureColumns here can result in an extra Render.
-	// Upgrade execution engine to not require this.
-	colList := make(opt.ColList, 0, len(del.FetchCols)+len(del.PassthroughCols)+len(del.PartialIndexDelCols))
-	colList = appendColsWhenPresent(colList, del.FetchCols)
-	// The RETURNING clause of the Delete can refer to the columns in any of the
-	// USING tables. As a result, the Update may need to passthrough those
-	// columns so the projection above can use them.
+	var neededPassThroughCols opt.OptionalColList
 	if del.NeedResults() {
-		colList = append(colList, del.PassthroughCols...)
+		// The RETURNING clause of the Delete can refer to the columns
+		// in any of the FROM tables. As a result, the Delete may need
+		// to passthrough those columns so the projection above can use
+		// them.
+		neededPassThroughCols = opt.OptionalColList(del.PassthroughCols)
 	}
-	colList = appendColsWhenPresent(colList, del.PartialIndexDelCols)
+	colList := appendColsWhenPresent(
+		del.FetchCols, neededPassThroughCols, del.PartialIndexDelCols, del.VectorIndexDelPartitionCols,
+	)
 
-	input, _, err := b.buildMutationInput(del, del.Input, colList, &del.MutationPrivate)
+	input, lockedIndexes, err := b.buildMutationInput(del, del.Input, colList, &del.MutationPrivate)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -625,6 +622,7 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (_ execPlan, outputCols colO
 		fetchColOrds,
 		returnColOrds,
 		passthroughCols,
+		lockedIndexes,
 		b.allowAutoCommit && len(del.FKChecks) == 0 &&
 			len(del.FKCascades) == 0 && del.AfterTriggers == nil,
 	)
@@ -653,32 +651,42 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (_ execPlan, outputCols colO
 	return ep, outputCols, nil
 }
 
-// tryBuildDeleteRange attempts to construct a fast DeleteRange execution for a
-// logical Delete operator, checking all required conditions. See
-// exec.Factory.ConstructDeleteRange.
-func (b *Builder) tryBuildDeleteRange(del *memo.DeleteExpr) (_ execPlan, ok bool, _ error) {
+// canUseDeleteRange checks whether the memo.DeleteExpr can be built into
+// a delete range plan.
+func (b *Builder) canUseDeleteRange(del *memo.DeleteExpr) bool {
 	// If rows need to be returned from the Delete operator (i.e. RETURNING
 	// clause), no fast path is possible, because row values must be fetched.
 	if del.NeedResults() {
-		return execPlan{}, false, nil
+		return false
 	}
 
 	// Check for simple Scan input operator without a limit; anything else is not
 	// supported by a range delete.
 	if scan, ok := del.Input.(*memo.ScanExpr); !ok || scan.HardLimit != 0 {
-		return execPlan{}, false, nil
+		return false
 	}
 
 	tab := b.mem.Metadata().Table(del.Table)
 	if tab.DeletableIndexCount() > 1 {
 		// Any secondary index prevents fast path, because separate delete batches
 		// must be formulated to delete rows from them.
-		return execPlan{}, false, nil
+		return false
 	}
 
 	// We can use the fast path if we don't need to buffer the input to the
 	// delete operator (for foreign key checks/cascades).
 	if del.WithID != 0 {
+		return false
+	}
+
+	return true
+}
+
+// tryBuildDeleteRange attempts to construct a fast DeleteRange execution for a
+// logical Delete operator, checking all required conditions. See
+// exec.Factory.ConstructDeleteRange.
+func (b *Builder) tryBuildDeleteRange(del *memo.DeleteExpr) (_ execPlan, ok bool, _ error) {
+	if !b.canUseDeleteRange(del) {
 		return execPlan{}, false, nil
 	}
 
@@ -744,15 +752,26 @@ func (b *Builder) buildDeleteRange(del *memo.DeleteExpr) (execPlan, error) {
 	return execPlan{root: root}, nil
 }
 
-// appendColsWhenPresent appends non-zero column IDs from the src list into the
-// dst list, and returns the possibly grown list.
-func appendColsWhenPresent(dst opt.ColList, src opt.OptionalColList) opt.ColList {
-	for _, col := range src {
-		if col != 0 {
-			dst = append(dst, col)
+// appendColsWhenPresent combines all non-zero column IDs from the given lists
+// into a single column list, and returns the combined list.
+func appendColsWhenPresent(lists ...opt.OptionalColList) opt.ColList {
+	var cnt int
+	for _, list := range lists {
+		for _, id := range list {
+			if id != 0 {
+				cnt++
+			}
 		}
 	}
-	return dst
+	combined := make(opt.ColList, 0, cnt)
+	for _, list := range lists {
+		for _, col := range list {
+			if col != 0 {
+				combined = append(combined, col)
+			}
+		}
+	}
+	return combined
 }
 
 // ordinalSetFromColList returns the set of ordinal positions of each non-zero
@@ -774,7 +793,7 @@ func ordinalSetFromColList(colList opt.OptionalColList) intsets.Fast {
 // the result.
 func (b *Builder) mutationOutputColMap(mutation memo.RelExpr) colOrdMap {
 	private := mutation.Private().(*memo.MutationPrivate)
-	tab := mutation.Memo().Metadata().Table(private.Table)
+	tab := b.mem.Metadata().Table(private.Table)
 	outCols := mutation.Relational().OutputCols
 
 	colMap := b.colOrdsAlloc.Alloc()
@@ -1127,12 +1146,21 @@ var forUpdateLocking = opt.Locking{
 // shouldApplyImplicitLockingToMutationInput determines whether or not the
 // builder should apply a FOR UPDATE row-level locking mode to the initial row
 // scan of a mutation expression. If the builder should lock the initial row
-// scan, it returns the TableID of the scan, otherwise it returns 0.
+// scan, it returns the TableID of the scan (as well as ordinals of indexes to
+// lock), otherwise it returns 0.
 func (b *Builder) shouldApplyImplicitLockingToMutationInput(
 	mutExpr memo.RelExpr,
-) (opt.TableID, error) {
+) (_ opt.TableID, retIndexes cat.IndexOrdinals, _ error) {
 	if !b.evalCtx.SessionData().ImplicitSelectForUpdate {
-		return 0, nil
+		return 0, nil, nil
+	}
+
+	if buildutil.CrdbTestBuild {
+		defer func() {
+			if len(retIndexes) > 2 {
+				panic(errors.AssertionFailedf("attempt to lock %d indexes: %v", len(retIndexes), retIndexes))
+			}
+		}()
 	}
 
 	switch t := mutExpr.(type) {
@@ -1141,26 +1169,32 @@ func (b *Builder) shouldApplyImplicitLockingToMutationInput(
 		// sense to apply implicit row-level locking to the input of an INSERT
 		// expression because any contention results in unique constraint
 		// violations.
-		return 0, nil
+		return 0, nil, nil
 
 	case *memo.UpdateExpr:
-		return shouldApplyImplicitLockingToUpdateOrDeleteInput(t.Input, t.Table), nil
+		md := b.mem.Metadata()
+		tableID, toLockIndexes := shouldApplyImplicitLockingToUpdateOrDeleteInput(md, t.Input, t.Table)
+		return tableID, toLockIndexes.Ordered(), nil
 
 	case *memo.UpsertExpr:
-		return shouldApplyImplicitLockingToUpsertInput(t), nil
+		tableID, toLockIndexes := shouldApplyImplicitLockingToUpsertInput(t)
+		return tableID, toLockIndexes.Ordered(), nil
 
 	case *memo.DeleteExpr:
-		return shouldApplyImplicitLockingToUpdateOrDeleteInput(t.Input, t.Table), nil
+		md := b.mem.Metadata()
+		tableID, toLockIndexes := shouldApplyImplicitLockingToUpdateOrDeleteInput(md, t.Input, t.Table)
+		return tableID, toLockIndexes.Ordered(), nil
 
 	default:
-		return 0, errors.AssertionFailedf("unexpected mutation expression %T", t)
+		return 0, nil, errors.AssertionFailedf("unexpected mutation expression %T", t)
 	}
 }
 
 // shouldApplyImplicitLockingToUpdateOrDeleteInput determines whether the
 // builder should apply a FOR UPDATE row-level locking mode to the initial row
 // scan of an UPDATE statement or a DELETE. If the builder should lock the
-// initial row scan, it returns the TableID of the scan, otherwise it returns 0.
+// initial row scan, it returns the TableID of the scan (as well as ordinals of
+// indexes to lock), otherwise it returns 0.
 //
 // Conceptually, if we picture an UPDATE statement as the composition of a
 // SELECT statement and an INSERT statement (with loosened semantics around
@@ -1184,8 +1218,9 @@ func (b *Builder) shouldApplyImplicitLockingToMutationInput(
 // UPDATEs and DELETEs happen to have exactly the same matching pattern, so we
 // reuse this function for both.
 func shouldApplyImplicitLockingToUpdateOrDeleteInput(
-	input memo.RelExpr, tabID opt.TableID,
-) opt.TableID {
+	md *opt.Metadata, input memo.RelExpr, tabID opt.TableID,
+) (opt.TableID, intsets.Fast) {
+	var toLockIndexes intsets.Fast
 	// Try to match the mutation's input expression against the pattern:
 	//
 	//   [Project]* [IndexJoin] (Scan | LookupJoin [LookupJoin] Values)
@@ -1195,32 +1230,41 @@ func shouldApplyImplicitLockingToUpdateOrDeleteInput(
 	input = unwrapProjectExprs(input)
 	if idxJoin, ok := input.(*memo.IndexJoinExpr); ok {
 		input = idxJoin.Input
+		toLockIndexes.Add(cat.PrimaryIndex)
 	}
 	switch t := input.(type) {
 	case *memo.ScanExpr:
-		return t.Table
+		toLockIndexes.Add(t.Index)
+		return t.Table, toLockIndexes
 	case *memo.LookupJoinExpr:
+		toLockIndexes.Add(t.Index)
 		if innerJoin, ok := t.Input.(*memo.LookupJoinExpr); ok && innerJoin.Table == t.Table {
+			// When a generic query plan reads from a secondary index first,
+			// then performs a lookup into the primary index, the plan has a
+			// double lookup join pattern. We add implicit locks in this case
+			// where both lookup joins have the same table.
 			t = innerJoin
+			toLockIndexes.Add(t.Index)
 		}
-		md := input.Memo().Metadata()
 		mutStableID := md.Table(tabID).ID()
 		lookupStableID := md.Table(t.Table).ID()
 		// Only lock rows read in the lookup join if the lookup table is the
 		// same as the table being updated. Also, don't lock rows if there is an
 		// ON condition so that we don't lock rows that won't be updated.
 		if mutStableID == lookupStableID && t.On.IsTrue() && t.Input.Op() == opt.ValuesOp {
-			return t.Table
+			return t.Table, toLockIndexes
 		}
 	}
-	return 0
+	return 0, intsets.Fast{}
 }
 
 // tryApplyImplicitLockingToUpsertInput determines whether or not the builder
 // should apply a FOR UPDATE row-level locking mode to the initial row scan of
 // an UPSERT statement. If the builder should lock the initial row scan, it
-// returns the TableID of the scan, otherwise it returns 0.
-func shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) opt.TableID {
+// returns the TableID of the scan (as well as ordinals of indexes to lock),
+// otherwise it returns 0.
+func shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) (opt.TableID, intsets.Fast) {
+	var toLockIndexes intsets.Fast
 	// Try to match the Upsert's input expression against the pattern:
 	//
 	//   [Project]* (LeftJoin Scan | LookupJoin [LookupJoin]) [Project]* Values
@@ -1232,30 +1276,33 @@ func shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) opt.TableID {
 	case *memo.LeftJoinExpr:
 		scan, ok := join.Right.(*memo.ScanExpr)
 		if !ok {
-			return 0
+			return 0, intsets.Fast{}
 		}
 		input = join.Left
 		toLock = scan.Table
+		toLockIndexes.Add(scan.Index)
 
 	case *memo.LookupJoinExpr:
 		input = join.Input
+		toLockIndexes.Add(join.Index)
 		if inner, ok := input.(*memo.LookupJoinExpr); ok && inner.Table == join.Table {
 			// When a generic query plan reads from a secondary index first,
 			// then performs a lookup into the primary index, the plan has a
 			// double lookup join pattern. We add implicit locks in this case
 			// where both lookup joins have the same table.
 			input = inner.Input
+			toLockIndexes.Add(inner.Index)
 		}
 		toLock = join.Table
 
 	default:
-		return 0
+		return 0, intsets.Fast{}
 	}
 	input = unwrapProjectExprs(input)
 	if _, ok := input.(*memo.ValuesExpr); ok {
-		return toLock
+		return toLock, toLockIndexes
 	}
-	return 0
+	return 0, intsets.Fast{}
 }
 
 // unwrapProjectExprs unwraps zero or more nested ProjectExprs. It returns the
@@ -1333,4 +1380,18 @@ func (b *Builder) buildLock(lock *memo.LockExpr) (_ execPlan, outputCols colOrdM
 	}
 	join.CopyGroup(lock)
 	return b.buildLookupJoin(join)
+}
+
+func (b *Builder) setMutationFlags(e memo.RelExpr) {
+	b.flags.Set(exec.PlanFlagContainsMutation)
+	switch e.Op() {
+	case opt.DeleteOp:
+		b.flags.Set(exec.PlanFlagContainsDelete)
+	case opt.InsertOp:
+		b.flags.Set(exec.PlanFlagContainsInsert)
+	case opt.UpdateOp:
+		b.flags.Set(exec.PlanFlagContainsUpdate)
+	case opt.UpsertOp:
+		b.flags.Set(exec.PlanFlagContainsUpsert)
+	}
 }

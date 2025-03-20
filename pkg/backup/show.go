@@ -21,8 +21,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/backup/backuputils"
 	"github.com/cockroachdb/cockroach/pkg/ccl/storageccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
-	"github.com/cockroachdb/cockroach/pkg/cloud/cloudcheck"
-	"github.com/cockroachdb/cockroach/pkg/cloud/cloudprivilege"
 	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -45,8 +43,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
-	"github.com/cockroachdb/cockroach/pkg/util/humanizeutil"
-	"github.com/cockroachdb/cockroach/pkg/util/json"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
@@ -130,53 +126,7 @@ func (m manifestInfoReader) showBackup(
 	return nil
 }
 
-type metadataSSTInfoReader struct{}
-
 var _ backupInfoReader = manifestInfoReader{}
-
-func (m metadataSSTInfoReader) header() colinfo.ResultColumns {
-	return colinfo.ResultColumns{
-		{Name: "file", Typ: types.String},
-		{Name: "key", Typ: types.String},
-		{Name: "detail", Typ: types.Jsonb},
-	}
-}
-
-func (m metadataSSTInfoReader) showBackup(
-	ctx context.Context,
-	_ *mon.BoundAccount,
-	mkStore cloud.ExternalStorageFromURIFactory,
-	info backupInfo,
-	user username.SQLUsername,
-	kmsEnv cloud.KMSEnv,
-	resultsCh chan<- tree.Datums,
-) error {
-	filename := backupinfo.MetadataSSTName
-	push := func(_, readable string, value json.JSON) error {
-		val := tree.DNull
-		if value != nil {
-			val = tree.NewDJSON(value)
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case resultsCh <- []tree.Datum{tree.NewDString(filename), tree.NewDString(readable), val}:
-			return nil
-		}
-	}
-	for _, uri := range info.defaultURIs {
-		store, err := mkStore(ctx, uri, user)
-		if err != nil {
-			return errors.Wrapf(err, "creating external store")
-		}
-		defer store.Close()
-		if err := backupinfo.DebugDumpMetadataSST(ctx, store, filename, info.enc,
-			kmsEnv, push); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
 func showBackupTypeCheck(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
@@ -185,7 +135,7 @@ func showBackupTypeCheck(
 	if !ok {
 		return false, nil, nil
 	}
-	if backup.Path == nil && backup.InCollection != nil {
+	if backup.Path == nil {
 		return showBackupsInCollectionTypeCheck(ctx, backup, p)
 	}
 	if err := exprutil.TypeCheck(
@@ -208,9 +158,6 @@ func showBackupTypeCheck(
 	); err != nil {
 		return false, nil, err
 	}
-	if backup.Details == tree.BackupConnectionTest {
-		return true, cloudcheck.Header, nil
-	}
 	infoReader := getBackupInfoReader(p, backup)
 	return true, infoReader.header(), nil
 }
@@ -218,125 +165,58 @@ func showBackupTypeCheck(
 // showBackupPlanHook implements PlanHookFn.
 func showBackupPlanHook(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
-) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+) (sql.PlanHookRowFn, colinfo.ResultColumns, bool, error) {
 	showStmt, ok := stmt.(*tree.ShowBackup)
 	if !ok {
-		return nil, nil, nil, false, nil
+		return nil, nil, false, nil
 	}
 	exprEval := p.ExprEvaluator("SHOW BACKUP")
 
-	// TODO(dt): find move this to its own hook.
-	if showStmt.Details == tree.BackupConnectionTest {
-		loc, err := exprEval.String(ctx, showStmt.Path)
-		if err != nil {
-			return nil, nil, nil, false, err
-		}
-		var params cloudcheck.Params
-		if showStmt.Options.CheckConnectionTransferSize != nil {
-			transferSizeStr, err := exprEval.String(ctx, showStmt.Options.CheckConnectionTransferSize)
-			if err != nil {
-				return nil, nil, nil, false, err
-			}
-			parsed, err := humanizeutil.ParseBytes(transferSizeStr)
-			if err != nil {
-				return nil, nil, nil, false, err
-			}
-			params.TransferSize = parsed
-		}
-		if showStmt.Options.CheckConnectionDuration != nil {
-			durationStr, err := exprEval.String(ctx, showStmt.Options.CheckConnectionDuration)
-			if err != nil {
-				return nil, nil, nil, false, err
-			}
-			parsed, err := time.ParseDuration(durationStr)
-			if err != nil {
-				return nil, nil, nil, false, err
-			}
-			params.MinDuration = parsed
-		}
-		if showStmt.Options.CheckConnectionConcurrency != nil {
-			concurrency, err := exprEval.Int(ctx, showStmt.Options.CheckConnectionConcurrency)
-			if err != nil {
-				return nil, nil, nil, false, err
-			}
-			params.Concurrency = concurrency
-		}
-		return cloudcheck.ShowCloudStorageTestPlanHook(ctx, p, loc, params)
-	}
-
-	if showStmt.Path == nil && showStmt.InCollection != nil {
+	if showStmt.Path == nil {
 		collection, err := exprEval.StringArray(
 			ctx, tree.Exprs(showStmt.InCollection),
 		)
 		if err != nil {
-			return nil, nil, nil, false, err
+			return nil, nil, false, err
 		}
 		return showBackupsInCollectionPlanHook(ctx, collection, showStmt, p)
 	}
 
-	to, err := exprEval.String(ctx, showStmt.Path)
+	subdir, err := exprEval.String(ctx, showStmt.Path)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
-	var inCol []string
-	if showStmt.InCollection != nil {
-		inCol, err = exprEval.StringArray(ctx, tree.Exprs(showStmt.InCollection))
-		if err != nil {
-			return nil, nil, nil, false, err
-		}
+	dest, err := exprEval.StringArray(ctx, tree.Exprs(showStmt.InCollection))
+	if err != nil {
+		return nil, nil, false, err
 	}
 
 	infoReader := getBackupInfoReader(p, showStmt)
 
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
-	fn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
+	fn := func(ctx context.Context, resultsCh chan<- tree.Datums) error {
 		ctx, span := tracing.ChildSpan(ctx, stmt.StatementTag())
 		defer span.Finish()
 
-		var (
-			dest   []string
-			subdir string
-		)
-		// For old style show backup, 'to' is the resolved path to the full backup;
-		// for new SHOW BACKUP, 'to' is the subdirectory.
-		if inCol != nil {
-			subdir = to
-			dest = inCol
-		} else {
-			dest = append(dest, to)
-			// Deprecation notice for old `SHOW BACKUP` syntax. Remove this once the syntax is
-			// deleted in 22.2.
-			p.BufferClientNotice(ctx,
-				pgnotice.Newf("The `SHOW BACKUP` syntax without the `IN` keyword will be removed in a"+
-					" future release. Please switch over to using `SHOW BACKUP FROM <backup> IN"+
-					" <collection>` to view metadata on a backup collection: %s."+
-					" Also note that backups created using the `BACKUP TO` syntax may not be showable or"+
-					" restoreable in the next major version release. Use `BACKUP INTO` instead.",
-					"https://www.cockroachlabs.com/docs/stable/show-backup.html"))
-		}
-
-		if err := cloudprivilege.CheckDestinationPrivileges(ctx, p, dest); err != nil {
+		if err := sql.CheckDestinationPrivileges(ctx, p, dest); err != nil {
 			return err
 		}
 
-		fullyResolvedDest := dest
-		if subdir != "" {
-			if strings.EqualFold(subdir, backupbase.LatestFileName) {
-				subdir, err = backupdest.ReadLatestFile(ctx, dest[0],
-					p.ExecCfg().DistSQLSrv.ExternalStorageFromURI,
-					p.User())
-				if err != nil {
-					return errors.Wrap(err, "read LATEST path")
-				}
-			}
-			fullyResolvedDest, err = backuputils.AppendPaths(dest, subdir)
+		if strings.EqualFold(subdir, backupbase.LatestFileName) {
+			subdir, err = backupdest.ReadLatestFile(ctx, dest[0],
+				p.ExecCfg().DistSQLSrv.ExternalStorageFromURI,
+				p.User())
 			if err != nil {
-				return err
+				return errors.Wrap(err, "read LATEST path")
 			}
+		}
+		fullyResolvedDest, err := backuputils.AppendPaths(dest, subdir)
+		if err != nil {
+			return err
 		}
 		baseStores := make([]cloud.ExternalStorage, len(fullyResolvedDest))
 		for j := range fullyResolvedDest {
@@ -344,6 +224,7 @@ func showBackupPlanHook(
 			if err != nil {
 				return errors.Wrapf(err, "make storage")
 			}
+			//nolint:deferloop
 			defer baseStores[j].Close()
 		}
 
@@ -532,22 +413,16 @@ you must pass the 'encryption_info_dir' parameter that points to the directory o
 		if err := infoReader.showBackup(ctx, &mem, mkStore, info, p.User(), &kmsEnv, resultsCh); err != nil {
 			return err
 		}
-		if showStmt.InCollection == nil {
-			telemetry.Count("show-backup.deprecated-subdir-syntax")
-		} else {
-			telemetry.Count("show-backup.collection")
-		}
+		telemetry.Count("show-backup.collection")
 		return nil
 	}
 
-	return fn, infoReader.header(), nil, false, nil
+	return fn, infoReader.header(), false, nil
 }
 
 func getBackupInfoReader(p sql.PlanHookState, showStmt *tree.ShowBackup) backupInfoReader {
 	var infoReader backupInfoReader
-	if showStmt.Options.DebugMetadataSST {
-		infoReader = metadataSSTInfoReader{}
-	} else if showStmt.Options.AsJson {
+	if showStmt.Options.AsJson {
 		infoReader = manifestInfoReader{shower: jsonShower}
 	} else {
 		var shower backupShower
@@ -555,7 +430,7 @@ func getBackupInfoReader(p sql.PlanHookState, showStmt *tree.ShowBackup) backupI
 		case tree.BackupRangeDetails:
 			shower = backupShowerRanges
 		case tree.BackupFileDetails:
-			shower = backupShowerFileSetup(p, showStmt.InCollection)
+			shower = backupShowerFileSetup()
 		case tree.BackupSchemaDetails:
 			shower = backupShowerDefault(p, true, showStmt.Options)
 		case tree.BackupValidateDetails:
@@ -604,18 +479,10 @@ func checkBackupFiles(
 		// Check metadata files. Note: we do not check locality aware backup
 		// metadata files ( prefixed with `backupPartitionDescriptorPrefix`) , as
 		// they're validated in resolveBackupManifests.
-		for _, metaFile := range []string{
-			backupinfo.FileInfoPath,
-			backupinfo.MetadataSSTName,
-			backupbase.BackupManifestName + backupinfo.BackupManifestChecksumSuffix} {
-			if _, err := defaultStore.Size(ctx, metaFile); err != nil {
-				if metaFile == backupinfo.FileInfoPath || metaFile == backupinfo.MetadataSSTName {
-					log.Warningf(ctx, `%v not found. This is only relevant if kv.bulkio.write_metadata_sst.enabled = true`, metaFile)
-					continue
-				}
-				return nil, errors.Wrapf(err, "Error checking metadata file %s/%s",
-					info.defaultURIs[layer], metaFile)
-			}
+		metaFile := backupbase.BackupManifestName + backupinfo.BackupManifestChecksumSuffix
+		if _, err := defaultStore.Size(ctx, metaFile); err != nil {
+			return nil, errors.Wrapf(err, "Error checking metadata file %s/%s",
+				info.defaultURIs[layer], metaFile)
 		}
 		// Check stat files.
 		for _, statFile := range info.manifests[layer].StatisticsFilenames {
@@ -1316,9 +1183,7 @@ var backupShowerDoctor = backupShower{
 	},
 }
 
-func backupShowerFileSetup(
-	p sql.PlanHookState, inCol tree.StringOrPlaceholderOptList,
-) backupShower {
+func backupShowerFileSetup() backupShower {
 	return backupShower{header: colinfo.ResultColumns{
 		{Name: "path", Typ: types.String},
 		{Name: "backup_type", Typ: types.String},
@@ -1334,17 +1199,14 @@ func backupShowerFileSetup(
 
 		fn: func(ctx context.Context, info backupInfo) (rows []tree.Datums, err error) {
 
-			var manifestDirs []string
 			var localityAware bool
-			if len(inCol) > 0 {
-				manifestDirs, err = getManifestDirs(info.subdir, info.defaultURIs)
-				if err != nil {
-					return nil, err
-				}
+			manifestDirs, err := getManifestDirs(info.subdir, info.defaultURIs)
+			if err != nil {
+				return nil, err
+			}
 
-				if len(info.localityInfo[0].URIsByOriginalLocalityKV) > 0 {
-					localityAware = true
-				}
+			if len(info.localityInfo[0].URIsByOriginalLocalityKV) > 0 {
+				localityAware = true
 			}
 			for i, manifest := range info.manifests {
 				backupType := "full"
@@ -1361,6 +1223,7 @@ func backupShowerFileSetup(
 				if err != nil {
 					return nil, err
 				}
+				//nolint:deferloop TODO(#137605)
 				defer it.Close()
 				var idx int
 				for ; ; it.Next() {
@@ -1370,10 +1233,7 @@ func backupShowerFileSetup(
 						break
 					}
 					file := it.Value()
-					filePath := file.Path
-					if inCol != nil {
-						filePath = path.Join(manifestDirs[i], filePath)
-					}
+					filePath := path.Join(manifestDirs[i], file.Path)
 					locality := "NULL"
 					if localityAware {
 						locality = "default"
@@ -1515,13 +1375,13 @@ var showBackupsInCollectionHeader = colinfo.ResultColumns{
 // showBackupPlanHook implements PlanHookFn.
 func showBackupsInCollectionPlanHook(
 	ctx context.Context, collection []string, showStmt *tree.ShowBackup, p sql.PlanHookState,
-) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+) (sql.PlanHookRowFn, colinfo.ResultColumns, bool, error) {
 
-	if err := cloudprivilege.CheckDestinationPrivileges(ctx, p, collection); err != nil {
-		return nil, nil, nil, false, err
+	if err := sql.CheckDestinationPrivileges(ctx, p, collection); err != nil {
+		return nil, nil, false, err
 	}
 
-	fn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
+	fn := func(ctx context.Context, resultsCh chan<- tree.Datums) error {
 		ctx, span := tracing.ChildSpan(ctx, showStmt.StatementTag())
 		defer span.Finish()
 
@@ -1539,7 +1399,7 @@ func showBackupsInCollectionPlanHook(
 		}
 		return nil
 	}
-	return fn, showBackupsInCollectionHeader, nil, false, nil
+	return fn, showBackupsInCollectionHeader, false, nil
 }
 
 func init() {

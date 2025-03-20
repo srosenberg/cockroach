@@ -173,8 +173,8 @@ func makeCDCBenchOptions(c cluster.Cluster) (option.StartOpts, install.ClusterSe
 
 	// Checkpoint frequently.  Some of the larger benchmarks might overload the
 	// cluster.  Producing frequent span-level checkpoints helps with recovery.
-	settings.ClusterSettings["changefeed.frontier_checkpoint_frequency"] = "60s"
-	settings.ClusterSettings["changefeed.frontier_highwater_lag_checkpoint_threshold"] = "30s"
+	settings.ClusterSettings["changefeed.span_checkpoint.interval"] = "60s"
+	settings.ClusterSettings["changefeed.span_checkpoint.lag_threshold"] = "30s"
 
 	// Bump up the number of allowed catchup scans.  Doing catchup for 100k ranges with default
 	// configuration (8 client side, 16 per store) takes a while (~1500-2000 ranges per min minutes).
@@ -274,6 +274,7 @@ func runCDCBenchScan(
 		`./cockroach workload init kv --splits %d {pgurl:%d}`, numRanges, nData[0]))
 	require.NoError(t, roachtestutil.WaitFor3XReplication(ctx, t.L(), conn))
 
+	time.Sleep(1 * time.Second)
 	cursor := timeutil.Now() // before data is ingested
 
 	// Ingest data. init allows us to import into the existing table. However,
@@ -326,10 +327,10 @@ func runCDCBenchScan(
 	m.Go(func(ctx context.Context) error {
 		t.L().Printf("waiting for changefeed to finish")
 		info, err := waitForChangefeed(ctx, conn, jobID, t.L(), func(info changefeedInfo) (bool, error) {
-			switch jobs.Status(info.status) {
-			case jobs.StatusSucceeded:
+			switch jobs.State(info.status) {
+			case jobs.StateSucceeded:
 				return true, nil
-			case jobs.StatusPending, jobs.StatusRunning:
+			case jobs.StatePending, jobs.StateRunning:
 				return false, nil
 			default:
 				return false, errors.Errorf("unexpected changefeed status %q", info.status)
@@ -496,8 +497,8 @@ func runCDCBenchWorkload(
 		// ranges it was found to sometimes lag by over 8 minutes.
 		m.Go(func(ctx context.Context) error {
 			info, err := waitForChangefeed(ctx, conn, jobID, t.L(), func(info changefeedInfo) (bool, error) {
-				switch jobs.Status(info.status) {
-				case jobs.StatusPending, jobs.StatusRunning:
+				switch jobs.State(info.status) {
+				case jobs.StatePending, jobs.StateRunning:
 					doneValue := done.Load()
 					return doneValue != nil && info.GetHighWater().After(doneValue.(time.Time)), nil
 				default:
@@ -517,8 +518,8 @@ func runCDCBenchWorkload(
 		t.L().Printf("waiting for changefeed watermark to reach current time (%s)",
 			now.Format(time.RFC3339))
 		info, err := waitForChangefeed(ctx, conn, jobID, t.L(), func(info changefeedInfo) (bool, error) {
-			switch jobs.Status(info.status) {
-			case jobs.StatusPending, jobs.StatusRunning:
+			switch jobs.State(info.status) {
+			case jobs.StatePending, jobs.StateRunning:
 				return info.GetHighWater().After(now), nil
 			default:
 				return false, errors.Errorf("unexpected changefeed status %s", info.status)

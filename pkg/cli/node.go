@@ -582,9 +582,11 @@ func runDecommissionNodeImpl(
 
 		anyActive := false
 		var replicaCount int64
+		statusByNodeID := map[roachpb.NodeID]serverpb.DecommissionStatusResponse_Status{}
 		for _, status := range resp.Status {
 			anyActive = anyActive || status.Membership.Active()
 			replicaCount += status.ReplicaCount
+			statusByNodeID[status.NodeID] = status
 		}
 
 		if !anyActive && replicaCount == 0 {
@@ -594,20 +596,36 @@ func runDecommissionNodeImpl(
 			for _, targetNode := range nodeIDs {
 				if targetNode == localNodeID {
 					// Skip the draining step for the node serving the request, if it is a target node.
-					log.Warningf(ctx,
-						"skipping drain step for node n%d; it is decommissioning and serving the request",
+					_, _ = fmt.Fprintf(stderr,
+						"skipping drain step for node n%d; it is decommissioning and serving the request\n",
 						localNodeID,
 					)
 					continue
 				}
-				drainReq := &serverpb.DrainRequest{
-					Shutdown: false,
-					DoDrain:  true,
-					NodeId:   targetNode.String(),
+				if status, ok := statusByNodeID[targetNode]; !ok || !status.IsLive {
+					// Skip the draining step for the node serving the request, if it is a target node.
+					_, _ = fmt.Fprintf(stderr,
+						"skipping drain step for node n%d; it is not live\n", targetNode,
+					)
+					continue
 				}
-				if _, err = c.Drain(ctx, drainReq); err != nil {
-					fmt.Fprintln(stderr)
-					return errors.Wrapf(err, "while trying to drain n%d", targetNode)
+				_, _ = fmt.Fprintf(stderr, "draining node n%d\n", targetNode)
+
+				if _, _, err := doDrain(ctx, c, targetNode.String()); err != nil {
+					// NB: doDrain already prints to stdErr.
+					//
+					// Defense in depth: in decommission invocations that don't have to
+					// do much work, if the target node was _just_ shutdown prior to
+					// starting `node decommission`, the node may be absent but the liveness
+					// status sent us here anyway. We don't want to fail out on the drain
+					// step to make the decommissioning command more robust.
+					_, _ = fmt.Fprintf(stderr,
+						"drain step for node n%d failed; decommissioning anyway\n", targetNode,
+					)
+					_ = err // discard intentionally
+				} else {
+					// NB: this output is matched on in the decommission/drains roachtest.
+					_, _ = fmt.Fprintf(stderr, "node n%d drained successfully\n", targetNode)
 				}
 			}
 

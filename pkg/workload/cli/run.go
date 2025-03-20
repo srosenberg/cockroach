@@ -595,8 +595,8 @@ func runRun(gen workload.Generator, urls []string, dbName string) error {
 				}
 				continue
 			}
-			// Log the error so we get the stack trace.
-			log.Errorf(ctx, "%v", err)
+			// Log the error with %+v so we get the stack trace.
+			log.Errorf(ctx, "workload run error: %+v", err)
 			return err
 
 		case <-ticker.C:
@@ -681,13 +681,12 @@ func maybeInitAndCreateExporter(gen workload.Generator) (exporter.Exporter, *os.
 		labelValues := strings.Split(*openmetricsLabels, ",")
 		labels := make(map[string]string)
 		for _, label := range labelValues {
-			parts := strings.Split(label, "=")
+			parts := strings.SplitN(label, "=", 2)
 			if len(parts) != 2 {
 				return nil, nil, errors.Errorf("invalid histogram label %q", label)
 			}
 			labels[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
-
 		// Append workload generator name as a tag
 		labels["workload"] = gen.Meta().Name
 		openMetricsExporter := exporter.OpenMetricsExporter{}

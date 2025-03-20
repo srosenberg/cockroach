@@ -120,6 +120,9 @@ type Provider struct {
 	vm.DNSProvider
 }
 
+func (p *Provider) ConfigureProviderFlags(*pflag.FlagSet, vm.MultipleProjectsOption) {
+}
+
 func (p *Provider) SupportsSpotVMs() bool {
 	return false
 }
@@ -181,12 +184,8 @@ type providerOpts struct{}
 func (o *providerOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 }
 
-// ConfigureClusterFlags is part of ProviderOpts.  This implementation is a no-op.
-func (o *providerOpts) ConfigureClusterFlags(*pflag.FlagSet, vm.MultipleProjectsOption) {
-}
-
-// ConfigureClusterCleanupFlags is part of ProviderOpts. This implementation is a no-op.
-func (o *providerOpts) ConfigureClusterCleanupFlags(flags *pflag.FlagSet) {
+// ConfigureClusterCleanupFlags is part of the vm.Provider interface. This implementation is a no-op.
+func (p *Provider) ConfigureClusterCleanupFlags(flags *pflag.FlagSet) {
 }
 
 // CleanSSH is part of the vm.Provider interface.  This implementation is a no-op.
@@ -247,7 +246,7 @@ func (p *Provider) createVM(clusterName string, index int, creationTime time.Tim
 // Create just creates fake host-info entries in the local filesystem
 func (p *Provider) Create(
 	l *logger.Logger, names []string, opts vm.CreateOpts, unusedProviderOpts vm.ProviderOpts,
-) error {
+) (vm.List, error) {
 	now := timeutil.Now()
 	c := &cloud.Cluster{
 		Name:      opts.ClusterName,
@@ -257,34 +256,38 @@ func (p *Provider) Create(
 	}
 
 	if !config.IsLocalClusterName(c.Name) {
-		return errors.Errorf("'%s' is not a valid local cluster name", c.Name)
+		return nil, errors.Errorf("'%s' is not a valid local cluster name", c.Name)
 	}
 
 	for i := range names {
 		var err error
 		c.VMs[i], err = p.createVM(c.Name, i, now)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if err := p.storage.SaveCluster(l, c); err != nil {
-		return err
+		return nil, err
 	}
 	p.clusters[c.Name] = c
-	return nil
+	return c.VMs, nil
 }
 
-func (p *Provider) Grow(l *logger.Logger, vms vm.List, clusterName string, names []string) error {
+func (p *Provider) Grow(
+	l *logger.Logger, vms vm.List, clusterName string, names []string,
+) (vm.List, error) {
 	now := timeutil.Now()
 	offset := p.clusters[clusterName].VMs.Len()
+	newVms := make(vm.List, len(names))
 	for i := range names {
 		cVM, err := p.createVM(clusterName, i+offset, now)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		p.clusters[clusterName].VMs = append(p.clusters[clusterName].VMs, cVM)
+		newVms[i] = cVM
 	}
-	return p.storage.SaveCluster(l, p.clusters[clusterName])
+	p.clusters[clusterName].VMs = append(p.clusters[clusterName].VMs, newVms...)
+	return newVms, p.storage.SaveCluster(l, p.clusters[clusterName])
 }
 
 func (p *Provider) Shrink(l *logger.Logger, vmsToDelete vm.List, clusterName string) error {

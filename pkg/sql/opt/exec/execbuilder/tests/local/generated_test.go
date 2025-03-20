@@ -687,6 +687,20 @@ func TestExecBuild_values(
 	runExecBuildLogicTest(t, "values")
 }
 
+func TestExecBuild_vector_mutation(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runExecBuildLogicTest(t, "vector_mutation")
+}
+
+func TestExecBuild_vector_search(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runExecBuildLogicTest(t, "vector_search")
+}
+
 func TestExecBuild_vectorize_local(
 	t *testing.T,
 ) {

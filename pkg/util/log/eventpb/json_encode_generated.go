@@ -40,9 +40,7 @@ func (m *AlterDatabaseAddRegion) AppendJSONFields(printComma bool, b redact.Reda
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -52,9 +50,7 @@ func (m *AlterDatabaseAddRegion) AppendJSONFields(printComma bool, b redact.Reda
 		}
 		printComma = true
 		b = append(b, "\"RegionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.RegionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.RegionName)))
 		b = append(b, '"')
 	}
 
@@ -74,9 +70,7 @@ func (m *AlterDatabaseDropRegion) AppendJSONFields(printComma bool, b redact.Red
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -86,9 +80,7 @@ func (m *AlterDatabaseDropRegion) AppendJSONFields(printComma bool, b redact.Red
 		}
 		printComma = true
 		b = append(b, "\"RegionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.RegionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.RegionName)))
 		b = append(b, '"')
 	}
 
@@ -142,9 +134,7 @@ func (m *AlterDatabasePlacement) AppendJSONFields(printComma bool, b redact.Reda
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -154,9 +144,7 @@ func (m *AlterDatabasePlacement) AppendJSONFields(printComma bool, b redact.Reda
 		}
 		printComma = true
 		b = append(b, "\"Placement\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Placement)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Placement)))
 		b = append(b, '"')
 	}
 
@@ -176,9 +164,7 @@ func (m *AlterDatabasePrimaryRegion) AppendJSONFields(printComma bool, b redact.
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -188,9 +174,7 @@ func (m *AlterDatabasePrimaryRegion) AppendJSONFields(printComma bool, b redact.
 		}
 		printComma = true
 		b = append(b, "\"PrimaryRegionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.PrimaryRegionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.PrimaryRegionName)))
 		b = append(b, '"')
 	}
 
@@ -222,9 +206,7 @@ func (m *AlterDatabaseSurvivalGoal) AppendJSONFields(printComma bool, b redact.R
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -234,9 +216,7 @@ func (m *AlterDatabaseSurvivalGoal) AppendJSONFields(printComma bool, b redact.R
 		}
 		printComma = true
 		b = append(b, "\"SurvivalGoal\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SurvivalGoal)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SurvivalGoal)))
 		b = append(b, '"')
 	}
 
@@ -313,9 +293,7 @@ func (m *AlterFunctionOptions) AppendJSONFields(printComma bool, b redact.Redact
 		}
 		printComma = true
 		b = append(b, "\"FunctionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.FunctionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.FunctionName)))
 		b = append(b, '"')
 	}
 
@@ -369,9 +347,7 @@ func (m *AlterIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -381,9 +357,7 @@ func (m *AlterIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"IndexName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.IndexName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.IndexName)))
 		b = append(b, '"')
 	}
 
@@ -412,9 +386,7 @@ func (m *AlterIndexVisible) AppendJSONFields(printComma bool, b redact.Redactabl
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -424,9 +396,7 @@ func (m *AlterIndexVisible) AppendJSONFields(printComma bool, b redact.Redactabl
 		}
 		printComma = true
 		b = append(b, "\"IndexName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.IndexName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.IndexName)))
 		b = append(b, '"')
 	}
 
@@ -554,9 +524,7 @@ func (m *AlterSequence) AppendJSONFields(printComma bool, b redact.RedactableByt
 		}
 		printComma = true
 		b = append(b, "\"SequenceName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SequenceName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SequenceName)))
 		b = append(b, '"')
 	}
 
@@ -576,9 +544,7 @@ func (m *AlterTable) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -602,9 +568,7 @@ func (m *AlterTable) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 				b = append(b, ',')
 			}
 			b = append(b, '"')
-			b = append(b, redact.StartMarker()...)
-			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
-			b = append(b, redact.EndMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), v))
 			b = append(b, '"')
 		}
 		b = append(b, ']')
@@ -660,9 +624,7 @@ func (m *AlterType) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"TypeName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TypeName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TypeName)))
 		b = append(b, '"')
 	}
 
@@ -976,6 +938,14 @@ func (m *ChangeTypePrivilege) AppendJSONFields(printComma bool, b redact.Redacta
 }
 
 // AppendJSONFields implements the EventPayload interface.
+func (m *ChangefeedCanceled) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
+
+	printComma, b = m.CommonChangefeedEventDetails.AppendJSONFields(printComma, b)
+
+	return printComma, b
+}
+
+// AppendJSONFields implements the EventPayload interface.
 func (m *ChangefeedEmittedBytes) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
 
 	printComma, b = m.CommonChangefeedEventDetails.AppendJSONFields(printComma, b)
@@ -1197,9 +1167,7 @@ func (m *CommentOnColumn) AppendJSONFields(printComma bool, b redact.RedactableB
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -1209,9 +1177,7 @@ func (m *CommentOnColumn) AppendJSONFields(printComma bool, b redact.RedactableB
 		}
 		printComma = true
 		b = append(b, "\"ColumnName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.ColumnName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.ColumnName)))
 		b = append(b, '"')
 	}
 
@@ -1252,9 +1218,7 @@ func (m *CommentOnConstraint) AppendJSONFields(printComma bool, b redact.Redacta
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -1264,9 +1228,7 @@ func (m *CommentOnConstraint) AppendJSONFields(printComma bool, b redact.Redacta
 		}
 		printComma = true
 		b = append(b, "\"ConstraintName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.ConstraintName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.ConstraintName)))
 		b = append(b, '"')
 	}
 
@@ -1307,9 +1269,7 @@ func (m *CommentOnDatabase) AppendJSONFields(printComma bool, b redact.Redactabl
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -1350,9 +1310,7 @@ func (m *CommentOnIndex) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -1362,9 +1320,7 @@ func (m *CommentOnIndex) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"IndexName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.IndexName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.IndexName)))
 		b = append(b, '"')
 	}
 
@@ -1405,9 +1361,7 @@ func (m *CommentOnSchema) AppendJSONFields(printComma bool, b redact.RedactableB
 		}
 		printComma = true
 		b = append(b, "\"SchemaName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SchemaName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SchemaName)))
 		b = append(b, '"')
 	}
 
@@ -1448,9 +1402,7 @@ func (m *CommentOnTable) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -1491,9 +1443,7 @@ func (m *CommentOnType) AppendJSONFields(printComma bool, b redact.RedactableByt
 		}
 		printComma = true
 		b = append(b, "\"TypeName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TypeName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TypeName)))
 		b = append(b, '"')
 	}
 
@@ -2322,9 +2272,7 @@ func (m *CreateDatabase) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -2344,9 +2292,7 @@ func (m *CreateFunction) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"FunctionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.FunctionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.FunctionName)))
 		b = append(b, '"')
 	}
 
@@ -2375,9 +2321,7 @@ func (m *CreateIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -2387,9 +2331,7 @@ func (m *CreateIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"IndexName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.IndexName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.IndexName)))
 		b = append(b, '"')
 	}
 
@@ -2400,6 +2342,36 @@ func (m *CreateIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		printComma = true
 		b = append(b, "\"MutationID\":"...)
 		b = strconv.AppendUint(b, uint64(m.MutationID), 10)
+	}
+
+	return printComma, b
+}
+
+// AppendJSONFields implements the EventPayload interface.
+func (m *CreatePolicy) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
+
+	printComma, b = m.CommonEventDetails.AppendJSONFields(printComma, b)
+
+	printComma, b = m.CommonSQLEventDetails.AppendJSONFields(printComma, b)
+
+	if m.TableName != "" {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"TableName\":\""...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
+		b = append(b, '"')
+	}
+
+	if m.PolicyName != "" {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"PolicyName\":\""...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.PolicyName)))
+		b = append(b, '"')
 	}
 
 	return printComma, b
@@ -2440,9 +2412,7 @@ func (m *CreateSchema) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"SchemaName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SchemaName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SchemaName)))
 		b = append(b, '"')
 	}
 
@@ -2452,9 +2422,7 @@ func (m *CreateSchema) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"Owner\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Owner)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Owner)))
 		b = append(b, '"')
 	}
 
@@ -2474,9 +2442,7 @@ func (m *CreateSequence) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"SequenceName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SequenceName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SequenceName)))
 		b = append(b, '"')
 	}
 
@@ -2486,9 +2452,7 @@ func (m *CreateSequence) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"Owner\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Owner)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Owner)))
 		b = append(b, '"')
 	}
 
@@ -2508,9 +2472,7 @@ func (m *CreateStatistics) AppendJSONFields(printComma bool, b redact.Redactable
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -2530,9 +2492,7 @@ func (m *CreateTable) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -2542,9 +2502,7 @@ func (m *CreateTable) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"Owner\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Owner)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Owner)))
 		b = append(b, '"')
 	}
 
@@ -2564,9 +2522,7 @@ func (m *CreateTrigger) AppendJSONFields(printComma bool, b redact.RedactableByt
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -2576,9 +2532,7 @@ func (m *CreateTrigger) AppendJSONFields(printComma bool, b redact.RedactableByt
 		}
 		printComma = true
 		b = append(b, "\"TriggerName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TriggerName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TriggerName)))
 		b = append(b, '"')
 	}
 
@@ -2598,9 +2552,7 @@ func (m *CreateType) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"TypeName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TypeName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TypeName)))
 		b = append(b, '"')
 	}
 
@@ -2610,9 +2562,7 @@ func (m *CreateType) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"Owner\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Owner)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Owner)))
 		b = append(b, '"')
 	}
 
@@ -2632,9 +2582,7 @@ func (m *CreateView) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"ViewName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.ViewName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.ViewName)))
 		b = append(b, '"')
 	}
 
@@ -2644,9 +2592,7 @@ func (m *CreateView) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"Owner\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Owner)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Owner)))
 		b = append(b, '"')
 	}
 
@@ -2822,9 +2768,7 @@ func (m *DropDatabase) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -2839,9 +2783,7 @@ func (m *DropDatabase) AppendJSONFields(printComma bool, b redact.RedactableByte
 				b = append(b, ',')
 			}
 			b = append(b, '"')
-			b = append(b, redact.StartMarker()...)
-			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
-			b = append(b, redact.EndMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), v))
 			b = append(b, '"')
 		}
 		b = append(b, ']')
@@ -2863,9 +2805,7 @@ func (m *DropFunction) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"FunctionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.FunctionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.FunctionName)))
 		b = append(b, '"')
 	}
 
@@ -2885,9 +2825,7 @@ func (m *DropIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -2897,9 +2835,7 @@ func (m *DropIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"IndexName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.IndexName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.IndexName)))
 		b = append(b, '"')
 	}
 
@@ -2923,12 +2859,40 @@ func (m *DropIndex) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 				b = append(b, ',')
 			}
 			b = append(b, '"')
-			b = append(b, redact.StartMarker()...)
-			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
-			b = append(b, redact.EndMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), v))
 			b = append(b, '"')
 		}
 		b = append(b, ']')
+	}
+
+	return printComma, b
+}
+
+// AppendJSONFields implements the EventPayload interface.
+func (m *DropPolicy) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
+
+	printComma, b = m.CommonEventDetails.AppendJSONFields(printComma, b)
+
+	printComma, b = m.CommonSQLEventDetails.AppendJSONFields(printComma, b)
+
+	if m.TableName != "" {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"TableName\":\""...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
+		b = append(b, '"')
+	}
+
+	if m.PolicyName != "" {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"PolicyName\":\""...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.PolicyName)))
+		b = append(b, '"')
 	}
 
 	return printComma, b
@@ -2969,9 +2933,7 @@ func (m *DropSchema) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"SchemaName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SchemaName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SchemaName)))
 		b = append(b, '"')
 	}
 
@@ -2991,9 +2953,7 @@ func (m *DropSequence) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"SequenceName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SequenceName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SequenceName)))
 		b = append(b, '"')
 	}
 
@@ -3013,9 +2973,7 @@ func (m *DropTable) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -3030,9 +2988,7 @@ func (m *DropTable) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 				b = append(b, ',')
 			}
 			b = append(b, '"')
-			b = append(b, redact.StartMarker()...)
-			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
-			b = append(b, redact.EndMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), v))
 			b = append(b, '"')
 		}
 		b = append(b, ']')
@@ -3054,9 +3010,7 @@ func (m *DropTrigger) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -3066,9 +3020,7 @@ func (m *DropTrigger) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"TriggerName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TriggerName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TriggerName)))
 		b = append(b, '"')
 	}
 
@@ -3088,9 +3040,7 @@ func (m *DropType) AppendJSONFields(printComma bool, b redact.RedactableBytes) (
 		}
 		printComma = true
 		b = append(b, "\"TypeName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TypeName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TypeName)))
 		b = append(b, '"')
 	}
 
@@ -3110,9 +3060,7 @@ func (m *DropView) AppendJSONFields(printComma bool, b redact.RedactableBytes) (
 		}
 		printComma = true
 		b = append(b, "\"ViewName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.ViewName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.ViewName)))
 		b = append(b, '"')
 	}
 
@@ -3127,9 +3075,7 @@ func (m *DropView) AppendJSONFields(printComma bool, b redact.RedactableBytes) (
 				b = append(b, ',')
 			}
 			b = append(b, '"')
-			b = append(b, redact.StartMarker()...)
-			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
-			b = append(b, redact.EndMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), v))
 			b = append(b, '"')
 		}
 		b = append(b, ']')
@@ -3264,42 +3210,6 @@ func (m *HotRangesStats) AppendJSONFields(printComma bool, b redact.RedactableBy
 	b = append(b, "\"Qps\":"...)
 	b = strconv.AppendFloat(b, float64(m.Qps), 'f', -1, 64)
 
-	if m.DatabaseName != "" {
-		if printComma {
-			b = append(b, ',')
-		}
-		printComma = true
-		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
-		b = append(b, '"')
-	}
-
-	if m.TableName != "" {
-		if printComma {
-			b = append(b, ',')
-		}
-		printComma = true
-		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
-		b = append(b, '"')
-	}
-
-	if m.IndexName != "" {
-		if printComma {
-			b = append(b, ',')
-		}
-		printComma = true
-		b = append(b, "\"IndexName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.IndexName)))))
-		b = append(b, redact.EndMarker()...)
-		b = append(b, '"')
-	}
-
 	if m.SchemaName != "" {
 		if printComma {
 			b = append(b, ',')
@@ -3364,6 +3274,63 @@ func (m *HotRangesStats) AppendJSONFields(printComma bool, b redact.RedactableBy
 		printComma = true
 		b = append(b, "\"CPUTimePerSecond\":"...)
 		b = strconv.AppendFloat(b, float64(m.CPUTimePerSecond), 'f', -1, 64)
+	}
+
+	if len(m.Databases) > 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"Databases\":["...)
+		for i, v := range m.Databases {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			b = append(b, '"')
+			b = append(b, redact.StartMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
+			b = append(b, redact.EndMarker()...)
+			b = append(b, '"')
+		}
+		b = append(b, ']')
+	}
+
+	if len(m.Tables) > 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"Tables\":["...)
+		for i, v := range m.Tables {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			b = append(b, '"')
+			b = append(b, redact.StartMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
+			b = append(b, redact.EndMarker()...)
+			b = append(b, '"')
+		}
+		b = append(b, ']')
+	}
+
+	if len(m.Indexes) > 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"Indexes\":["...)
+		for i, v := range m.Indexes {
+			if i > 0 {
+				b = append(b, ',')
+			}
+			b = append(b, '"')
+			b = append(b, redact.StartMarker()...)
+			b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(v)))))
+			b = append(b, redact.EndMarker()...)
+			b = append(b, '"')
+		}
+		b = append(b, ']')
 	}
 
 	return printComma, b
@@ -3533,6 +3500,59 @@ func (m *LevelStats) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		printComma = true
 		b = append(b, "\"NumSublevels\":"...)
 		b = strconv.AppendInt(b, int64(m.NumSublevels), 10)
+	}
+
+	return printComma, b
+}
+
+// AppendJSONFields implements the EventPayload interface.
+func (m *LowDiskSpace) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
+
+	printComma, b = m.CommonEventDetails.AppendJSONFields(printComma, b)
+
+	if m.NodeID != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"NodeID\":"...)
+		b = strconv.AppendInt(b, int64(m.NodeID), 10)
+	}
+
+	if m.StoreID != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"StoreID\":"...)
+		b = strconv.AppendInt(b, int64(m.StoreID), 10)
+	}
+
+	if m.PercentThreshold != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"PercentThreshold\":"...)
+		b = strconv.AppendInt(b, int64(m.PercentThreshold), 10)
+	}
+
+	if m.AvailableBytes != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"AvailableBytes\":"...)
+		b = strconv.AppendUint(b, uint64(m.AvailableBytes), 10)
+	}
+
+	if m.TotalBytes != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"TotalBytes\":"...)
+		b = strconv.AppendUint(b, uint64(m.TotalBytes), 10)
 	}
 
 	return printComma, b
@@ -4108,9 +4128,7 @@ func (m *RenameDatabase) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"DatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -4120,9 +4138,7 @@ func (m *RenameDatabase) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"NewDatabaseName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.NewDatabaseName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.NewDatabaseName)))
 		b = append(b, '"')
 	}
 
@@ -4142,9 +4158,7 @@ func (m *RenameFunction) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"FunctionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.FunctionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.FunctionName)))
 		b = append(b, '"')
 	}
 
@@ -4154,9 +4168,7 @@ func (m *RenameFunction) AppendJSONFields(printComma bool, b redact.RedactableBy
 		}
 		printComma = true
 		b = append(b, "\"NewFunctionName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.NewFunctionName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.NewFunctionName)))
 		b = append(b, '"')
 	}
 
@@ -4176,9 +4188,7 @@ func (m *RenameSchema) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"SchemaName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.SchemaName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.SchemaName)))
 		b = append(b, '"')
 	}
 
@@ -4188,9 +4198,7 @@ func (m *RenameSchema) AppendJSONFields(printComma bool, b redact.RedactableByte
 		}
 		printComma = true
 		b = append(b, "\"NewSchemaName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.NewSchemaName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.NewSchemaName)))
 		b = append(b, '"')
 	}
 
@@ -4210,9 +4218,7 @@ func (m *RenameTable) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -4222,9 +4228,7 @@ func (m *RenameTable) AppendJSONFields(printComma bool, b redact.RedactableBytes
 		}
 		printComma = true
 		b = append(b, "\"NewTableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.NewTableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.NewTableName)))
 		b = append(b, '"')
 	}
 
@@ -4244,9 +4248,7 @@ func (m *RenameType) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"TypeName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TypeName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TypeName)))
 		b = append(b, '"')
 	}
 
@@ -4256,9 +4258,7 @@ func (m *RenameType) AppendJSONFields(printComma bool, b redact.RedactableBytes)
 		}
 		printComma = true
 		b = append(b, "\"NewTypeName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.NewTypeName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.NewTypeName)))
 		b = append(b, '"')
 	}
 
@@ -4288,9 +4288,7 @@ func (m *ReverseSchemaChange) AppendJSONFields(printComma bool, b redact.Redacta
 		}
 		printComma = true
 		b = append(b, "\"Error\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Error)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Error)))
 		b = append(b, '"')
 	}
 
@@ -5722,9 +5720,7 @@ func (m *SetSchema) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"DescriptorName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DescriptorName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DescriptorName)))
 		b = append(b, '"')
 	}
 
@@ -5734,9 +5730,7 @@ func (m *SetSchema) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"NewDescriptorName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.NewDescriptorName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.NewDescriptorName)))
 		b = append(b, '"')
 	}
 
@@ -5746,9 +5740,7 @@ func (m *SetSchema) AppendJSONFields(printComma bool, b redact.RedactableBytes) 
 		}
 		printComma = true
 		b = append(b, "\"DescriptorType\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.DescriptorType)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.DescriptorType)))
 		b = append(b, '"')
 	}
 
@@ -6333,9 +6325,7 @@ func (m *TruncateTable) AppendJSONFields(printComma bool, b redact.RedactableByt
 		}
 		printComma = true
 		b = append(b, "\"TableName\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.TableName)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.TableName)))
 		b = append(b, '"')
 	}
 
@@ -6421,9 +6411,7 @@ func (m *UnsafeDeleteDescriptor) AppendJSONFields(printComma bool, b redact.Reda
 		}
 		printComma = true
 		b = append(b, "\"Name\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Name)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Name)))
 		b = append(b, '"')
 	}
 
@@ -6482,9 +6470,7 @@ func (m *UnsafeDeleteNamespaceEntry) AppendJSONFields(printComma bool, b redact.
 		}
 		printComma = true
 		b = append(b, "\"Name\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Name)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Name)))
 		b = append(b, '"')
 	}
 
@@ -6598,9 +6584,7 @@ func (m *UnsafeUpsertNamespaceEntry) AppendJSONFields(printComma bool, b redact.
 		}
 		printComma = true
 		b = append(b, "\"Name\":\""...)
-		b = append(b, redact.StartMarker()...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.Name)))))
-		b = append(b, redact.EndMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.Name)))
 		b = append(b, '"')
 	}
 

@@ -22,6 +22,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/row"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -267,6 +269,19 @@ func (p *kvRowProcessor) processOneRow(
 				}
 				return p.processOneRow(ctx, dstTableID, row, k, refreshedValue, s, refreshCount+1)
 			}
+
+			// Since the conditional error is not a timestamp error, that means it
+			// must be a uniqueness constraint validation. In the future, if the
+			// conditional failure indicates which key failed, we should ensure the
+			// key belongs to a unique index.
+			//
+			// Overall, converting this to a unique violation is low risk. A
+			// condition validation failure is persistent condition and sending the
+			// row to the DLQ allows the job to continue processing.
+			//
+			// TODO(jeffswenson): ideally this would share an implementaiton with
+			// mkFastPathUniqueCheckErr.
+			return pgerror.Newf(pgcode.UniqueViolation, "duplicate key value violates unique constraint: %s", condErr.String())
 		}
 		return err
 	}
@@ -412,7 +427,7 @@ func newKVTableWriter(
 	if err != nil {
 		return nil, err
 	}
-	rd := row.MakeDeleter(evalCtx.Codec, tableDesc, readCols, &evalCtx.Settings.SV, internal, nil)
+	rd := row.MakeDeleter(evalCtx.Codec, tableDesc, nil /* lockedIndexes */, readCols, &evalCtx.Settings.SV, internal, nil)
 	ru, err := row.MakeUpdater(
 		ctx, nil, evalCtx.Codec, tableDesc, nil /* uniqueWithTombstoneIndexes */, readCols, writeCols, row.UpdaterDefault, a, &evalCtx.Settings.SV, internal, nil,
 	)
@@ -461,13 +476,15 @@ func (p *kvTableWriter) insertRow(ctx context.Context, b *kv.Batch, after cdceve
 
 	var ph row.PartialIndexUpdateHelper
 	// TODO(dt): support partial indexes.
+	var vh row.VectorIndexUpdateHelper
+	// TODO(mw5h, drewk): support vector indexes.
 	oth := &row.OriginTimestampCPutHelper{
 		OriginTimestamp: after.MvccTimestamp,
 		// TODO(ssd): We should choose this based by comparing the cluster IDs of the source
 		// and destination clusters.
 		// ShouldWinTie: true,
 	}
-	return p.ri.InsertRow(ctx, &row.KVBatchAdapter{Batch: b}, p.newVals, ph, oth, false, false)
+	return p.ri.InsertRow(ctx, &row.KVBatchAdapter{Batch: b}, p.newVals, ph, vh, oth, row.CPutOp, false /* traceKV */)
 }
 
 func (p *kvTableWriter) updateRow(
@@ -482,13 +499,15 @@ func (p *kvTableWriter) updateRow(
 
 	var ph row.PartialIndexUpdateHelper
 	// TODO(dt): support partial indexes.
+	var vh row.VectorIndexUpdateHelper
+	// TODO(mw5h, drewk): support vector indexes.
 	oth := &row.OriginTimestampCPutHelper{
 		OriginTimestamp: after.MvccTimestamp,
 		// TODO(ssd): We should choose this based by comparing the cluster IDs of the source
 		// and destination clusters.
 		// ShouldWinTie: true,
 	}
-	_, err := p.ru.UpdateRow(ctx, b, p.oldVals, p.newVals, ph, oth, false)
+	_, err := p.ru.UpdateRow(ctx, b, p.oldVals, p.newVals, ph, vh, oth, false)
 	return err
 }
 
@@ -501,6 +520,8 @@ func (p *kvTableWriter) deleteRow(
 
 	var ph row.PartialIndexUpdateHelper
 	// TODO(dt): support partial indexes.
+	var vh row.VectorIndexUpdateHelper
+	// TODO(mw5h, drewk): support vector indexes.
 	oth := &row.OriginTimestampCPutHelper{
 		PreviousWasDeleted: before.IsDeleted(),
 		OriginTimestamp:    after.MvccTimestamp,
@@ -509,7 +530,7 @@ func (p *kvTableWriter) deleteRow(
 		// ShouldWinTie: true,
 	}
 
-	return p.rd.DeleteRow(ctx, b, p.oldVals, ph, oth, false)
+	return p.rd.DeleteRow(ctx, b, p.oldVals, ph, vh, oth, false)
 }
 
 func (p *kvTableWriter) fillOld(vals cdcevent.Row) error {

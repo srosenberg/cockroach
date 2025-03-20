@@ -38,6 +38,10 @@ func TestContextualHelp(t *testing.T) {
 
 		{`ALTER BACKUP foo ADD NEW_KMS=bar WITH OLD_KMS=foobar ??`, `ALTER BACKUP`},
 
+		{`ALTER JOB ??`, `ALTER JOB`},
+		{`ALTER JOB 123 OWNER ??`, `ALTER JOB`},
+		{`ALTER JOB 123 OWNER TO ??`, `ALTER JOB`},
+
 		{`ALTER TABLE IF ??`, `ALTER TABLE`},
 		{`ALTER TABLE blah ??`, `ALTER TABLE`},
 		{`ALTER TABLE blah ADD ??`, `ALTER TABLE`},
@@ -211,6 +215,9 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE SCHEMA IF NOT ??`, `CREATE SCHEMA`},
 		{`CREATE SCHEMA bli ??`, `CREATE SCHEMA`},
 
+		{`CHECK ??`, `CHECK`},
+		{`CHECK EXTERNAL CONNECTION ??`, `CHECK EXTERNAL CONNECTION`},
+
 		{`DELETE FROM ??`, `DELETE`},
 		{`DELETE FROM blah ??`, `DELETE`},
 		{`DELETE FROM blah WHERE ??`, `DELETE`},
@@ -289,6 +296,8 @@ func TestContextualHelp(t *testing.T) {
 		{`DECLARE foo ??`, `DECLARE`},
 		{`DECLARE foo BINARY ??`, `DECLARE`},
 		{`DECLARE foo BINARY CURSOR ??`, `DECLARE`},
+
+		{`DO ??`, `DO`},
 
 		{`CLOSE ??`, `CLOSE`},
 

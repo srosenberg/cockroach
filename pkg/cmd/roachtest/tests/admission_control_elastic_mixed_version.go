@@ -40,7 +40,7 @@ func registerElasticWorkloadMixedVersion(r registry.Registry) {
 		Timeout:          1 * time.Hour,
 		Benchmark:        true,
 		CompatibleClouds: registry.OnlyGCE,
-		Suites:           registry.Suites(registry.Nightly),
+		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
 		Cluster: r.MakeClusterSpec(4, spec.CPU(8),
 			spec.WorkloadNode(), spec.ReuseNone()),
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
@@ -56,8 +56,7 @@ func registerElasticWorkloadMixedVersion(r registry.Registry) {
 				mixedversion.AlwaysUseLatestPredecessors,
 				// Don't go back too far. We are mostly interested in upgrading to v24.3
 				// where RACv2 was introduced.
-				mixedversion.MaxUpgrades(2),
-				mixedversion.MinimumSupportedVersion("v24.1.0"),
+				mixedversion.MinimumBootstrapVersion("v24.1.0"),
 			)
 
 			// Limit the disk throughput to 128 MiB/s, to more easily stress the

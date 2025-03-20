@@ -59,6 +59,29 @@ const (
 	sinkTypePulsar
 )
 
+func (st sinkType) String() string {
+	switch st {
+	case sinkTypeSinklessBuffer:
+		return `sinkless buffer`
+	case sinkTypeNull:
+		return `null`
+	case sinkTypeKafka:
+		return `kafka`
+	case sinkTypeWebhook:
+		return `webhook`
+	case sinkTypePubsub:
+		return `pubsub`
+	case sinkTypeCloudstorage:
+		return `cloudstorage`
+	case sinkTypeSQL:
+		return `sql`
+	case sinkTypePulsar:
+		return `pulsar`
+	default:
+		return `unknown`
+	}
+}
+
 // externalResource is the interface common to both EventSink and
 // ResolvedTimestampSink.
 type externalResource interface {
@@ -88,6 +111,7 @@ type EventSink interface {
 		key, value []byte,
 		updated, mvcc hlc.Timestamp,
 		alloc kvevent.Alloc,
+		headers rowHeaders,
 	) error
 
 	// Flush blocks until every message enqueued by EmitRow
@@ -160,30 +184,6 @@ func getAndDialSink(
 	return sink, nil
 }
 
-// WebhookV2Enabled determines whether or not the refactored Webhook sink
-// or the deprecated sink should be used.
-var WebhookV2Enabled = settings.RegisterBoolSetting(
-	settings.ApplicationLevel,
-	"changefeed.new_webhook_sink_enabled",
-	"if enabled, this setting enables a new implementation of the webhook sink"+
-		" that allows for a much higher throughput",
-	// TODO: delete the original webhook sink code
-	metamorphic.ConstantWithTestBool("changefeed.new_webhook_sink.enabled", true),
-	settings.WithName("changefeed.new_webhook_sink.enabled"),
-)
-
-// PubsubV2Enabled determines whether or not the refactored Webhook sink
-// or the deprecated sink should be used.
-var PubsubV2Enabled = settings.RegisterBoolSetting(
-	settings.ApplicationLevel,
-	"changefeed.new_pubsub_sink_enabled",
-	"if enabled, this setting enables a new implementation of the pubsub sink"+
-		" that allows for a higher throughput",
-	// TODO: delete the original pubsub sink code
-	metamorphic.ConstantWithTestBool("changefeed.new_pubsub_sink.enabled", true),
-	settings.WithName("changefeed.new_pubsub_sink.enabled"),
-)
-
 // KafkaV2Enabled determines whether or not the refactored Kafka sink
 // or the deprecated sink should be used.
 var KafkaV2Enabled = settings.RegisterBoolSetting(
@@ -246,15 +246,15 @@ func getSink(
 			if knobs, ok := serverCfg.TestingKnobs.Changefeed.(*TestingKnobs); ok {
 				nullIsAccounted = knobs.NullSinkIsExternalIOAccounted
 			}
-			return makeNullSink(sinkURL{URL: u}, metricsBuilder(nullIsAccounted))
+			return makeNullSink(&changefeedbase.SinkURL{URL: u}, metricsBuilder(nullIsAccounted))
 		case isKafkaSink(u):
 			return validateOptionsAndMakeSink(changefeedbase.KafkaValidOptions, func() (Sink, error) {
 				if KafkaV2Enabled.Get(&serverCfg.Settings.SV) {
-					return makeKafkaSinkV2(ctx, sinkURL{URL: u}, AllTargets(feedCfg), opts.GetKafkaConfigJSON(),
+					return makeKafkaSinkV2(ctx, &changefeedbase.SinkURL{URL: u}, AllTargets(feedCfg), opts.GetKafkaConfigJSON(),
 						numSinkIOWorkers(serverCfg), newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
 						serverCfg.Settings, metricsBuilder, kafkaSinkV2Knobs{})
 				} else {
-					return makeKafkaSink(ctx, sinkURL{URL: u}, AllTargets(feedCfg), opts.GetKafkaConfigJSON(), serverCfg.Settings, metricsBuilder)
+					return makeKafkaSink(ctx, &changefeedbase.SinkURL{URL: u}, AllTargets(feedCfg), opts.GetKafkaConfigJSON(), serverCfg.Settings, metricsBuilder)
 				}
 			})
 		case isPulsarSink(u):
@@ -262,38 +262,27 @@ func getSink(
 			if knobs, ok := serverCfg.TestingKnobs.Changefeed.(*TestingKnobs); ok {
 				testingKnobs = knobs
 			}
-			return makePulsarSink(ctx, sinkURL{URL: u}, encodingOpts, AllTargets(feedCfg), opts.GetKafkaConfigJSON(),
+			return makePulsarSink(ctx, &changefeedbase.SinkURL{URL: u}, encodingOpts, AllTargets(feedCfg), opts.GetKafkaConfigJSON(),
 				serverCfg.Settings, metricsBuilder, testingKnobs)
 		case isWebhookSink(u):
 			webhookOpts, err := opts.GetWebhookSinkOptions()
 			if err != nil {
 				return nil, err
 			}
-			if WebhookV2Enabled.Get(&serverCfg.Settings.SV) {
-				return validateOptionsAndMakeSink(changefeedbase.WebhookValidOptions, func() (Sink, error) {
-					return makeWebhookSink(ctx, sinkURL{URL: u}, encodingOpts, webhookOpts,
-						numSinkIOWorkers(serverCfg), newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
-						metricsBuilder, serverCfg.Settings)
-				})
-			} else {
-				return validateOptionsAndMakeSink(changefeedbase.WebhookValidOptions, func() (Sink, error) {
-					return makeDeprecatedWebhookSink(ctx, sinkURL{URL: u}, encodingOpts, webhookOpts,
-						defaultWorkerCount(), timeutil.DefaultTimeSource{}, metricsBuilder)
-				})
-			}
+			return validateOptionsAndMakeSink(changefeedbase.WebhookValidOptions, func() (Sink, error) {
+				return makeWebhookSink(ctx, &changefeedbase.SinkURL{URL: u}, encodingOpts, webhookOpts,
+					numSinkIOWorkers(serverCfg), newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
+					metricsBuilder, serverCfg.Settings)
+			})
 		case isPubsubSink(u):
 			var testingKnobs *TestingKnobs
 			if knobs, ok := serverCfg.TestingKnobs.Changefeed.(*TestingKnobs); ok {
 				testingKnobs = knobs
 			}
-			if PubsubV2Enabled.Get(&serverCfg.Settings.SV) {
-				return makePubsubSink(ctx, u, encodingOpts, opts.GetPubsubConfigJSON(), AllTargets(feedCfg),
-					opts.IsSet(changefeedbase.OptUnordered), numSinkIOWorkers(serverCfg),
-					newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
-					metricsBuilder, serverCfg.Settings, testingKnobs)
-			} else {
-				return makeDeprecatedPubsubSink(ctx, u, encodingOpts, AllTargets(feedCfg), opts.IsSet(changefeedbase.OptUnordered), metricsBuilder, testingKnobs)
-			}
+			return makePubsubSink(ctx, u, encodingOpts, opts.GetPubsubConfigJSON(), AllTargets(feedCfg),
+				opts.IsSet(changefeedbase.OptUnordered), numSinkIOWorkers(serverCfg),
+				newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
+				metricsBuilder, serverCfg.Settings, testingKnobs)
 		case isCloudStorageSink(u):
 			return validateOptionsAndMakeSink(changefeedbase.CloudStorageValidOptions, func() (Sink, error) {
 				var testingKnobs *TestingKnobs
@@ -307,18 +296,18 @@ func getSink(
 					nodeID = serverCfg.NodeID.SQLInstanceID()
 				}
 				return makeCloudStorageSink(
-					ctx, sinkURL{URL: u}, nodeID, serverCfg.Settings, encodingOpts,
+					ctx, &changefeedbase.SinkURL{URL: u}, nodeID, serverCfg.Settings, encodingOpts,
 					timestampOracle, serverCfg.ExternalStorageFromURI, user, metricsBuilder, testingKnobs,
 				)
 			})
 		case u.Scheme == changefeedbase.SinkSchemeExperimentalSQL:
 			return validateOptionsAndMakeSink(changefeedbase.SQLValidOptions, func() (Sink, error) {
-				return makeSQLSink(sinkURL{URL: u}, sqlSinkTableName, AllTargets(feedCfg), metricsBuilder)
+				return makeSQLSink(&changefeedbase.SinkURL{URL: u}, sqlSinkTableName, AllTargets(feedCfg), metricsBuilder)
 			})
 		case u.Scheme == changefeedbase.SinkSchemeExternalConnection:
 			return validateOptionsAndMakeSink(changefeedbase.ExternalConnectionValidOptions, func() (Sink, error) {
 				return makeExternalConnectionSink(
-					ctx, sinkURL{URL: u}, user, makeExternalConnectionProvider(ctx, serverCfg.DB),
+					ctx, &changefeedbase.SinkURL{URL: u}, user, makeExternalConnectionProvider(ctx, serverCfg.DB),
 					serverCfg, feedCfg, timestampOracle, jobID, m,
 				)
 			})
@@ -362,70 +351,6 @@ func validateSinkOptions(opts map[string]string, sinkSpecificOpts map[string]str
 	return nil
 }
 
-// sinkURL is a helper struct which for "consuming" URL query
-// parameters from the underlying URL.
-type sinkURL struct {
-	*url.URL
-	q url.Values
-}
-
-func (u *sinkURL) consumeParam(p string) string {
-	if u.q == nil {
-		u.q = u.Query()
-	}
-	v := u.q.Get(p)
-	u.q.Del(p)
-	return v
-}
-
-func (u *sinkURL) addParam(p string, value string) {
-	if u.q == nil {
-		u.q = u.Query()
-	}
-	u.q.Add(p, value)
-}
-
-func (u *sinkURL) consumeBool(param string, dest *bool) (wasSet bool, err error) {
-	if paramVal := u.consumeParam(param); paramVal != "" {
-		wasSet, err := strToBool(paramVal, dest)
-		if err != nil {
-			return false, errors.Wrapf(err, "param %s must be a bool", param)
-		}
-		return wasSet, err
-	}
-	return false, nil
-}
-
-func (u *sinkURL) decodeBase64(param string, dest *[]byte) error {
-	// TODO(dan): There's a straightforward and unambiguous transformation
-	//  between the base 64 encoding defined in RFC 4648 and the URL variant
-	//  defined in the same RFC: simply replace all `+` with `-` and `/` with
-	//  `_`. Consider always doing this for the user and accepting either
-	//  variant.
-	val := u.consumeParam(param)
-	err := decodeBase64FromString(val, dest)
-	if err != nil {
-		return errors.Wrapf(err, `param %s must be base 64 encoded`, param)
-	}
-	return nil
-}
-
-func (u *sinkURL) remainingQueryParams() (res []string) {
-	for p := range u.q {
-		res = append(res, p)
-	}
-	return
-}
-
-func (u *sinkURL) String() string {
-	if u.q != nil {
-		// If we changed query params, re-encode them.
-		u.URL.RawQuery = u.q.Encode()
-		u.q = nil
-	}
-	return u.URL.String()
-}
-
 // errorWrapperSink delegates to another sink and marks all returned errors as
 // retryable. During changefeed setup, we use the sink once without this to
 // verify configuration, but in the steady state, no sink error should be
@@ -445,8 +370,9 @@ func (s errorWrapperSink) EmitRow(
 	key, value []byte,
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
+	headers rowHeaders,
 ) error {
-	if err := s.wrapped.(EventSink).EmitRow(ctx, topic, key, value, updated, mvcc, alloc); err != nil {
+	if err := s.wrapped.(EventSink).EmitRow(ctx, topic, key, value, updated, mvcc, alloc, headers); err != nil {
 		return changefeedbase.MarkRetryableError(err)
 	}
 	return nil
@@ -536,6 +462,7 @@ func (s *bufferSink) EmitRow(
 	key, value []byte,
 	updated, mvcc hlc.Timestamp,
 	r kvevent.Alloc,
+	_headers rowHeaders,
 ) error {
 	defer r.Release(ctx)
 	defer s.metrics.recordOneMessage()(mvcc, len(key)+len(value), sinkDoesNotCompress)
@@ -616,9 +543,9 @@ func (n *nullSink) getConcreteType() sinkType {
 
 var _ Sink = (*nullSink)(nil)
 
-func makeNullSink(u sinkURL, m metricsRecorder) (Sink, error) {
+func makeNullSink(u *changefeedbase.SinkURL, m metricsRecorder) (Sink, error) {
 	var pacer *time.Ticker
-	if delay := u.consumeParam(`delay`); delay != "" {
+	if delay := u.ConsumeParam(`delay`); delay != "" {
 		pace, err := time.ParseDuration(delay)
 		if err != nil {
 			return nil, err
@@ -647,6 +574,7 @@ func (n *nullSink) EmitRow(
 	key, value []byte,
 	updated, mvcc hlc.Timestamp,
 	r kvevent.Alloc,
+	_headers rowHeaders,
 ) error {
 	defer r.Release(ctx)
 	defer n.metrics.recordOneMessage()(mvcc, len(key)+len(value), sinkDoesNotCompress)
@@ -725,10 +653,11 @@ func (s *safeSink) EmitRow(
 	key, value []byte,
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
+	headers rowHeaders,
 ) error {
 	s.Lock()
 	defer s.Unlock()
-	return s.wrapped.EmitRow(ctx, topic, key, value, updated, mvcc, alloc)
+	return s.wrapped.EmitRow(ctx, topic, key, value, updated, mvcc, alloc, headers)
 }
 
 func (s *safeSink) Flush(ctx context.Context) error {

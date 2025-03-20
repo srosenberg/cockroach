@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/raft"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/testutils/datapathutils"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
@@ -86,7 +87,7 @@ func (rn *testRaftNode) SendPingRaftMuLocked(to roachpb.ReplicaID) bool {
 }
 
 func (rn *testRaftNode) SendMsgAppRaftMuLocked(
-	_ roachpb.ReplicaID, _ raft.LogSlice,
+	_ roachpb.ReplicaID, _ raft.LeadSlice,
 ) (raftpb.Message, bool) {
 	panic("unimplemented")
 }
@@ -243,6 +244,11 @@ func (c *testRangeController) InspectRaftMuLocked(ctx context.Context) kvflowins
 
 func (c *testRangeController) SendStreamStats(stats *rac2.RangeSendStreamStats) {
 	fmt.Fprintf(c.b, " RangeController.SendStreamStats\n")
+}
+
+func (c *testRangeController) StatusRaftMuLocked() serverpb.RACStatus {
+	fmt.Fprintf(c.b, " RangeController.StatusRaftMuLocked\n")
+	return serverpb.RACStatus{}
 }
 
 func makeTestMutexAsserter() rac2.ReplicaMutexAsserter {

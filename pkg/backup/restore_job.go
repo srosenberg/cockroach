@@ -43,6 +43,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descidgen"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/externalcatalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/funcdesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/ingesting"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/multiregion"
@@ -1324,6 +1325,7 @@ func createImportingDescriptors(
 			if err := ingesting.WriteDescriptors(
 				ctx, txn.KV(), p.User(), descsCol, databases, writtenSchemas, tables, writtenTypes, writtenFunctions,
 				details.DescriptorCoverage, nil /* extra */, restoreTempSystemDB, includePublicSchemaCreatePriv,
+				true, /* deprecatedAllowCrossDatabaseRefs */
 			); err != nil {
 				return errors.Wrapf(err, "restoring %d TableDescriptors from %d databases", len(tables), len(databases))
 			}
@@ -1428,7 +1430,7 @@ func createImportingDescriptors(
 							txn.KV(),
 							desc.GetID(),
 							descsCol,
-							sql.SynthesizeRegionConfigOptionIncludeOffline,
+							multiregion.SynthesizeRegionConfigOptionIncludeOffline,
 						)
 						if err != nil {
 							return err
@@ -1467,20 +1469,6 @@ func createImportingDescriptors(
 					default:
 						return errors.AssertionFailedf("unknown tenant data state %v", tenantInfoCopy)
 					}
-					if p, err := roachpb.MakeTenantID(tenantInfoCopy.ID); err == nil {
-						if details.PreRewriteTenantId != nil {
-							p = *details.PreRewriteTenantId
-						}
-						ts := details.EndTime
-						if ts.IsEmpty() {
-							ts = manifest.EndTime
-						}
-						tenantInfoCopy.PreviousSourceTenant = &mtinfopb.PreviousSourceTenant{
-							ClusterID:        manifest.ClusterID,
-							TenantID:         p,
-							CutoverTimestamp: ts,
-						}
-					}
 					spanConfigs := p.ExecCfg().SpanConfigKVAccessor.WithTxn(ctx, txn.KV())
 					if _, err := sql.CreateTenantRecord(
 						ctx,
@@ -1518,7 +1506,7 @@ func createImportingDescriptors(
 			err := r.job.WithTxn(txn).SetDetails(ctx, details)
 
 			// Emit to the event log now that the job has finished preparing descs.
-			emitRestoreJobEvent(ctx, p, jobs.StatusRunning, r.job)
+			emitRestoreJobEvent(ctx, p, jobs.StateRunning, r.job)
 
 			return err
 		})
@@ -1881,7 +1869,7 @@ func (r *restoreResumer) doResume(ctx context.Context, execCtx interface{}) erro
 		if err := r.maybeWriteDownloadJob(ctx, p.ExecCfg(), preData, mainData); err != nil {
 			return err
 		}
-		emitRestoreJobEvent(ctx, p, jobs.StatusSucceeded, r.job)
+		emitRestoreJobEvent(ctx, p, jobs.StateSucceeded, r.job)
 		return nil
 	}
 
@@ -2045,24 +2033,26 @@ func (r *restoreResumer) doResume(ctx context.Context, execCtx interface{}) erro
 		}
 	}
 
-	// Bump the version of the role membership table so that the cache is
-	// invalidated.
-	if err := r.execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
-		txn.KV().SetDebugName("system-restore-bump-role-membership-table")
-		log.Eventf(ctx, "bumping table version of %s", systemschema.RoleMembersTable.GetName())
+	if details.DescriptorCoverage != tree.RequestedDescriptors {
+		// Bump the version of the role membership table so that the cache is
+		// invalidated.
+		if err := r.execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
+			txn.KV().SetDebugName("system-restore-bump-role-membership-table")
+			log.Eventf(ctx, "bumping table version of %s", systemschema.RoleMembersTable.GetName())
 
-		td, err := txn.Descriptors().MutableByID(txn.KV()).Table(ctx, keys.RoleMembersTableID)
-		if err != nil {
-			return errors.Wrapf(err, "fetching table %s", systemschema.RoleMembersTable.GetName())
-		}
-		td.MaybeIncrementVersion()
-		if err := txn.Descriptors().WriteDesc(ctx, false, td, txn.KV()); err != nil {
-			return errors.Wrapf(err, "bumping table version for %s", systemschema.RoleMembersTable.GetName())
-		}
+			td, err := txn.Descriptors().MutableByID(txn.KV()).Table(ctx, keys.RoleMembersTableID)
+			if err != nil {
+				return errors.Wrapf(err, "fetching table %s", systemschema.RoleMembersTable.GetName())
+			}
+			td.MaybeIncrementVersion()
+			if err := txn.Descriptors().WriteDesc(ctx, false, td, txn.KV()); err != nil {
+				return errors.Wrapf(err, "bumping table version for %s", systemschema.RoleMembersTable.GetName())
+			}
 
-		return nil
-	}); err != nil {
-		return err
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
 
 	if err := r.execCfg.ProtectedTimestampManager.Unprotect(ctx, r.job); err != nil {
@@ -2078,7 +2068,7 @@ func (r *restoreResumer) doResume(ctx context.Context, execCtx interface{}) erro
 	}
 
 	// Emit an event now that the restore job has completed.
-	emitRestoreJobEvent(ctx, p, jobs.StatusSucceeded, r.job)
+	emitRestoreJobEvent(ctx, p, jobs.StateSucceeded, r.job)
 
 	// Restore used all available SQL instances.
 	_, sqlInstanceIDs, err := p.DistSQLPlanner().SetupAllNodesPlanning(ctx, p.ExtendedEvalContext(), p.ExecCfg())
@@ -2190,7 +2180,7 @@ func (r *restoreResumer) ReportResults(ctx context.Context, resultsCh chan<- tre
 		} else {
 			return tree.Datums{
 				tree.NewDInt(tree.DInt(r.job.ID())),
-				tree.NewDString(string(jobs.StatusSucceeded)),
+				tree.NewDString(string(jobs.StateSucceeded)),
 				tree.NewDFloat(tree.DFloat(1.0)),
 				tree.NewDInt(tree.DInt(r.restoreStats.Rows)),
 			}
@@ -2596,13 +2586,13 @@ func prefetchDescriptors(
 }
 
 func emitRestoreJobEvent(
-	ctx context.Context, p sql.JobExecContext, status jobs.Status, job *jobs.Job,
+	ctx context.Context, p sql.JobExecContext, state jobs.State, job *jobs.Job,
 ) {
 	// Emit to the event log now that we have completed the prepare step.
 	var restoreEvent eventpb.Restore
 	if err := p.ExecCfg().InternalDB.Txn(ctx, func(ctx context.Context, txn isql.Txn) error {
 		return sql.LogEventForJobs(ctx, p.ExecCfg(), txn, &restoreEvent, int64(job.ID()),
-			job.Payload(), p.User(), status)
+			job.Payload(), p.User(), state)
 	}); err != nil {
 		log.Warningf(ctx, "failed to log event: %v", err)
 	}
@@ -2626,7 +2616,7 @@ func (r *restoreResumer) OnFailOrCancel(
 	}
 
 	// Emit to the event log that the job has started reverting.
-	emitRestoreJobEvent(ctx, p, jobs.StatusReverting, r.job)
+	emitRestoreJobEvent(ctx, p, jobs.StateReverting, r.job)
 
 	telemetry.Count("restore.total.failed")
 	telemetry.CountBucketed("restore.duration-sec.failed",
@@ -2691,7 +2681,7 @@ func (r *restoreResumer) OnFailOrCancel(
 	}
 
 	// Emit to the event log that the job has completed reverting.
-	emitRestoreJobEvent(ctx, p, jobs.StatusFailed, r.job)
+	emitRestoreJobEvent(ctx, p, jobs.StateFailed, r.job)
 	return nil
 }
 
@@ -2790,7 +2780,7 @@ func (r *restoreResumer) dropDescriptors(
 				sqlclustersettings.SecondaryTenantsAllZoneConfigsEnabled.Get(&r.execCfg.Settings.SV))
 		canSetGCTTL = canSetGCTTL && tableToDrop.IsPhysicalTable()
 		if canSetGCTTL {
-			if err := setGCTTLForDroppingTable(
+			if err := externalcatalog.SetGCTTLForDroppingTable(
 				ctx, txn, descsCol, tableToDrop,
 			); err != nil {
 				log.Warningf(ctx, "setting low GC TTL for table %q failed: %s", tableToDrop.GetName(), err.Error())
@@ -3025,50 +3015,6 @@ func (r *restoreResumer) dropDescriptors(
 	}
 
 	return nil
-}
-
-func setGCTTLForDroppingTable(
-	ctx context.Context, txn isql.Txn, descsCol *descs.Collection, tableToDrop *tabledesc.Mutable,
-) error {
-	log.VInfof(ctx, 2, "lowering TTL for table %q (%d)", tableToDrop.GetName(), tableToDrop.GetID())
-	// We get a mutable descriptor here because we are going to construct a
-	// synthetic descriptor collection in which they are online.
-	dbDesc, err := descsCol.ByIDWithoutLeased(txn.KV()).Get().Database(ctx, tableToDrop.GetParentID())
-	if err != nil {
-		return err
-	}
-
-	schemaDesc, err := descsCol.ByIDWithoutLeased(txn.KV()).Get().Schema(ctx, tableToDrop.GetParentSchemaID())
-	if err != nil {
-		return err
-	}
-	tableName := tree.NewTableNameWithSchema(
-		tree.Name(dbDesc.GetName()),
-		tree.Name(schemaDesc.GetName()),
-		tree.Name(tableToDrop.GetName()))
-
-	// Set the db and table to public so that we can use ALTER TABLE below.  At
-	// this point,they may be offline.
-	mutDBDesc := dbdesc.NewBuilder(dbDesc.DatabaseDesc()).BuildCreatedMutable()
-	mutTableDesc := tabledesc.NewBuilder(tableToDrop.TableDesc()).BuildCreatedMutable()
-	mutDBDesc.SetPublic()
-	mutTableDesc.SetPublic()
-
-	syntheticDescriptors := []catalog.Descriptor{
-		mutTableDesc,
-		mutDBDesc,
-	}
-	if schemaDesc.SchemaKind() == catalog.SchemaUserDefined {
-		mutSchemaDesc := schemadesc.NewBuilder(schemaDesc.SchemaDesc()).BuildCreatedMutable()
-		mutSchemaDesc.SetPublic()
-		syntheticDescriptors = append(syntheticDescriptors, mutSchemaDesc)
-	}
-
-	alterStmt := fmt.Sprintf("ALTER TABLE %s CONFIGURE ZONE USING gc.ttlseconds = 1", tableName.FQString())
-	return txn.WithSyntheticDescriptors(syntheticDescriptors, func() error {
-		_, err := txn.Exec(ctx, "set-low-gcttl", txn.KV(), alterStmt)
-		return err
-	})
 }
 
 // removeExistingTypeBackReferences removes back references from types that

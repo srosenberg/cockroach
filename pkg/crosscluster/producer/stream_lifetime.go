@@ -27,12 +27,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
-	"github.com/cockroachdb/cockroach/pkg/sql/sem/builtins"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
-	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
+	"github.com/cockroachdb/cockroach/pkg/util/unique"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 )
@@ -51,7 +50,7 @@ func notAReplicationJobError(id jobspb.JobID) error {
 
 // jobIsNotRunningError returns an error that is returned by
 // operations that require a running producer side job.
-func jobIsNotRunningError(id jobspb.JobID, status jobs.Status, op string) error {
+func jobIsNotRunningError(id jobspb.JobID, status jobs.State, op string) error {
 	return pgerror.Newf(pgcode.InvalidParameterValue, "replication job %d must be running (is %s) to %s",
 		id, status, op,
 	)
@@ -148,12 +147,12 @@ func StartReplicationProducerJob(
 // Convert the producer job's status into corresponding replication
 // stream status.
 func convertProducerJobStatusToStreamStatus(
-	jobStatus jobs.Status,
+	jobStatus jobs.State,
 ) streampb.StreamReplicationStatus_StreamStatus {
 	switch {
-	case jobStatus == jobs.StatusRunning:
+	case jobStatus == jobs.StateRunning:
 		return streampb.StreamReplicationStatus_STREAM_ACTIVE
-	case jobStatus == jobs.StatusPaused:
+	case jobStatus == jobs.StatePaused:
 		return streampb.StreamReplicationStatus_STREAM_PAUSED
 	case jobStatus.Terminal():
 		return streampb.StreamReplicationStatus_STREAM_INACTIVE
@@ -190,7 +189,7 @@ func updateReplicationStreamProgress(
 		) error {
 			status = streampb.StreamReplicationStatus{}
 			pts := ptsProvider.WithTxn(txn)
-			status.StreamStatus = convertProducerJobStatusToStreamStatus(md.Status)
+			status.StreamStatus = convertProducerJobStatusToStreamStatus(md.State)
 			// Skip checking PTS record in cases that it might already be released
 			if status.StreamStatus != streampb.StreamReplicationStatus_STREAM_ACTIVE &&
 				status.StreamStatus != streampb.StreamReplicationStatus_STREAM_PAUSED {
@@ -229,7 +228,7 @@ func updateReplicationStreamProgress(
 	}
 
 	status, err = updateJob()
-	if jobs.HasJobNotFoundError(err) || testutils.IsError(err, "not found in system.jobs table") {
+	if jobs.HasJobNotFoundError(err) {
 		status.StreamStatus = streampb.StreamReplicationStatus_STREAM_INACTIVE
 		err = nil
 	}
@@ -257,7 +256,7 @@ func heartbeatReplicationStream(
 }
 
 // getPhysicalReplicationStreamSpec gets a replication stream specification for the specified stream.
-func getPhysicalReplicationStreamSpec(
+func (r *replicationStreamManagerImpl) getPhysicalReplicationStreamSpec(
 	ctx context.Context, evalCtx *eval.Context, txn isql.Txn, streamID streampb.StreamID,
 ) (*streampb.ReplicationStreamSpec, error) {
 	jobExecCtx := evalCtx.JobExecContext.(sql.JobExecContext)
@@ -271,14 +270,13 @@ func getPhysicalReplicationStreamSpec(
 	if !ok {
 		return nil, notAReplicationJobError(jobspb.JobID(streamID))
 	}
-	if j.Status() != jobs.StatusRunning {
-		return nil, jobIsNotRunningError(jobID, j.Status(), "create stream spec")
+	if j.State() != jobs.StateRunning {
+		return nil, jobIsNotRunningError(jobID, j.State(), "create stream spec")
 	}
-	return buildReplicationStreamSpec(ctx, evalCtx, details.TenantID, false, details.Spans, true)
-
+	return r.buildReplicationStreamSpec(ctx, evalCtx, details.TenantID, false, details.Spans, true)
 }
 
-func buildReplicationStreamSpec(
+func (r *replicationStreamManagerImpl) buildReplicationStreamSpec(
 	ctx context.Context,
 	evalCtx *eval.Context,
 	tenantID roachpb.TenantID,
@@ -312,7 +310,8 @@ func buildReplicationStreamSpec(
 
 	var spanConfigsStreamID streampb.StreamID
 	if forSpanConfigs {
-		spanConfigsStreamID = streampb.StreamID(builtins.GenerateUniqueInt(builtins.ProcessUniqueID(evalCtx.NodeID.SQLInstanceID())))
+		instanceID := unique.ProcessUniqueID(evalCtx.NodeID.SQLInstanceID())
+		spanConfigsStreamID = streampb.StreamID(unique.GenerateUniqueInt(instanceID))
 	}
 
 	res := &streampb.ReplicationStreamSpec{
@@ -325,6 +324,9 @@ func buildReplicationStreamSpec(
 		nodeInfo, err := dsp.GetSQLInstanceInfo(sp.SQLInstanceID)
 		if err != nil {
 			return nil, err
+		}
+		if r.knobs != nil && r.knobs.OnGetSQLInstanceInfo != nil {
+			nodeInfo = r.knobs.OnGetSQLInstanceInfo(nodeInfo)
 		}
 		res.Partitions = append(res.Partitions, streampb.ReplicationStreamSpec_Partition{
 			NodeID:     roachpb.NodeID(sp.SQLInstanceID),
@@ -359,18 +361,18 @@ func completeReplicationStream(
 	) error {
 		// Updates the stream ingestion status, make the job resumer exit running
 		// when picking up the new status.
-		if (md.Status == jobs.StatusRunning || md.Status == jobs.StatusPending) &&
+		if (md.State == jobs.StateRunning || md.State == jobs.StatePending) &&
 			md.Progress.GetStreamReplication().StreamIngestionStatus ==
 				jobspb.StreamReplicationProgress_NOT_FINISHED {
 			if successfulIngestion {
 				md.Progress.GetStreamReplication().StreamIngestionStatus =
 					jobspb.StreamReplicationProgress_FINISHED_SUCCESSFULLY
-				md.Progress.RunningStatus = "succeeding this producer job as the corresponding " +
+				md.Progress.StatusMessage = "succeeding this producer job as the corresponding " +
 					"stream ingestion finished successfully"
 			} else {
 				md.Progress.GetStreamReplication().StreamIngestionStatus =
 					jobspb.StreamReplicationProgress_FINISHED_UNSUCCESSFULLY
-				md.Progress.RunningStatus = "canceling this producer job as the corresponding " +
+				md.Progress.StatusMessage = "canceling this producer job as the corresponding " +
 					"stream ingestion did not finish successfully"
 			}
 			ju.UpdateProgress(md.Progress)
@@ -379,7 +381,7 @@ func completeReplicationStream(
 	})
 }
 
-func setupSpanConfigsStream(
+func (r *replicationStreamManagerImpl) setupSpanConfigsStream(
 	ctx context.Context, evalCtx *eval.Context, txn isql.Txn, tenantName roachpb.TenantName,
 ) (eval.ValueGenerator, error) {
 
@@ -392,8 +394,8 @@ func setupSpanConfigsStream(
 	execConfig := evalCtx.Planner.ExecutorConfig().(*sql.ExecutorConfig)
 
 	spanConfigName := systemschema.SpanConfigurationsTableName
-	if knobs := execConfig.StreamingTestingKnobs; knobs != nil && knobs.MockSpanConfigTableName != nil {
-		spanConfigName = knobs.MockSpanConfigTableName
+	if r.knobs != nil && r.knobs.MockSpanConfigTableName != nil {
+		spanConfigName = r.knobs.MockSpanConfigTableName
 	}
 
 	if err := sql.DescsTxn(ctx, execConfig, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {

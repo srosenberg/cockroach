@@ -35,6 +35,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/ioctx"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/stretchr/testify/require"
 )
 
@@ -75,7 +76,12 @@ func TestPutHttp(t *testing.T) {
 				}
 				http.ServeFile(w, r, localfile)
 			case "DELETE":
-				if err := os.Remove(localfile); err != nil {
+				err := os.Remove(localfile)
+				if oserror.IsNotExist(err) {
+					http.Error(w, err.Error(), 404)
+					return
+				}
+				if err != nil {
 					http.Error(w, err.Error(), 500)
 					return
 				}
@@ -116,10 +122,12 @@ func TestPutHttp(t *testing.T) {
 	t.Run("singleHost", func(t *testing.T) {
 		srv, files, cleanup := makeServer()
 		defer cleanup()
-		cloudtestutils.CheckExportStore(t, srv.String(), false, user,
-			nil, /* db */
-			testSettings,
-		)
+		info := cloudtestutils.StoreInfo{
+			URI:          srv.String(),
+			User:         user,
+			TestSettings: testSettings,
+		}
+		cloudtestutils.CheckExportStore(t, info)
 		if expected, actual := 14, files(); expected != actual {
 			t.Fatalf("expected %d files to be written to single http store, got %d", expected, actual)
 		}
@@ -136,10 +144,12 @@ func TestPutHttp(t *testing.T) {
 		combined := *srv1
 		combined.Host = strings.Join([]string{srv1.Host, srv2.Host, srv3.Host}, ",")
 
-		cloudtestutils.CheckExportStore(t, combined.String(), true, user,
-			nil, /* db */
-			testSettings,
-		)
+		info := cloudtestutils.StoreInfo{
+			URI:          combined.String(),
+			User:         user,
+			TestSettings: testSettings,
+		}
+		cloudtestutils.CheckExportStoreSkipSingleFile(t, info)
 		if expected, actual := 3, files1(); expected != actual {
 			t.Fatalf("expected %d files written to http host 1, got %d", expected, actual)
 		}

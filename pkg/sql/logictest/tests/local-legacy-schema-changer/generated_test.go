@@ -626,6 +626,13 @@ func TestLogic_distsql_srfs(
 	runLogicTest(t, "distsql_srfs")
 }
 
+func TestLogic_do(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "do")
+}
+
 func TestLogic_drop_database(
 	t *testing.T,
 ) {
@@ -1093,6 +1100,13 @@ func TestLogic_json_index(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "json_index")
+}
+
+func TestLogic_jsonpath(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "jsonpath")
 }
 
 func TestLogic_kv_builtin_functions(
@@ -2411,6 +2425,13 @@ func TestLogic_udf_upsert(
 	runLogicTest(t, "udf_upsert")
 }
 
+func TestLogic_unimplemented(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "unimplemented")
+}
+
 func TestLogic_union(
 	t *testing.T,
 ) {
@@ -2467,6 +2488,13 @@ func TestLogic_values(
 	runLogicTest(t, "values")
 }
 
+func TestLogic_vector_index(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "vector_index")
+}
+
 func TestLogic_vectorize_agg(
 	t *testing.T,
 ) {
@@ -2500,13 +2528,6 @@ func TestLogic_vectorize_unsupported(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "vectorize_unsupported")
-}
-
-func TestLogic_vectoross(
-	t *testing.T,
-) {
-	defer leaktest.AfterTest(t)()
-	runLogicTest(t, "vectoross")
 }
 
 func TestLogic_views(

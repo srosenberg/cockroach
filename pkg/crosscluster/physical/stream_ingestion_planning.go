@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
-	"github.com/cockroachdb/cockroach/pkg/crosscluster"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
@@ -23,7 +22,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/exprutil"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
+	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
@@ -33,23 +34,15 @@ import (
 // replicated data will be retained.
 const defaultRetentionTTLSeconds = int32(4 * 60 * 60)
 
-// CannotSetExpirationWindowErr get returned if the user attempts to specify the
-// EXPIRATION WINDOW option to create a replication stream, as this job setting
-// should only be set from the producer cluster.
-var CannotSetExpirationWindowErr = errors.New("cannot specify EXPIRATION WINDOW option while starting a physical replication stream")
-
 func streamIngestionJobDescription(
-	p sql.PlanHookState, sourceAddr string, streamIngestion *tree.CreateTenantFromReplication,
+	p sql.PlanHookState,
+	source streamclient.ConfigUri,
+	streamIngestion *tree.CreateTenantFromReplication,
 ) (string, error) {
-	redactedSourceAddr, err := streamclient.RedactSourceURI(sourceAddr)
-	if err != nil {
-		return "", err
-	}
-
 	redactedCreateStmt := &tree.CreateTenantFromReplication{
 		TenantSpec:                  streamIngestion.TenantSpec,
 		ReplicationSourceTenantName: streamIngestion.ReplicationSourceTenantName,
-		ReplicationSourceAddress:    tree.NewDString(redactedSourceAddr),
+		ReplicationSourceConnUri:    tree.NewDString(source.Redacted()),
 		Options:                     streamIngestion.Options,
 	}
 	ann := p.ExtendedEvalContext().Annotations
@@ -67,7 +60,7 @@ func ingestionTypeCheck(
 		exprutil.TenantSpec{TenantSpec: ingestionStmt.TenantSpec},
 		exprutil.TenantSpec{TenantSpec: ingestionStmt.ReplicationSourceTenantName},
 		exprutil.Strings{
-			ingestionStmt.ReplicationSourceAddress,
+			ingestionStmt.ReplicationSourceConnUri,
 			ingestionStmt.Options.Retention},
 	}
 
@@ -80,48 +73,45 @@ func ingestionTypeCheck(
 
 func ingestionPlanHook(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
-) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+) (sql.PlanHookRowFn, colinfo.ResultColumns, bool, error) {
 	ingestionStmt, ok := stmt.(*tree.CreateTenantFromReplication)
 	if !ok {
-		return nil, nil, nil, false, nil
+		return nil, nil, false, nil
 	}
 
 	if !p.ExecCfg().Codec.ForSystemTenant() {
-		return nil, nil, nil, false, pgerror.Newf(pgcode.InsufficientPrivilege,
+		return nil, nil, false, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"only the system tenant can create other tenants")
 	}
 
 	exprEval := p.ExprEvaluator("INGESTION")
 
-	from, err := exprEval.String(ctx, ingestionStmt.ReplicationSourceAddress)
+	from, err := exprEval.String(ctx, ingestionStmt.ReplicationSourceConnUri)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
 	_, _, sourceTenant, err := exprEval.TenantSpec(ctx, ingestionStmt.ReplicationSourceTenantName)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
 	_, dstTenantID, dstTenantName, err := exprEval.TenantSpec(ctx, ingestionStmt.TenantSpec)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
 	evalCtx := &p.ExtendedEvalContext().Context
 	options, err := evalTenantReplicationOptions(ctx, ingestionStmt.Options, exprEval, evalCtx, p.SemaCtx(), createReplicationOp)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 	retentionTTLSeconds := defaultRetentionTTLSeconds
 	if ret, ok := options.GetRetention(); ok {
 		retentionTTLSeconds = ret
 	}
-	if _, ok := options.GetExpirationWindow(); ok {
-		return nil, nil, nil, false, CannotSetExpirationWindowErr
-	}
 
-	fn := func(ctx context.Context, _ []sql.PlanNode, _ chan<- tree.Datums) (err error) {
+	fn := func(ctx context.Context, _ chan<- tree.Datums) (err error) {
 		defer func() {
 			if err == nil {
 				telemetry.Count("physical_replication.started")
@@ -141,12 +131,16 @@ func ingestionPlanHook(
 			return err
 		}
 
-		streamAddress := crosscluster.StreamAddress(from)
-		streamURL, err := streamAddress.URL()
+		if err := p.CheckPrivilege(
+			ctx, syntheticprivilege.GlobalPrivilegeObject, privilege.REPLICATIONDEST,
+		); err != nil {
+			return err
+		}
+
+		configUri, err := streamclient.ParseConfigUri(from)
 		if err != nil {
 			return err
 		}
-		streamAddress = crosscluster.StreamAddress(streamURL.String())
 
 		if roachpb.IsSystemTenantName(roachpb.TenantName(dstTenantName)) ||
 			roachpb.IsSystemTenantID(dstTenantID) {
@@ -198,7 +192,7 @@ func ingestionPlanHook(
 		return createReplicationJob(
 			ctx,
 			p,
-			streamAddress,
+			configUri,
 			sourceTenant,
 			destinationTenantID,
 			retentionTTLSeconds,
@@ -211,13 +205,13 @@ func ingestionPlanHook(
 		)
 	}
 
-	return fn, nil, nil, false, nil
+	return fn, nil, false, nil
 }
 
 func createReplicationJob(
 	ctx context.Context,
 	p sql.PlanHookState,
-	streamAddress crosscluster.StreamAddress,
+	configUri streamclient.ConfigUri,
 	sourceTenant string,
 	destinationTenantID roachpb.TenantID,
 	retentionTTLSeconds int32,
@@ -228,9 +222,13 @@ func createReplicationJob(
 	stmt *tree.CreateTenantFromReplication,
 	readerID roachpb.TenantID,
 ) error {
+	clusterUri, err := configUri.AsClusterUri(ctx, p.ExecCfg().InternalDB)
+	if err != nil {
+		return err
+	}
 
 	// Create a new stream with stream client.
-	client, err := streamclient.NewStreamClient(ctx, streamAddress, p.ExecCfg().InternalDB)
+	client, err := streamclient.NewStreamClient(ctx, clusterUri, p.ExecCfg().InternalDB)
 	if err != nil {
 		return err
 	}
@@ -260,7 +258,7 @@ func createReplicationJob(
 	}
 
 	streamIngestionDetails := jobspb.StreamIngestionDetails{
-		StreamAddress:         string(streamAddress),
+		SourceClusterConnUri:  configUri.Serialize(),
 		StreamID:              uint64(replicationProducerSpec.StreamID),
 		Span:                  keys.MakeTenantSpan(destinationTenantID),
 		ReplicationTTLSeconds: retentionTTLSeconds,
@@ -273,7 +271,7 @@ func createReplicationJob(
 		ReadTenantID:         readerID,
 	}
 
-	jobDescription, err := streamIngestionJobDescription(p, string(streamAddress), stmt)
+	jobDescription, err := streamIngestionJobDescription(p, configUri, stmt)
 	if err != nil {
 		return err
 	}

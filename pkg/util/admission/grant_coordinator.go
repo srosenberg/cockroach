@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
+	"github.com/cockroachdb/cockroach/pkg/util/goschedstats"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
@@ -44,19 +45,8 @@ func (gcs GrantCoordinators) Close() {
 type StoreGrantCoordinators struct {
 	ambientCtx log.AmbientContext
 
-	settings                    *cluster.Settings
-	makeStoreRequesterFunc      makeStoreRequesterFunc
-	kvIOTokensExhaustedDuration [admissionpb.NumWorkClasses]*metric.Counter
-	kvIOTokensAvailable         [admissionpb.NumWorkClasses]*metric.Gauge
-	kvIOTokensTaken             *metric.Counter
-	kvIOTokensReturned          *metric.Counter
-	kvIOTokensBypassed          *metric.Counter
-	l0CompactedBytes            *metric.Counter
-	l0TokensProduced            *metric.Counter
-
-	// These metrics are shared by WorkQueues across stores.
-	workQueueMetrics     [admissionpb.NumWorkClasses]*WorkQueueMetrics
-	snapshotQueueMetrics *SnapshotMetrics
+	settings               *cluster.Settings
+	makeStoreRequesterFunc makeStoreRequesterFunc
 
 	gcMap syncutil.Map[roachpb.StoreID, GrantCoordinator]
 	// numStores is used to track the number of stores which have been added
@@ -74,7 +64,10 @@ type StoreGrantCoordinators struct {
 // SetPebbleMetricsProvider sets a PebbleMetricsProvider and causes the load
 // on the various storage engines to be used for admission control.
 func (sgc *StoreGrantCoordinators) SetPebbleMetricsProvider(
-	startupCtx context.Context, pmp PebbleMetricsProvider, iotc IOThresholdConsumer,
+	startupCtx context.Context,
+	pmp PebbleMetricsProvider,
+	mrp MetricsRegistryProvider,
+	iotc IOThresholdConsumer,
 ) {
 	if sgc.setPebbleMetricsProviderCalled {
 		panic(errors.AssertionFailedf("SetPebbleMetricsProvider called more than once"))
@@ -84,7 +77,7 @@ func (sgc *StoreGrantCoordinators) SetPebbleMetricsProvider(
 	sgc.closeCh = make(chan struct{})
 	metrics := pebbleMetricsProvider.GetPebbleMetrics()
 	for _, m := range metrics {
-		gc := sgc.initGrantCoordinator(m.StoreID)
+		gc := sgc.initGrantCoordinator(m.StoreID, mrp.GetMetricsRegistry(m.StoreID))
 		// Defensive call to LoadAndStore even though Store ought to be sufficient
 		// since SetPebbleMetricsProvider can only be called once. This code
 		// guards against duplication of stores returned by GetPebbleMetrics.
@@ -102,18 +95,18 @@ func (sgc *StoreGrantCoordinators) SetPebbleMetricsProvider(
 	ctx := sgc.ambientCtx.AnnotateCtx(context.Background())
 
 	go func() {
-		ticker := tokenAllocationTicker{}
+		t := tokenAllocationTicker{}
 		done := false
 		// The first adjustment interval is unloaded. We start as unloaded mainly
 		// for tests, and do a one-way transition to do 1ms ticks once we encounter
 		// load in the system.
 		var systemLoaded bool
-		ticker.adjustmentStart(false /* loaded */)
+		t.adjustmentStart(false /* loaded */)
+		var remainingTicks uint64
 		for !done {
-			ticker.tick()
-			remainingTicks := ticker.remainingTicks()
 			select {
-			default:
+			case <-t.ticker.C:
+				remainingTicks = t.remainingTicks()
 				// We do error accounting for disk reads and writes. This is important
 				// since disk token accounting is based on estimates over adjustment
 				// intervals. Like any model, these linear models have error terms, and
@@ -124,7 +117,7 @@ func (sgc *StoreGrantCoordinators) SetPebbleMetricsProvider(
 				// NB: We always do error calculation prior to making adjustments to
 				// make sure we account for errors prior to starting a new adjustment
 				// interval.
-				if ticker.shouldAdjustForError(remainingTicks, systemLoaded) {
+				if t.shouldAdjustForError(remainingTicks, systemLoaded) {
 					metrics = pebbleMetricsProvider.GetPebbleMetrics()
 					for _, m := range metrics {
 						if gc, ok := sgc.gcMap.Load(m.StoreID); ok {
@@ -157,8 +150,8 @@ func (sgc *StoreGrantCoordinators) SetPebbleMetricsProvider(
 					// Start a new adjustment interval since there are no ticks remaining
 					// in the current adjustment interval. Note that the next call to
 					// allocateIOTokensTick will belong to the new adjustment interval.
-					ticker.adjustmentStart(systemLoaded)
-					remainingTicks = ticker.remainingTicks()
+					t.adjustmentStart(systemLoaded)
+					remainingTicks = t.remainingTicks()
 				}
 
 				// Allocate tokens to the store grant coordinator.
@@ -173,11 +166,13 @@ func (sgc *StoreGrantCoordinators) SetPebbleMetricsProvider(
 				pebbleMetricsProvider.Close()
 			}
 		}
-		ticker.stop()
+		t.stop()
 	}()
 }
 
-func (sgc *StoreGrantCoordinators) initGrantCoordinator(storeID roachpb.StoreID) *GrantCoordinator {
+func (sgc *StoreGrantCoordinators) initGrantCoordinator(
+	storeID roachpb.StoreID, metricsRegistry *metric.Registry,
+) *GrantCoordinator {
 	coord := &GrantCoordinator{
 		settings:       sgc.settings,
 		useGrantChains: false,
@@ -185,16 +180,29 @@ func (sgc *StoreGrantCoordinators) initGrantCoordinator(storeID roachpb.StoreID)
 	}
 	coord.mu.numProcs = 1
 
+	// Initialize metrics.
+	sgcMetrics := makeStoreGrantCoordinatorMetrics(metricsRegistry)
+	regularStoreWorkQueueMetrics :=
+		makeWorkQueueMetrics(fmt.Sprintf("%s-stores", KVWork), metricsRegistry,
+			admissionpb.NormalPri, admissionpb.LockingNormalPri)
+	elasticStoreWorkQueueMetrics :=
+		makeWorkQueueMetrics(fmt.Sprintf("%s-stores", admissionpb.ElasticWorkClass), metricsRegistry,
+			admissionpb.BulkLowPri, admissionpb.BulkNormalPri)
+	storeWorkQMetrics := [admissionpb.NumWorkClasses]*WorkQueueMetrics{
+		regularStoreWorkQueueMetrics, elasticStoreWorkQueueMetrics,
+	}
+	snapshotQMetrics := makeSnapshotQueueMetrics(metricsRegistry)
+
 	kvg := &kvStoreTokenGranter{
 		coord: coord,
 		// Setting tokens to unlimited is defensive. We expect that
 		// pebbleMetricsTick and allocateIOTokensTick will get called during
 		// initialization, which will also set these to unlimited.
 		startingIOTokens:                unlimitedTokens / unloadedDuration.ticksInAdjustmentInterval(),
-		ioTokensExhaustedDurationMetric: sgc.kvIOTokensExhaustedDuration,
-		availableTokensMetric:           sgc.kvIOTokensAvailable,
-		tokensTakenMetric:               sgc.kvIOTokensTaken,
-		tokensReturnedMetric:            sgc.kvIOTokensReturned,
+		ioTokensExhaustedDurationMetric: sgcMetrics.KVIOTokensExhaustedDuration,
+		availableTokensMetric:           sgcMetrics.KVIOTokensAvailable,
+		tokensTakenMetric:               sgcMetrics.KVIOTokensTaken,
+		tokensReturnedMetric:            sgcMetrics.KVIOTokensReturned,
 	}
 	kvg.coordMu.availableIOTokens[admissionpb.RegularWorkClass] = unlimitedTokens / unloadedDuration.ticksInAdjustmentInterval()
 	kvg.coordMu.availableIOTokens[admissionpb.ElasticWorkClass] = kvg.coordMu.availableIOTokens[admissionpb.RegularWorkClass]
@@ -203,7 +211,6 @@ func (sgc *StoreGrantCoordinators) initGrantCoordinator(storeID roachpb.StoreID)
 	opts := makeWorkQueueOptions(KVWork)
 	// This is IO work, so override the usesTokens value.
 	opts.usesTokens = true
-	// TODO(sumeer): add per-store WorkQueue state for debug.zip and db console.
 	storeGranters := [admissionpb.NumWorkClasses]granterWithStoreReplicatedWorkAdmitted{
 		&kvStoreTokenChildGranter{
 			workType: admissionpb.RegularStoreWorkType,
@@ -224,18 +231,18 @@ func (sgc *StoreGrantCoordinators) initGrantCoordinator(storeID roachpb.StoreID)
 		storeID,
 		storeGranters,
 		sgc.settings,
-		sgc.workQueueMetrics,
+		storeWorkQMetrics,
 		opts,
 		sgc.knobs,
 		sgc.onLogEntryAdmitted,
-		sgc.kvIOTokensBypassed,
+		sgcMetrics.KVIOTokensBypassed,
 		&coord.mu.Mutex,
 	)
 	coord.queues[KVWork] = storeReq
 	requesters := storeReq.getRequesters()
 	kvg.regularRequester = requesters[admissionpb.RegularWorkClass]
 	kvg.elasticRequester = requesters[admissionpb.ElasticWorkClass]
-	kvg.snapshotRequester = makeSnapshotQueue(snapshotGranter, sgc.snapshotQueueMetrics)
+	kvg.snapshotRequester = makeSnapshotQueue(snapshotGranter, snapshotQMetrics)
 	coord.granters[KVWork] = kvg
 	coord.ioLoadListener = &ioLoadListener{
 		storeID:               storeID,
@@ -244,8 +251,8 @@ func (sgc *StoreGrantCoordinators) initGrantCoordinator(storeID roachpb.StoreID)
 		perWorkTokenEstimator: makeStorePerWorkTokenEstimator(),
 		diskBandwidthLimiter:  newDiskBandwidthLimiter(),
 		kvGranter:             kvg,
-		l0CompactedBytes:      sgc.l0CompactedBytes,
-		l0TokensProduced:      sgc.l0TokensProduced,
+		l0CompactedBytes:      sgcMetrics.L0CompactedBytes,
+		l0TokensProduced:      sgcMetrics.L0TokensProduced,
 	}
 	return coord
 }
@@ -340,7 +347,7 @@ type GrantCoordinator struct {
 	// and turns off admission control enforcement when the sampling frequency
 	// is too low. For testing queueing behavior, we do not want the enforcement
 	// to be turned off in a non-deterministic manner so add a testing flag to
-	// disable that feature.
+	// disable that feature. False in production.
 	//
 	// TODO(irfansharif): Fold into the testing knobs struct below.
 	testingDisableSkipEnforcement bool
@@ -352,13 +359,11 @@ var _ CPULoadListener = &GrantCoordinator{}
 
 // Options for constructing GrantCoordinators.
 type Options struct {
-	MinCPUSlots                    int
-	MaxCPUSlots                    int
-	SQLKVResponseBurstTokens       int64
-	SQLSQLResponseBurstTokens      int64
-	SQLStatementLeafStartWorkSlots int
-	SQLStatementRootStartWorkSlots int
-	TestingDisableSkipEnforcement  bool
+	MinCPUSlots                   int
+	MaxCPUSlots                   int
+	SQLKVResponseBurstTokens      int64
+	SQLSQLResponseBurstTokens     int64
+	TestingDisableSkipEnforcement bool
 	// Only non-nil for tests.
 	makeRequesterFunc      makeRequesterFunc
 	makeStoreRequesterFunc makeStoreRequesterFunc
@@ -371,12 +376,10 @@ func (*Options) ModuleTestingKnobs() {}
 
 // DefaultOptions are the default settings for various admission control knobs.
 var DefaultOptions = Options{
-	MinCPUSlots:                    1,
-	MaxCPUSlots:                    100000, /* TODO(sumeer): add cluster setting */
-	SQLKVResponseBurstTokens:       100000, /* TODO(sumeer): add cluster setting */
-	SQLSQLResponseBurstTokens:      100000, /* TODO(sumeer): add cluster setting */
-	SQLStatementLeafStartWorkSlots: 100,    /* arbitrary, and unused */
-	SQLStatementRootStartWorkSlots: 100,    /* arbitrary, and unused */
+	MinCPUSlots:               1,
+	MaxCPUSlots:               100000, /* TODO(sumeer): add cluster setting */
+	SQLKVResponseBurstTokens:  100000, /* TODO(sumeer): add cluster setting */
+	SQLSQLResponseBurstTokens: 100000, /* TODO(sumeer): add cluster setting */
 }
 
 // Override applies values from "override" to the receiver that differ from Go
@@ -393,12 +396,6 @@ func (o *Options) Override(override *Options) {
 	}
 	if override.SQLSQLResponseBurstTokens != 0 {
 		o.SQLSQLResponseBurstTokens = override.SQLSQLResponseBurstTokens
-	}
-	if override.SQLStatementLeafStartWorkSlots != 0 {
-		o.SQLStatementLeafStartWorkSlots = override.SQLStatementLeafStartWorkSlots
-	}
-	if override.SQLStatementRootStartWorkSlots != 0 {
-		o.SQLStatementRootStartWorkSlots = override.SQLStatementRootStartWorkSlots
 	}
 	if override.TestingDisableSkipEnforcement {
 		o.TestingDisableSkipEnforcement = true
@@ -446,7 +443,7 @@ func NewGrantCoordinators(
 	}
 
 	return GrantCoordinators{
-		Stores:  makeStoresGrantCoordinators(ambientCtx, opts, st, metrics, registry, onLogEntryAdmitted, knobs),
+		Stores:  makeStoresGrantCoordinators(ambientCtx, opts, st, onLogEntryAdmitted, knobs),
 		Regular: makeRegularGrantCoordinator(ambientCtx, opts, st, metrics, registry, knobs),
 		Elastic: makeElasticGrantCoordinator(ambientCtx, st, registry),
 	}
@@ -481,44 +478,19 @@ func makeStoresGrantCoordinators(
 	ambientCtx log.AmbientContext,
 	opts Options,
 	st *cluster.Settings,
-	metrics GrantCoordinatorMetrics,
-	registry *metric.Registry,
 	onLogEntryAdmitted OnLogEntryAdmitted,
 	knobs *TestingKnobs,
 ) *StoreGrantCoordinators {
-	// These metrics are shared across all stores and broken down by priority for
-	// the common priorities.
-	// TODO(baptist): Add per-store metrics.
-	regularStoreWorkQueueMetrics :=
-		makeWorkQueueMetrics(fmt.Sprintf("%s-stores", KVWork), registry,
-			admissionpb.NormalPri, admissionpb.LockingNormalPri)
-	elasticStoreWorkQueueMetrics :=
-		makeWorkQueueMetrics(fmt.Sprintf("%s-stores", admissionpb.ElasticWorkClass), registry,
-			admissionpb.BulkLowPri, admissionpb.BulkNormalPri)
-	storeWorkQueueMetrics := [admissionpb.NumWorkClasses]*WorkQueueMetrics{
-		regularStoreWorkQueueMetrics, elasticStoreWorkQueueMetrics,
-	}
-	snapshotQueueMetrics := makeSnapshotQueueMetrics(registry)
-
 	makeStoreRequester := makeStoreWorkQueue
 	if opts.makeStoreRequesterFunc != nil {
 		makeStoreRequester = opts.makeStoreRequesterFunc
 	}
 	storeCoordinators := &StoreGrantCoordinators{
-		ambientCtx:                  ambientCtx,
-		settings:                    st,
-		makeStoreRequesterFunc:      makeStoreRequester,
-		kvIOTokensExhaustedDuration: metrics.KVIOTokensExhaustedDuration,
-		kvIOTokensTaken:             metrics.KVIOTokensTaken,
-		kvIOTokensReturned:          metrics.KVIOTokensReturned,
-		kvIOTokensBypassed:          metrics.KVIOTokensBypassed,
-		kvIOTokensAvailable:         metrics.KVIOTokensAvailable,
-		l0CompactedBytes:            metrics.L0CompactedBytes,
-		l0TokensProduced:            metrics.L0TokensProduced,
-		workQueueMetrics:            storeWorkQueueMetrics,
-		snapshotQueueMetrics:        snapshotQueueMetrics,
-		onLogEntryAdmitted:          onLogEntryAdmitted,
-		knobs:                       knobs,
+		ambientCtx:             ambientCtx,
+		settings:               st,
+		makeStoreRequesterFunc: makeStoreRequester,
+		onLogEntryAdmitted:     onLogEntryAdmitted,
+		knobs:                  knobs,
 	}
 	return storeCoordinators
 }
@@ -562,6 +534,7 @@ func makeRegularGrantCoordinator(
 		coord:                        coord,
 		workKind:                     KVWork,
 		totalSlots:                   opts.MinCPUSlots,
+		skipSlotEnforcement:          !goschedstats.Supported,
 		usedSlotsMetric:              metrics.KVUsedSlots,
 		slotsExhaustedDurationMetric: metrics.KVSlotsExhaustedDuration,
 	}
@@ -600,119 +573,6 @@ func makeRegularGrantCoordinator(
 	coord.queues[SQLSQLResponseWork] = req
 	tg.requester = req
 	coord.granters[SQLSQLResponseWork] = tg
-
-	sg := &slotGranter{
-		coord:           coord,
-		workKind:        SQLStatementLeafStartWork,
-		totalSlots:      opts.SQLStatementLeafStartWorkSlots,
-		cpuOverload:     kvSlotAdjuster,
-		usedSlotsMetric: metrics.SQLLeafStartUsedSlots,
-	}
-	wqMetrics = makeWorkQueueMetrics(SQLStatementLeafStartWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
-	req = makeRequester(ambientCtx,
-		SQLStatementLeafStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementLeafStartWork))
-	coord.queues[SQLStatementLeafStartWork] = req
-	sg.requester = req
-	coord.granters[SQLStatementLeafStartWork] = sg
-
-	sg = &slotGranter{
-		coord:           coord,
-		workKind:        SQLStatementRootStartWork,
-		totalSlots:      opts.SQLStatementRootStartWorkSlots,
-		cpuOverload:     kvSlotAdjuster,
-		usedSlotsMetric: metrics.SQLRootStartUsedSlots,
-	}
-	wqMetrics = makeWorkQueueMetrics(SQLStatementRootStartWork.String(), registry, admissionpb.NormalPri, admissionpb.LockingNormalPri)
-	req = makeRequester(ambientCtx,
-		SQLStatementRootStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementRootStartWork))
-	coord.queues[SQLStatementRootStartWork] = req
-	sg.requester = req
-	coord.granters[SQLStatementRootStartWork] = sg
-	return coord
-}
-
-// Prevent the linter from emitting unused warnings until this is hooked up.
-var _ = NewGrantCoordinatorSQL
-
-// NewGrantCoordinatorSQL constructs a GrantCoordinator and WorkQueues for a
-// single-tenant SQL node in a multi-tenant cluster. Caller is responsible for
-// hooking this up to receive calls to CPULoad.
-func NewGrantCoordinatorSQL(
-	ambientCtx log.AmbientContext, st *cluster.Settings, registry *metric.Registry, opts Options,
-) *GrantCoordinator {
-	makeRequester := makeWorkQueue
-	if opts.makeRequesterFunc != nil {
-		makeRequester = opts.makeRequesterFunc
-	}
-
-	metrics := makeGrantCoordinatorMetrics()
-	registry.AddMetricStruct(metrics)
-	sqlNodeCPU := &sqlNodeCPUOverloadIndicator{}
-	coord := &GrantCoordinator{
-		ambientCtx:     ambientCtx,
-		settings:       st,
-		useGrantChains: true,
-	}
-	coord.mu.grantChainID = 1
-	coord.mu.cpuOverloadIndicator = sqlNodeCPU
-	coord.mu.cpuLoadListener = sqlNodeCPU
-	coord.mu.numProcs = 1
-
-	tg := &tokenGranter{
-		coord:                coord,
-		workKind:             SQLKVResponseWork,
-		availableBurstTokens: opts.SQLKVResponseBurstTokens,
-		maxBurstTokens:       opts.SQLKVResponseBurstTokens,
-		cpuOverload:          sqlNodeCPU,
-	}
-	wqMetrics := makeWorkQueueMetrics(SQLKVResponseWork.String(), registry)
-	req := makeRequester(ambientCtx,
-		SQLKVResponseWork, tg, st, wqMetrics, makeWorkQueueOptions(SQLKVResponseWork))
-	coord.queues[SQLKVResponseWork] = req
-	tg.requester = req
-	coord.granters[SQLKVResponseWork] = tg
-
-	tg = &tokenGranter{
-		coord:                coord,
-		workKind:             SQLSQLResponseWork,
-		availableBurstTokens: opts.SQLSQLResponseBurstTokens,
-		maxBurstTokens:       opts.SQLSQLResponseBurstTokens,
-		cpuOverload:          sqlNodeCPU,
-	}
-	wqMetrics = makeWorkQueueMetrics(SQLSQLResponseWork.String(), registry)
-	req = makeRequester(ambientCtx,
-		SQLSQLResponseWork, tg, st, wqMetrics, makeWorkQueueOptions(SQLSQLResponseWork))
-	coord.queues[SQLSQLResponseWork] = req
-	tg.requester = req
-	coord.granters[SQLSQLResponseWork] = tg
-
-	sg := &slotGranter{
-		coord:           coord,
-		workKind:        SQLStatementLeafStartWork,
-		totalSlots:      opts.SQLStatementLeafStartWorkSlots,
-		cpuOverload:     sqlNodeCPU,
-		usedSlotsMetric: metrics.SQLLeafStartUsedSlots,
-	}
-	wqMetrics = makeWorkQueueMetrics(SQLStatementLeafStartWork.String(), registry)
-	req = makeRequester(ambientCtx,
-		SQLStatementLeafStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementLeafStartWork))
-	coord.queues[SQLStatementLeafStartWork] = req
-	sg.requester = req
-	coord.granters[SQLStatementLeafStartWork] = sg
-
-	sg = &slotGranter{
-		coord:           coord,
-		workKind:        SQLStatementRootStartWork,
-		totalSlots:      opts.SQLStatementRootStartWorkSlots,
-		cpuOverload:     sqlNodeCPU,
-		usedSlotsMetric: metrics.SQLRootStartUsedSlots,
-	}
-	wqMetrics = makeWorkQueueMetrics(SQLStatementRootStartWork.String(), registry)
-	req = makeRequester(ambientCtx,
-		SQLStatementRootStartWork, sg, st, wqMetrics, makeWorkQueueOptions(SQLStatementRootStartWork))
-	coord.queues[SQLStatementRootStartWork] = req
-	sg.requester = req
-	coord.granters[SQLStatementRootStartWork] = sg
 
 	return coord
 }
@@ -799,15 +659,16 @@ func (coord *GrantCoordinator) CPULoad(runnable int, procs int, samplePeriod tim
 	// request processing when we are in this slow CPULoad ticks regime since we
 	// can't adjust slots or refill tokens fast enough. So we explicitly tell
 	// the granters to not do token or slot enforcement.
-	skipEnforcement := samplePeriod > time.Millisecond
+	skipEnforcement := samplePeriod > time.Millisecond || !goschedstats.Supported
 	coord.granters[SQLKVResponseWork].(*tokenGranter).refillBurstTokens(skipEnforcement)
 	coord.granters[SQLSQLResponseWork].(*tokenGranter).refillBurstTokens(skipEnforcement)
-	if coord.granters[KVWork] != nil {
-		if !coord.testingDisableSkipEnforcement {
-			kvg := coord.granters[KVWork].(*slotGranter)
-			kvg.skipSlotEnforcement = skipEnforcement
-		}
+	if coord.testingDisableSkipEnforcement {
+		// This testing option only applies to KV work.
+		skipEnforcement = false
 	}
+	kvg := coord.granters[KVWork].(*slotGranter)
+	kvg.skipSlotEnforcement = skipEnforcement
+
 	if coord.mu.grantChainActive && !coord.tryTerminateGrantChain() {
 		return
 	}
@@ -1043,11 +904,6 @@ func (coord *GrantCoordinator) SafeFormat(s redact.SafePrinter, _ rune) {
 					g.coordMu.diskTokensError.diskReadTokensAlreadyDeducted,
 				)
 			}
-		case SQLStatementLeafStartWork, SQLStatementRootStartWork:
-			if coord.granters[i] != nil {
-				g := coord.granters[i].(*slotGranter)
-				s.Printf("%s%s: used: %d, total: %d", curSep, kind, g.usedSlots, g.totalSlots)
-			}
 		case SQLKVResponseWork, SQLSQLResponseWork:
 			if coord.granters[i] != nil {
 				g := coord.granters[i].(*tokenGranter)
@@ -1071,23 +927,13 @@ type GrantCoordinatorMetrics struct {
 	KVCPULoadLongPeriodDuration  *metric.Counter
 	KVSlotAdjusterIncrements     *metric.Counter
 	KVSlotAdjusterDecrements     *metric.Counter
-	// TODO(banabrick): Make these metrics per store.
-	KVIOTokensTaken             *metric.Counter
-	KVIOTokensReturned          *metric.Counter
-	KVIOTokensBypassed          *metric.Counter
-	KVIOTokensAvailable         [admissionpb.NumWorkClasses]*metric.Gauge
-	KVIOTokensExhaustedDuration [admissionpb.NumWorkClasses]*metric.Counter
-	L0CompactedBytes            *metric.Counter
-	L0TokensProduced            *metric.Counter
-	SQLLeafStartUsedSlots       *metric.Gauge
-	SQLRootStartUsedSlots       *metric.Gauge
 }
 
 // MetricStruct implements the metric.Struct interface.
 func (GrantCoordinatorMetrics) MetricStruct() {}
 
 func makeGrantCoordinatorMetrics() GrantCoordinatorMetrics {
-	m := GrantCoordinatorMetrics{
+	return GrantCoordinatorMetrics{
 		KVTotalSlots:                 metric.NewGauge(totalSlots),
 		KVUsedSlots:                  metric.NewGauge(addName(KVWork.String(), usedSlots)),
 		KVSlotsExhaustedDuration:     metric.NewCounter(kvSlotsExhaustedDuration),
@@ -1095,13 +941,29 @@ func makeGrantCoordinatorMetrics() GrantCoordinatorMetrics {
 		KVCPULoadLongPeriodDuration:  metric.NewCounter(kvCPULoadLongPeriodDuration),
 		KVSlotAdjusterIncrements:     metric.NewCounter(kvSlotAdjusterIncrements),
 		KVSlotAdjusterDecrements:     metric.NewCounter(kvSlotAdjusterDecrements),
-		SQLLeafStartUsedSlots:        metric.NewGauge(addName(SQLStatementLeafStartWork.String(), usedSlots)),
-		SQLRootStartUsedSlots:        metric.NewGauge(addName(SQLStatementRootStartWork.String(), usedSlots)),
-		KVIOTokensTaken:              metric.NewCounter(kvIOTokensTaken),
-		KVIOTokensReturned:           metric.NewCounter(kvIOTokensReturned),
-		KVIOTokensBypassed:           metric.NewCounter(kvIOTokensBypassed),
-		L0CompactedBytes:             metric.NewCounter(l0CompactedBytes),
-		L0TokensProduced:             metric.NewCounter(l0TokensProduced),
+	}
+}
+
+type StoreGrantCoordinatorMetrics struct {
+	KVIOTokensTaken             *metric.Counter
+	KVIOTokensReturned          *metric.Counter
+	KVIOTokensBypassed          *metric.Counter
+	KVIOTokensAvailable         [admissionpb.NumWorkClasses]*metric.Gauge
+	KVIOTokensExhaustedDuration [admissionpb.NumWorkClasses]*metric.Counter
+	L0CompactedBytes            *metric.Counter
+	L0TokensProduced            *metric.Counter
+}
+
+// MetricStruct implements the metric.Struct interface.
+func (StoreGrantCoordinatorMetrics) MetricStruct() {}
+
+func makeStoreGrantCoordinatorMetrics(registry *metric.Registry) StoreGrantCoordinatorMetrics {
+	m := StoreGrantCoordinatorMetrics{
+		KVIOTokensTaken:    metric.NewCounter(kvIOTokensTaken),
+		KVIOTokensReturned: metric.NewCounter(kvIOTokensReturned),
+		KVIOTokensBypassed: metric.NewCounter(kvIOTokensBypassed),
+		L0CompactedBytes:   metric.NewCounter(l0CompactedBytes),
+		L0TokensProduced:   metric.NewCounter(l0TokensProduced),
 	}
 	m.KVIOTokensAvailable[admissionpb.RegularWorkClass] = metric.NewGauge(kvIOTokensAvailable)
 	m.KVIOTokensAvailable[admissionpb.ElasticWorkClass] = metric.NewGauge(kvElasticIOTokensAvailable)
@@ -1109,6 +971,7 @@ func makeGrantCoordinatorMetrics() GrantCoordinatorMetrics {
 		metric.NewCounter(kvIOTokensExhaustedDuration),
 		metric.NewCounter(kvElasticIOTokensExhaustedDuration),
 	}
+	registry.AddMetricStruct(m)
 	return m
 }
 

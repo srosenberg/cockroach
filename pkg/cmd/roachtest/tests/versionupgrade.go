@@ -10,19 +10,25 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/clusterupgrade"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/mixedversion"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/testutils/release"
+	"github.com/cockroachdb/cockroach/pkg/ts/tspb"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/version"
+	"github.com/cockroachdb/errors"
 )
 
 type versionFeatureTest struct {
@@ -108,6 +114,7 @@ func runVersionUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) {
 	}
 
 	mvt := mixedversion.NewTest(testCtx, t, t.L(), c, c.All(), opts...)
+
 	mvt.InMixedVersion(
 		"maybe run backup",
 		func(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *mixedversion.Helper) error {
@@ -286,4 +293,134 @@ for i in 1 2 3 4; do
      pkg/cmd/roachtest/fixtures/${i}/
 done
 `)
+}
+
+// This is a regression test for a race detailed in
+// https://github.com/cockroachdb/cockroach/issues/138342, where it became
+// possible for an HTTP request to cause a fatal error if the sql server
+// did not initialize the cluster version in time.
+func registerHTTPRestart(r registry.Registry) {
+	r.Add(registry.TestSpec{
+		Name:             "http-register-routes/mixed-version",
+		Owner:            registry.OwnerObservability,
+		Cluster:          r.MakeClusterSpec(4),
+		CompatibleClouds: registry.AllClouds,
+		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
+		Randomized:       true,
+		Run:              runHTTPRestart,
+		Timeout:          1 * time.Hour,
+	})
+}
+
+func runHTTPRestart(ctx context.Context, t test.Test, c cluster.Cluster) {
+	mvt := mixedversion.NewTest(ctx, t, t.L(), c,
+		c.CRDBNodes(),
+		mixedversion.AlwaysUseLatestPredecessors,
+		// We set the min bootstrap version to v24.2, as the fix for the
+		// race condition was only backported to v24.2+ but exists as early
+		// as v23.2. We use this over setting min supported version as this
+		// test is concerned about testing cluster startup. We don't want the
+		// framework to bootstrap the cluster before we can start running hooks.
+		mixedversion.MinimumBootstrapVersion("v24.2.0"),
+	)
+
+	// Any http request requiring auth will do.
+	httpReq := tspb.TimeSeriesQueryRequest{
+		StartNanos: timeutil.Now().UnixNano() - 10*time.Second.Nanoseconds(),
+		EndNanos:   timeutil.Now().UnixNano(),
+		// Ask for 10s intervals.
+		SampleNanos: (10 * time.Second).Nanoseconds(),
+		Queries: []tspb.Query{{
+			Name:             "cr.node.sql.service.latency-p90",
+			SourceAggregator: tspb.TimeSeriesQueryAggregator_MAX.Enum(),
+		}},
+	}
+
+	httpCall := func(ctx context.Context, node int, l *logger.Logger, virtualClusterName string) error {
+		// We expect lots of requests to fail, e.g. during a node restart.
+		// Use a quiet logger to keep the test log output clean.
+		loggerName := fmt.Sprintf("n%d-%s-http-requests", node, virtualClusterName)
+		httpLogger, err := l.ChildLogger(loggerName, logger.QuietStdout)
+		if err != nil {
+			return err
+		}
+
+		client := roachtestutil.DefaultHTTPClient(c, httpLogger, roachtestutil.VirtualCluster(virtualClusterName))
+		adminUrls, err := c.ExternalAdminUIAddr(ctx, httpLogger, c.Node(node), option.VirtualClusterName(virtualClusterName))
+		if err != nil {
+			return err
+		}
+		url := "https://" + adminUrls[0] + "/ts/query"
+		l.Printf("Sending requests to %s", url)
+
+		var response tspb.TimeSeriesQueryResponse
+		// Eventually we should see a successful request.
+		reqSuccess := false
+		for {
+			select {
+			case <-ctx.Done():
+				if !reqSuccess {
+					return errors.Newf("n%d: No successful http requests made.", node)
+				}
+				return nil
+			default:
+			}
+			if err := client.PostProtobuf(ctx, url, &httpReq, &response); err != nil {
+				httpLogger.Printf("n%d: Error posting protobuf: %s", node, err)
+				continue
+			}
+			reqSuccess = true
+		}
+	}
+
+	// We want to make a ton of requests to the cluster as soon as the HTTP
+	// routes are registered. However, we don't know which UI ports will be
+	// used until service registration happens. Since the roachprod framework
+	// implicitly runs service registration when a node is started, we need to
+	// use cluster hooks to know when we can start making requests. The ports
+	// shouldn't change after they are set, so waiting once is adequate.
+	var systemOnce, tenantOnce sync.Once
+	var systemRegisteredCh = make(chan struct{})
+	var tenantRegisteredCh = make(chan struct{})
+	c.RegisterClusterHook("mark system service registration as complete", option.PreStartHook, time.Minute, func(ctx context.Context) error {
+		systemOnce.Do(func() {
+			close(systemRegisteredCh)
+		})
+		return nil
+	})
+	c.RegisterClusterHook("mark tenant service registration as complete", option.PreStartVirtualClusterHook, time.Minute, func(ctx context.Context) error {
+		tenantOnce.Do(func() {
+			close(tenantRegisteredCh)
+		})
+		return nil
+	})
+
+	for _, n := range c.CRDBNodes() {
+		mvt.BeforeClusterStart(fmt.Sprintf("HTTP requests to n%d", n), func(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *mixedversion.Helper) error {
+			if h.Context().Stage == mixedversion.SystemSetupStage {
+				h.Go(func(ctx context.Context, l *logger.Logger) error {
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-systemRegisteredCh:
+						l.Printf("System tenant service registration complete, starting HTTP requests in background")
+					}
+					return httpCall(ctx, n, l, install.SystemInterfaceName)
+				}, task.Name(fmt.Sprintf("HTTP requests to system tenant on n%d", n)))
+				return nil
+			}
+
+			h.Go(func(ctx context.Context, l *logger.Logger) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-tenantRegisteredCh:
+					l.Printf("Secondary tenant service registration complete, starting HTTP requests in background")
+				}
+				return httpCall(ctx, n, l, h.Tenant.Descriptor.Name)
+			}, task.Name(fmt.Sprintf("HTTP requests to secondary tenant on n%d", n)))
+			return nil
+		})
+	}
+	mvt.Run()
 }

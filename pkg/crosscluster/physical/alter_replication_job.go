@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
-	"github.com/cockroachdb/cockroach/pkg/crosscluster"
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationutils"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
@@ -27,9 +27,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
+	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/asof"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
@@ -111,10 +114,6 @@ func (r *resolvedTenantReplicationOptions) GetExpirationWindow() (time.Duration,
 	return *r.expirationWindow, true
 }
 
-func (r *resolvedTenantReplicationOptions) DestinationOptionsSet() bool {
-	return r != nil && (r.retention != nil || r.resumeTimestamp.IsSet())
-}
-
 func (r *resolvedTenantReplicationOptions) ReaderTenantEnabled() bool {
 	if r == nil || !r.enableReaderTenant {
 		return false
@@ -133,7 +132,7 @@ func alterReplicationJobTypeCheck(
 		ctx, alterReplicationJobOp, p.SemaCtx(),
 		exprutil.TenantSpec{TenantSpec: alterStmt.TenantSpec},
 		exprutil.TenantSpec{TenantSpec: alterStmt.ReplicationSourceTenantName},
-		exprutil.Strings{alterStmt.Options.Retention, alterStmt.ReplicationSourceAddress},
+		exprutil.Strings{alterStmt.Options.Retention, alterStmt.ReplicationSourceConnUri},
 	); err != nil {
 		return false, nil, err
 	}
@@ -153,14 +152,14 @@ func alterReplicationJobTypeCheck(
 
 func alterReplicationJobHook(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
-) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+) (sql.PlanHookRowFn, colinfo.ResultColumns, bool, error) {
 	alterTenantStmt, ok := stmt.(*tree.AlterTenantReplication)
 	if !ok {
-		return nil, nil, nil, false, nil
+		return nil, nil, false, nil
 	}
 
 	if !p.ExecCfg().Codec.ForSystemTenant() {
-		return nil, nil, nil, false, pgerror.Newf(pgcode.InsufficientPrivilege,
+		return nil, nil, false, pgerror.Newf(pgcode.InsufficientPrivilege,
 			"only the system tenant can alter tenant")
 	}
 
@@ -169,13 +168,13 @@ func alterReplicationJobHook(
 	if alterTenantStmt.Cutover != nil {
 		if !alterTenantStmt.Cutover.Latest {
 			if alterTenantStmt.Cutover.Timestamp == nil {
-				return nil, nil, nil, false, errors.AssertionFailedf("unexpected nil cutover expression")
+				return nil, nil, false, errors.AssertionFailedf("unexpected nil cutover expression")
 			}
 
 			ct, err := asof.EvalSystemTimeExpr(ctx, evalCtx, p.SemaCtx(), alterTenantStmt.Cutover.Timestamp,
 				alterReplicationJobOp, asof.ReplicationCutover)
 			if err != nil {
-				return nil, nil, nil, false, err
+				return nil, nil, false, err
 			}
 			cutoverTime = ct
 		}
@@ -184,26 +183,26 @@ func alterReplicationJobHook(
 	exprEval := p.ExprEvaluator(alterReplicationJobOp)
 	options, err := evalTenantReplicationOptions(ctx, alterTenantStmt.Options, exprEval, evalCtx, p.SemaCtx(), alterReplicationJobOp)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
-	var srcAddr, srcTenant string
-	if alterTenantStmt.ReplicationSourceAddress != nil {
-		srcAddr, err = exprEval.String(ctx, alterTenantStmt.ReplicationSourceAddress)
+	var srcUri, srcTenant string
+	if alterTenantStmt.ReplicationSourceConnUri != nil {
+		srcUri, err = exprEval.String(ctx, alterTenantStmt.ReplicationSourceConnUri)
 		if err != nil {
-			return nil, nil, nil, false, err
+			return nil, nil, false, err
 		}
 
 		_, _, srcTenant, err = exprEval.TenantSpec(ctx, alterTenantStmt.ReplicationSourceTenantName)
 		if err != nil {
-			return nil, nil, nil, false, err
+			return nil, nil, false, err
 		}
 	}
 
 	// Ensure the TenantSpec is type checked, even if we don't use the result.
 	_, _, _, err = exprEval.TenantSpec(ctx, alterTenantStmt.TenantSpec)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
 	retentionTTLSeconds := defaultRetentionTTLSeconds
@@ -211,7 +210,7 @@ func alterReplicationJobHook(
 		retentionTTLSeconds = ret
 	}
 
-	fn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
+	fn := func(ctx context.Context, resultsCh chan<- tree.Datums) error {
 		if err := utilccl.CheckEnterpriseEnabled(
 			p.ExecCfg().Settings,
 			alterReplicationJobOp,
@@ -227,25 +226,42 @@ func alterReplicationJobHook(
 		if err != nil {
 			return err
 		}
-
-		// If a source address is being provided, we're enabling replication into an
+		jobRegistry := p.ExecCfg().JobRegistry
+		if alterTenantStmt.Producer {
+			if err := p.CheckPrivilege(
+				ctx, syntheticprivilege.GlobalPrivilegeObject, privilege.REPLICATIONSOURCE,
+			); err != nil {
+				return err
+			}
+			return alterTenantSetReplicationSource(ctx, p.InternalSQLTxn(), jobRegistry, options, tenInfo)
+		}
+		if err := p.CheckPrivilege(
+			ctx, syntheticprivilege.GlobalPrivilegeObject, privilege.REPLICATIONDEST,
+		); err != nil {
+			if !p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.V25_2) {
+				p.BufferClientNotice(ctx, pgnotice.Newf("this command will require the REPLICATIONDEST privilege on a fully upgraded 25.2+ cluster"))
+			} else {
+				return err
+			}
+		}
+		// If a source uri is being provided, we're enabling replication into an
 		// existing virtual cluster. It must be inactive, and we'll verify that it
 		// was the cluster from which the one it will replicate was replicated, i.e.
 		// that we're reversing the direction of replication. We will then revert it
 		// to the time they diverged and pick up from there.
-		if alterTenantStmt.ReplicationSourceAddress != nil {
+		if alterTenantStmt.ReplicationSourceConnUri != nil {
 			return alterTenantRestartReplication(
 				ctx,
 				p,
 				tenInfo,
-				srcAddr,
+				srcUri,
 				srcTenant,
 				retentionTTLSeconds,
 				alterTenantStmt,
 				options,
 			)
 		}
-		jobRegistry := p.ExecCfg().JobRegistry
+
 		if !alterTenantStmt.Options.IsDefault() {
 			// If the statement contains options, then the user provided the ALTER
 			// TENANT ... SET REPLICATION [options] form of the command.
@@ -280,9 +296,24 @@ func alterReplicationJobHook(
 		return nil
 	}
 	if alterTenantStmt.Cutover != nil {
-		return fn, alterReplicationCutoverHeader, nil, false, nil
+		return fn, alterReplicationCutoverHeader, false, nil
 	}
-	return fn, nil, nil, false, nil
+	return fn, nil, false, nil
+}
+
+func alterTenantSetReplicationSource(
+	ctx context.Context,
+	txn isql.Txn,
+	jobRegistry *jobs.Registry,
+	options *resolvedTenantReplicationOptions,
+	tenInfo *mtinfopb.TenantInfo,
+) error {
+	if expirationWindow, ok := options.GetExpirationWindow(); ok {
+		if err := alterTenantExpirationWindow(ctx, txn, jobRegistry, expirationWindow, tenInfo); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func alterTenantSetReplication(
@@ -292,19 +323,11 @@ func alterTenantSetReplication(
 	options *resolvedTenantReplicationOptions,
 	tenInfo *mtinfopb.TenantInfo,
 ) error {
-
-	if expirationWindow, ok := options.GetExpirationWindow(); ok {
-		if err := alterTenantExpirationWindow(ctx, txn, jobRegistry, expirationWindow, tenInfo); err != nil {
-			return err
-		}
+	if err := checkForActiveIngestionJob(tenInfo); err != nil {
+		return err
 	}
-	if options.DestinationOptionsSet() {
-		if err := checkForActiveIngestionJob(tenInfo); err != nil {
-			return err
-		}
-		if err := alterTenantConsumerOptions(ctx, txn, jobRegistry, options, tenInfo); err != nil {
-			return err
-		}
+	if err := alterTenantConsumerOptions(ctx, txn, jobRegistry, options, tenInfo); err != nil {
+		return err
 	}
 	return nil
 }
@@ -321,7 +344,7 @@ func alterTenantRestartReplication(
 	ctx context.Context,
 	p sql.PlanHookState,
 	tenInfo *mtinfopb.TenantInfo,
-	srcAddr string,
+	srcUri string,
 	srcTenant string,
 	retentionTTLSeconds int32,
 	alterTenantStmt *tree.AlterTenantReplication,
@@ -353,18 +376,17 @@ func alterTenantRestartReplication(
 		)
 	}
 
-	if alterTenantStmt.Options.ExpirationWindowSet() {
-		return CannotSetExpirationWindowErr
-	}
-
-	streamAddress := crosscluster.StreamAddress(srcAddr)
-	streamURL, err := streamAddress.URL()
+	configUri, err := streamclient.ParseConfigUri(srcUri)
 	if err != nil {
 		return errors.Wrap(err, "url")
 	}
-	streamAddress = crosscluster.StreamAddress(streamURL.String())
 
-	client, err := streamclient.NewStreamClient(ctx, crosscluster.StreamAddress(srcAddr), p.ExecCfg().InternalDB)
+	clusterUri, err := configUri.AsClusterUri(ctx, p.ExecCfg().InternalDB)
+	if err != nil {
+		return err
+	}
+
+	client, err := streamclient.NewStreamClient(ctx, clusterUri, p.ExecCfg().InternalDB)
 	if err != nil {
 		return errors.Wrap(err, "creating client")
 	}
@@ -412,7 +434,7 @@ func alterTenantRestartReplication(
 	return errors.Wrap(createReplicationJob(
 		ctx,
 		p,
-		streamAddress,
+		configUri,
 		srcTenant,
 		dstTenantID,
 		retentionTTLSeconds,
@@ -423,7 +445,7 @@ func alterTenantRestartReplication(
 		&tree.CreateTenantFromReplication{
 			TenantSpec:                  alterTenantStmt.TenantSpec,
 			ReplicationSourceTenantName: alterTenantStmt.ReplicationSourceTenantName,
-			ReplicationSourceAddress:    alterTenantStmt.ReplicationSourceAddress,
+			ReplicationSourceConnUri:    alterTenantStmt.ReplicationSourceConnUri,
 			Options:                     alterTenantStmt.Options,
 		},
 		readerID,
@@ -489,14 +511,6 @@ func pickReplicationResume(
 func checkReplicationStartTime(
 	ctx context.Context, p sql.PlanHookState, tenInfo *mtinfopb.TenantInfo, ts hlc.Timestamp,
 ) error {
-	// TODO(az): remove the conditional once we figure out how to validate PTS on the
-	// source cluster when it has no producer jobs.
-	// When starting a replication job for a tenant with BACKUP and RESTORE instead
-	// of an initial scan, the source will not have producer jobs associated with
-	// the tenant, thus no PTS to validate.
-	if tenInfo.PreviousSourceTenant != nil && tenInfo.PreviousSourceTenant.CutoverTimestamp.Equal(ts) {
-		return nil
-	}
 
 	pts := p.ExecCfg().ProtectedTimestampProvider.WithTxn(p.InternalSQLTxn())
 

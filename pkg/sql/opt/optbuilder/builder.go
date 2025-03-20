@@ -9,6 +9,7 @@ import (
 	"context"
 	"strconv"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/typedesc"
@@ -212,6 +213,10 @@ func New(
 	factory *norm.Factory,
 	stmt tree.Statement,
 ) *Builder {
+	// NOTE: This is a hack to get a session setting plumbed into the
+	// type-checker without plumbing evalCtx. This pattern should probably not
+	// be repeated.
+	semaCtx.Properties.IgnoreUnpreferredOverloads = evalCtx.SessionData().LegacyVarcharTyping
 	return &Builder{
 		factory:            factory,
 		stmt:               stmt,
@@ -359,7 +364,16 @@ func (b *Builder) buildStmt(
 		case *tree.Select, tree.SelectStatement:
 		case *tree.Insert, *tree.Update, *tree.Delete:
 		case *tree.Call:
+		case *tree.DoBlock:
+			if !b.evalCtx.Settings.Version.ActiveVersion(b.ctx).IsActive(clusterversion.V25_1) {
+				panic(doBlockVersionErr)
+			}
 		default:
+			if tree.CanModifySchema(stmt) {
+				panic(unimplemented.NewWithIssuef(110080,
+					"%s usage inside a function definition is not supported", stmt.StatementTag(),
+				))
+			}
 			panic(unimplemented.Newf("user-defined functions", "%s usage inside a function definition", stmt.StatementTag()))
 		}
 	}
@@ -400,6 +414,9 @@ func (b *Builder) buildStmt(
 
 	case *tree.Call:
 		return b.buildProcedure(stmt, inScope)
+
+	case *tree.DoBlock:
+		return b.buildDo(stmt, inScope)
 
 	case *tree.Explain:
 		return b.buildExplain(stmt, inScope)

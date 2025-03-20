@@ -35,6 +35,9 @@ import (
 // times to cause tokens to be set in the testGranterWithIOTokens:
 // set-state admitted=<int> l0-bytes=<int> l0-added=<int> l0-files=<int> l0-sublevels=<int> ...
 func TestIOLoadListener(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	req := &testRequesterForIOLL{}
 	kvGranter := &testGranterWithIOTokens{}
 	var ioll *ioLoadListener
@@ -214,7 +217,10 @@ func TestIOLoadListener(t *testing.T) {
 				if d.HasArg("loaded") {
 					currDuration = loadedDuration
 				}
-
+				memTableSizeForStopWrites := uint64(256 << 20)
+				if d.HasArg("unflushed-too-large") {
+					metrics.MemTable.Size = memTableSizeForStopWrites + 1
+				}
 				ioll.pebbleMetricsTick(ctx, StoreMetrics{
 					Metrics:         &metrics,
 					WriteStallCount: int64(writeStallCount),
@@ -223,6 +229,7 @@ func TestIOLoadListener(t *testing.T) {
 						BytesWritten:         uint64(bytesWritten),
 						ProvisionedBandwidth: int64(provisionedBandwidth),
 					},
+					MemTableSizeForStopWrites: memTableSizeForStopWrites,
 				})
 				var buf strings.Builder
 				// Do the ticks until just before next adjustment.
@@ -251,6 +258,9 @@ func TestIOLoadListener(t *testing.T) {
 }
 
 func TestIOLoadListenerOverflow(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	req := &testRequesterForIOLL{}
 	kvGranter := &testGranterWithIOTokens{}
 	ctx := context.Background()
@@ -287,6 +297,9 @@ func TestIOLoadListenerOverflow(t *testing.T) {
 // of what is logged below, and the rest is logged with 0 values. Expand this
 // test to call adjustTokens.
 func TestAdjustTokensInnerAndLogging(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	const mb = 12 + 1<<20
 	tests := []struct {
 		name      redact.SafeString
@@ -326,7 +339,7 @@ func TestAdjustTokensInnerAndLogging(t *testing.T) {
 		}
 		res := ioll.adjustTokensInner(
 			ctx, tt.prev, tt.l0Metrics, 12, cumStoreCompactionStats{numOutLevelsGauge: 1}, 0,
-			pebble.ThroughputMetric{}, 100, 10, 0, 0.50)
+			pebble.ThroughputMetric{}, 100, 10, 0, 0.50, 10, 100)
 		buf.Printf("%s\n", res)
 	}
 	echotest.Require(t, string(redact.Sprint(buf)), filepath.Join(datapathutils.TestDataPath(t, "format_adjust_tokens_stats.txt")))
@@ -335,6 +348,9 @@ func TestAdjustTokensInnerAndLogging(t *testing.T) {
 // TestBadIOLoadListenerStats tests that bad stats (non-monotonic cumulative
 // stats and negative values) don't cause panics or tokens to be negative.
 func TestBadIOLoadListenerStats(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	var m pebble.Metrics
 	var d DiskStats
 	req := &testRequesterForIOLL{}
@@ -529,6 +545,9 @@ func (g *testGranterNonNegativeTokens) setLinearModels(
 // Tests if the tokenAllocationTicker produces correct adjustment interval
 // durations for both loaded and unloaded systems.
 func TestTokenAllocationTickerAdjustmentCalculation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	// TODO(bananabrick): We might want to use a timeutil.TimeSource and
 	// ManualTime for the tokenAllocationTicker, so that we can run this test
 	// without any worry about flakes.
@@ -540,7 +559,7 @@ func TestTokenAllocationTickerAdjustmentCalculation(t *testing.T) {
 	ticker.adjustmentStart(true /* loaded */)
 	adjustmentChanged := false
 	for {
-		ticker.tick()
+		<-ticker.ticker.C
 		remainingTicks := ticker.remainingTicks()
 		if remainingTicks == 0 {
 			if adjustmentChanged {
@@ -566,6 +585,9 @@ func TestTokenAllocationTickerAdjustmentCalculation(t *testing.T) {
 }
 
 func TestTokenAllocationTickerErrorAdjustmentThreshold(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	ticker := tokenAllocationTicker{}
 	defer ticker.stop()
 	ticker.adjustmentStart(false /* loaded */)
@@ -593,6 +615,9 @@ func TestTokenAllocationTickerErrorAdjustmentThreshold(t *testing.T) {
 }
 
 func TestTokenAllocationTicker(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
 	// TODO(bananabrick): This might be flaky, in which case we should use a
 	// timeutil.TimeSource and ManualTime in the tokenAllocationTicker for these
 	// tests.

@@ -671,6 +671,13 @@ func TestRepeatableReadLogic_distsql_srfs(
 	runLogicTest(t, "distsql_srfs")
 }
 
+func TestRepeatableReadLogic_do(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "do")
+}
+
 func TestRepeatableReadLogic_drop_database(
 	t *testing.T,
 ) {
@@ -1147,6 +1154,13 @@ func TestRepeatableReadLogic_json_index(
 	runLogicTest(t, "json_index")
 }
 
+func TestRepeatableReadLogic_jsonpath(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "jsonpath")
+}
+
 func TestRepeatableReadLogic_kv_builtin_functions(
 	t *testing.T,
 ) {
@@ -1607,6 +1621,13 @@ func TestRepeatableReadLogic_routine_schema_change(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "routine_schema_change")
+}
+
+func TestRepeatableReadLogic_row_level_security(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "row_level_security")
 }
 
 func TestRepeatableReadLogic_row_level_ttl(
@@ -2482,6 +2503,13 @@ func TestRepeatableReadLogic_values(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "values")
+}
+
+func TestRepeatableReadLogic_vector_index(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "vector_index")
 }
 
 func TestRepeatableReadLogic_vectorize_agg(

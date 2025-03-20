@@ -32,6 +32,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/raft/tracker"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/util"
@@ -53,6 +54,20 @@ import (
 // raftDisableLeaderFollowsLeaseholder disables lease/leader collocation.
 var raftDisableLeaderFollowsLeaseholder = envutil.EnvOrDefaultBool(
 	"COCKROACH_DISABLE_LEADER_FOLLOWS_LEASEHOLDER", false)
+
+// ReplicaLeaderlessUnavailableThreshold is the duration after which leaderless
+// replicas are considered unavailable. Set to 0 to disable.
+var ReplicaLeaderlessUnavailableThreshold = settings.RegisterDurationSettingWithExplicitUnit(
+	settings.SystemOnly,
+	"kv.replica_raft.leaderless_unavailable_threshold",
+	"duration after which leaderless replicas is considered unavailable. Set to 0"+
+		" to disable leaderless replica availability checks",
+	60*time.Second,
+	settings.WithPublic,
+	// Setting the duration too low could be very dangerous to cluster health as
+	// replicas under normal operation could be considered unavailable.
+	settings.DurationWithMinimumOrZeroDisable(5*time.Second),
+)
 
 // evalAndPropose prepares the necessary pending command struct and initializes
 // a client command ID if one hasn't been. A verified lease is supplied as a
@@ -128,6 +143,10 @@ func (r *Replica) evalAndPropose(
 		}
 		intents := proposal.Local.DetachEncounteredIntents()
 		endTxns := proposal.Local.DetachEndTxns(pErr != nil /* alwaysOnly */)
+
+		// If we had no proposal, then the existing LeaseAppliedIndex is sufficient.
+		proposal.Local.DetachRepopulateSubsumeResponse()
+
 		r.handleReadWriteLocalEvalResult(ctx, *proposal.Local)
 
 		// NB: it is intentional that this returns both an error and results.
@@ -184,7 +203,7 @@ func (r *Replica) evalAndPropose(
 
 		// Fork the proposal's context span so that the proposal's context
 		// can outlive the original proposer's context.
-		if s := tracing.SpanFromContext(ctx); s != nil && !s.IsNoop() {
+		if s := tracing.SpanFromContext(ctx); s != nil {
 			ctx, sp := tracing.ForkSpan(ctx, "async consensus")
 			proposal.ctx.Store(&ctx)
 			proposal.sp = sp
@@ -617,6 +636,12 @@ func (r *Replica) ticksSinceLastProposalRLocked() int64 {
 	return r.mu.ticks - r.mu.lastProposalAtTicks
 }
 
+// ticksSinceLastMessageRLocked returns the number of ticks since the last
+// received message.
+func (r *Replica) ticksSinceLastMessageRLocked() int64 {
+	return r.mu.ticks - r.mu.lastMessageAtTicks
+}
+
 // isRaftLeader returns true if this replica believes it is the current
 // Raft leader.
 //
@@ -671,6 +696,7 @@ func (r *Replica) stepRaftGroupRaftMuLocked(req *kvserverpb.RaftMessageRequest) 
 			wakeLeader := hasLeader && !fromLeader
 			r.maybeUnquiesceLocked(wakeLeader, false /* mayCampaign */)
 		}
+		r.maybeWakeUpRMuLocked()
 
 		{
 			// Update the lastUpdateTimes map, unless configured not to by a testing
@@ -685,6 +711,8 @@ func (r *Replica) stepRaftGroupRaftMuLocked(req *kvserverpb.RaftMessageRequest) 
 				r.mu.lastUpdateTimes.update(req.FromReplica.ReplicaID, r.Clock().PhysicalTime())
 			}
 		}
+
+		r.mu.lastMessageAtTicks = r.mu.ticks
 
 		switch req.Message.Type {
 		case raftpb.MsgPreVote, raftpb.MsgVote:
@@ -1442,7 +1470,7 @@ func (r *Replica) tick(
 	if r.mu.internalRaftGroup == nil {
 		return false, nil
 	}
-	if r.mu.quiescent {
+	if r.mu.quiescent || r.mu.asleep {
 		return false, nil
 	}
 
@@ -1461,10 +1489,22 @@ func (r *Replica) tick(
 	r.updatePausedFollowersLocked(ctx, ioThresholdMap)
 
 	storeClockTimestamp := r.store.Clock().NowAsClockTimestamp()
+
+	// Update lastTickTimestamp so that we don't have to redo the work multiple
+	// times during the tick. For example, raft's leader will check whether
+	// the support is expired or not by calling:
+	// (*replicaRLockedStoreLiveness).SupportExpired(). If we don't cache the
+	// value here, we will end up calling r.store.Clock().NowAsClockTimestamp()
+	// multiple times during the tick, which showed to cause a clock mutex
+	// contention.
+	r.mu.lastTickTimestamp = storeClockTimestamp
 	leaseStatus := r.leaseStatusAtRLocked(ctx, storeClockTimestamp)
-	// TODO(pav-kv): modify the quiescence criterion so that we don't quiesce if
-	// RACv2 holds some send tokens.
+	// TODO(pav-kv): modify the quiescence and sleep criteria so that we don't
+	// quiesce or fall asleep if RACv2 holds some send tokens.
 	if r.maybeQuiesceRaftMuLockedReplicaMuLocked(ctx, leaseStatus, livenessMap) {
+		return false, nil
+	}
+	if r.maybeFallAsleepRMuLocked(leaseStatus) {
 		return false, nil
 	}
 
@@ -1500,19 +1540,25 @@ func (r *Replica) tick(
 	//
 	// This is likely unintentional, and the leader should likely consider itself
 	// live even when quiesced.
+	nowPhysicalTime := r.Clock().PhysicalTime()
 	if r.isRaftLeaderRLocked() {
-		r.mu.lastUpdateTimes.update(r.replicaID, r.Clock().PhysicalTime())
+		r.mu.lastUpdateTimes.update(r.replicaID, nowPhysicalTime)
 		// We also update lastUpdateTimes for replicas that provide store liveness
 		// support to the leader.
 		r.updateLastUpdateTimesUsingStoreLivenessRLocked(storeClockTimestamp)
 	}
 
 	r.mu.ticks++
-	preTickState := r.mu.internalRaftGroup.BasicStatus().RaftState
+	preTickStatus := r.mu.internalRaftGroup.BasicStatus()
 	r.mu.internalRaftGroup.Tick()
-	postTickState := r.mu.internalRaftGroup.BasicStatus().RaftState
-	if preTickState != postTickState {
-		if postTickState == raftpb.StatePreCandidate {
+	postTickStatus := r.mu.internalRaftGroup.BasicStatus()
+
+	// Check if the replica has been leaderless for too long, and potentially set
+	// the leaderless watcher replica state as unavailable.
+	r.maybeMarkReplicaUnavailableInLeaderlessWatcher(ctx, postTickStatus.Lead, nowPhysicalTime)
+
+	if preTickStatus.RaftState != postTickStatus.RaftState {
+		if postTickStatus.RaftState == raftpb.StatePreCandidate {
 			r.store.Metrics().RaftTimeoutCampaign.Inc(1)
 			if k := r.store.TestingKnobs(); k != nil && k.OnRaftTimeoutCampaign != nil {
 				k.OnRaftTimeoutCampaign(r.RangeID)
@@ -2139,6 +2185,49 @@ func (r *Replica) reportSnapshotStatus(ctx context.Context, to roachpb.ReplicaID
 	}
 }
 
+// maybeMarkReplicaUnavailableInLeaderlessWatcher marks the replica as
+// unavailable in the leaderless watcher if the replica has been leaderless
+// for a duration of time greater than or equal to the threshold.
+func (r *Replica) maybeMarkReplicaUnavailableInLeaderlessWatcher(
+	ctx context.Context, postTickLead raftpb.PeerID, storeClockTime time.Time,
+) {
+	r.LeaderlessWatcher.mu.Lock()
+	defer r.LeaderlessWatcher.mu.Unlock()
+
+	threshold := ReplicaLeaderlessUnavailableThreshold.Get(&r.store.cfg.Settings.SV)
+	if threshold == time.Duration(0) {
+		// The leaderless watcher is disabled. It's important to reset the
+		// leaderless watcher when it's disabled to reset any replica that was
+		// marked as unavailable before the watcher was disabled.
+		r.LeaderlessWatcher.resetLocked()
+		return
+	}
+
+	if postTickLead != raft.None {
+		// If we know about the leader, reset the leaderless timer, and mark the
+		// replica as available.
+		r.LeaderlessWatcher.resetLocked()
+	} else if r.LeaderlessWatcher.mu.leaderlessTimestamp.IsZero() {
+		// If we don't know about the leader, and we haven't been leaderless before,
+		// mark the time we became leaderless.
+		r.LeaderlessWatcher.mu.leaderlessTimestamp = storeClockTime
+	} else if !r.LeaderlessWatcher.mu.unavailable {
+		// At this point we know that we have been leaderless for sometime, and
+		// we haven't marked the replica as unavailable yet. Make sure we didn't
+		// exceed the threshold. Otherwise, mark the replica as unavailable.
+		durationSinceLeaderless := storeClockTime.Sub(r.LeaderlessWatcher.mu.leaderlessTimestamp)
+		if durationSinceLeaderless >= threshold {
+			err := errors.Errorf("have been leaderless for %.2fs, setting the "+
+				"leaderless watcher replica's state as unavailable",
+				durationSinceLeaderless.Seconds())
+			if log.ExpensiveLogEnabled(ctx, 1) {
+				log.VEventf(ctx, 1, "%s", err)
+			}
+			r.LeaderlessWatcher.mu.unavailable = true
+		}
+	}
+}
+
 type snapTruncationInfo struct {
 	index          kvpb.RaftIndex
 	recipientStore roachpb.StoreID
@@ -2682,12 +2771,23 @@ func (r *Replica) maybeTransferRaftLeadershipToLeaseholderLocked(
 	if r.store.TestingKnobs().DisableLeaderFollowsLeaseholder {
 		return
 	}
-	raftStatus := r.mu.internalRaftGroup.SparseStatus()
+	raftStatus := r.mu.internalRaftGroup.BasicStatus()
+
+	// Return early if we are not the leader, or if we are already the
+	// leaseholder. This is a short circuit fast-path for
+	// shouldTransferRaftLeadershipToLeaseholderLocked(), but the same checks are
+	// also handled there.
+	if raftStatus.RaftState != raftpb.StateLeader ||
+		leaseStatus.OwnedBy(r.store.StoreID()) {
+		return
+	}
+
+	lhReplicaID := raftpb.PeerID(leaseStatus.Lease.Replica.ReplicaID)
 	leaseAcquisitionPending := r.mu.pendingLeaseRequest.AcquisitionInProgress()
 	ok := shouldTransferRaftLeadershipToLeaseholderLocked(
-		raftStatus, leaseStatus, leaseAcquisitionPending, r.StoreID(), r.store.IsDraining())
+		raftStatus, r.mu.internalRaftGroup.ReplicaProgress(lhReplicaID), leaseStatus,
+		leaseAcquisitionPending, r.StoreID(), r.store.IsDraining())
 	if ok {
-		lhReplicaID := raftpb.PeerID(leaseStatus.Lease.Replica.ReplicaID)
 		log.VEventf(ctx, 1, "transferring raft leadership to replica ID %v", lhReplicaID)
 		r.store.metrics.RangeRaftLeaderTransfers.Inc(1)
 		r.mu.internalRaftGroup.TransferLeader(lhReplicaID)
@@ -2695,7 +2795,8 @@ func (r *Replica) maybeTransferRaftLeadershipToLeaseholderLocked(
 }
 
 func shouldTransferRaftLeadershipToLeaseholderLocked(
-	raftStatus raft.SparseStatus,
+	raftStatus raft.BasicStatus,
+	lhProgress *tracker.Progress,
 	leaseStatus kvserverpb.LeaseStatus,
 	leaseAcquisitionPending bool,
 	storeID roachpb.StoreID,
@@ -2747,9 +2848,7 @@ func shouldTransferRaftLeadershipToLeaseholderLocked(
 	}
 
 	// Otherwise, only transfer if the leaseholder is caught up on the raft log.
-	lhReplicaID := raftpb.PeerID(leaseStatus.Lease.Replica.ReplicaID)
-	lhProgress, ok := raftStatus.Progress[lhReplicaID]
-	lhCaughtUp := ok && lhProgress.Match >= raftStatus.Commit
+	lhCaughtUp := lhProgress != nil && lhProgress.Match >= raftStatus.Commit
 	return lhCaughtUp
 }
 

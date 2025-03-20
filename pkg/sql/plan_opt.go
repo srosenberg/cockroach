@@ -263,6 +263,16 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 	}
 
 	// Build the plan tree.
+	const disableTelemetryAndPlanGists = false
+	return p.runExecBuild(ctx, execMemo, disableTelemetryAndPlanGists)
+}
+
+// runExecBuild builds the plan tree for the given memo. It assumes that the
+// optPlanningCtx of the planner has been properly set up.
+func (p *planner) runExecBuild(
+	ctx context.Context, execMemo *memo.Memo, disableTelemetryAndPlanGists bool,
+) error {
+	opc := &p.optPlanningCtx
 	if mode := p.SessionData().ExperimentalDistSQLPlanningMode; mode != sessiondatapb.ExperimentalDistSQLPlanningOff {
 		planningMode := distSQLDefaultPlanning
 		// If this transaction has modified or created any types, it is not safe to
@@ -280,6 +290,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 			p.SemaCtx(),
 			p.EvalContext(),
 			p.autoCommit,
+			disableTelemetryAndPlanGists,
 		)
 		if err != nil {
 			if mode == sessiondatapb.ExperimentalDistSQLPlanningAlways &&
@@ -316,6 +327,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 					p.SemaCtx(),
 					p.EvalContext(),
 					p.autoCommit,
+					disableTelemetryAndPlanGists,
 				)
 			}
 			if err == nil {
@@ -338,6 +350,7 @@ func (p *planner) makeOptimizerPlan(ctx context.Context) error {
 		p.SemaCtx(),
 		p.EvalContext(),
 		p.autoCommit,
+		disableTelemetryAndPlanGists,
 	)
 }
 
@@ -360,6 +373,8 @@ type optPlanningCtx struct {
 	useCache bool
 
 	flags planFlags
+
+	gf explain.PlanGistFactory
 }
 
 // init performs one-time initialization of the planning context; reset() must
@@ -512,7 +527,7 @@ func (opc *optPlanningCtx) buildReusableMemo(
 	}
 
 	// If the memo has placeholders, first try the placeholder fast path.
-	_, ok, err := opc.optimizer.TryPlaceholderFastPath()
+	ok, err := opc.optimizer.TryPlaceholderFastPath()
 	if err != nil {
 		return nil, memoTypeUnknown, err
 	}
@@ -567,7 +582,9 @@ func (opc *optPlanningCtx) reuseMemo(cachedMemo *memo.Memo) (*memo.Memo, error) 
 	opc.flags.Set(planFlagOptimized)
 	mem := f.Memo()
 	if prep := opc.p.stmt.Prepared; opc.allowMemoReuse && prep != nil {
-		prep.Costs.AddCustom(mem.RootExpr().(memo.RelExpr).Cost() + mem.OptimizationCost())
+		costWithOptimizationCost := mem.RootExpr().(memo.RelExpr).Cost()
+		costWithOptimizationCost.Add(mem.OptimizationCost())
+		prep.Costs.AddCustom(costWithOptimizationCost)
 	}
 	return mem, nil
 }
@@ -608,10 +625,10 @@ func (opc *optPlanningCtx) buildNonIdealGenericPlan() bool {
 		//
 		//   1. The generic cost is unknown because a generic plan has not been
 		//      built.
-		//   2. Or, the cost of the generic plan is less than or equal to the
-		//      average cost of the custom plans.
+		//   2. Or, the cost of the generic plan is less than the average cost of
+		//      the custom plans.
 		//
-		return prep.Costs.Generic() == 0 || prep.Costs.Generic() < prep.Costs.AvgCustom()
+		return prep.Costs.Generic().C == 0 || prep.Costs.Generic().Less(prep.Costs.AvgCustom())
 	default:
 		return false
 	}
@@ -878,12 +895,13 @@ func (opc *optPlanningCtx) runExecBuilder(
 	semaCtx *tree.SemaContext,
 	evalCtx *eval.Context,
 	allowAutoCommit bool,
+	disableTelemetryAndPlanGists bool,
 ) error {
 	var result *planComponents
-	var gf *explain.PlanGistFactory
-	if !opc.p.SessionData().DisablePlanGists {
-		gf = explain.NewPlanGistFactory(f)
-		f = gf
+	if !opc.p.SessionData().DisablePlanGists && !disableTelemetryAndPlanGists {
+		opc.gf.Init(f)
+		defer opc.gf.Reset()
+		f = &opc.gf
 	}
 	var bld *execbuilder.Builder
 	if !planTop.instrumentation.ShouldBuildExplainPlan() {
@@ -891,6 +909,9 @@ func (opc *optPlanningCtx) runExecBuilder(
 			ctx, f, &opc.optimizer, mem, opc.catalog, mem.RootExpr(),
 			semaCtx, evalCtx, allowAutoCommit, statements.IsANSIDML(stmt.AST),
 		)
+		if disableTelemetryAndPlanGists {
+			bld.DisableTelemetry()
+		}
 		plan, err := bld.Build()
 		if err != nil {
 			return err
@@ -903,6 +924,9 @@ func (opc *optPlanningCtx) runExecBuilder(
 			ctx, explainFactory, &opc.optimizer, mem, opc.catalog, mem.RootExpr(),
 			semaCtx, evalCtx, allowAutoCommit, statements.IsANSIDML(stmt.AST),
 		)
+		if disableTelemetryAndPlanGists {
+			bld.DisableTelemetry()
+		}
 		plan, err := bld.Build()
 		if err != nil {
 			return err
@@ -921,10 +945,10 @@ func (opc *optPlanningCtx) runExecBuilder(
 	planTop.instrumentation.scanCounts = bld.ScanCounts
 	planTop.instrumentation.indexesUsed = bld.IndexesUsed
 
-	if gf != nil {
-		planTop.instrumentation.planGist = gf.PlanGist()
+	if opc.gf.Initialized() {
+		planTop.instrumentation.planGist = opc.gf.PlanGist()
 	}
-	planTop.instrumentation.costEstimate = float64(mem.RootExpr().(memo.RelExpr).Cost())
+	planTop.instrumentation.costEstimate = mem.RootExpr().(memo.RelExpr).Cost().C
 	available := mem.RootExpr().(memo.RelExpr).Relational().Statistics().Available
 	planTop.instrumentation.statsAvailable = available
 	if available {
@@ -947,7 +971,9 @@ func (opc *optPlanningCtx) runExecBuilder(
 		// DDLs (e.g. CREATE TABLE) are built non-opaquely, so we need to set the
 		// mode here if it wasn't already set.
 		if planTop.instrumentation.schemaChangerMode == schemaChangerModeNone {
-			telemetry.Inc(sqltelemetry.LegacySchemaChangerCounter)
+			if !disableTelemetryAndPlanGists {
+				telemetry.Inc(sqltelemetry.LegacySchemaChangerCounter)
+			}
 			planTop.instrumentation.schemaChangerMode = schemaChangerModeLegacy
 		}
 	}
@@ -1005,6 +1031,7 @@ func (opc *optPlanningCtx) makeQueryIndexRecommendation(
 	f := opc.optimizer.Factory()
 	f.FoldingControl().AllowStableFolds()
 	f.CopyAndReplace(
+		savedMemo,
 		savedMemo.RootExpr().(memo.RelExpr),
 		savedMemo.RootProps(),
 		f.CopyWithoutAssigningPlaceholders,
@@ -1025,6 +1052,7 @@ func (opc *optPlanningCtx) makeQueryIndexRecommendation(
 	// optimal plan to determine index recommendations.
 	opc.optimizer.Init(ctx, f.EvalContext(), opc.catalog)
 	f.CopyAndReplace(
+		savedMemo,
 		savedMemo.RootExpr().(memo.RelExpr),
 		savedMemo.RootProps(),
 		f.CopyWithoutAssigningPlaceholders,
@@ -1049,6 +1077,7 @@ func (opc *optPlanningCtx) makeQueryIndexRecommendation(
 	opc.optimizer.Init(origCtx, f.EvalContext(), opc.catalog)
 	savedMemo.Metadata().UpdateTableMeta(origCtx, f.EvalContext(), optTables)
 	f.CopyAndReplace(
+		savedMemo,
 		savedMemo.RootExpr().(memo.RelExpr),
 		savedMemo.RootProps(),
 		f.CopyWithoutAssigningPlaceholders,

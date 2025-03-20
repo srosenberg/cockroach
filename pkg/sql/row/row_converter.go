@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemaexpr"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowinfra"
-	"github.com/cockroachdb/cockroach/pkg/sql/sem/builtins/builtinconstants"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/transform"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -26,15 +25,22 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/cockroach/pkg/util/metamorphic"
+	"github.com/cockroachdb/cockroach/pkg/util/unique"
 	"github.com/cockroachdb/errors"
 )
 
-// KVInserter implements the putter interface.
+// KVInserter implements the row.Putter interface.
 type KVInserter func(roachpb.KeyValue)
 
-// CPut is not implmented.
+// CPut implements the row.Putter interface.
 func (i KVInserter) CPut(key, value interface{}, expValue []byte) {
-	panic("unimplemented")
+	if expValue != nil {
+		panic(errors.AssertionFailedf("unexpected non-nil expValue in CPut in KVInserter: %v", expValue))
+	}
+	i(roachpb.KeyValue{
+		Key:   *key.(*roachpb.Key),
+		Value: *value.(*roachpb.Value),
+	})
 }
 
 // Del is not implemented.
@@ -53,7 +59,12 @@ func (i KVInserter) Del(key ...interface{}) {
 	// empty).
 }
 
-// Put method of the putter interface.
+// DelMustAcquireExclusiveLock is not implemented.
+func (i KVInserter) DelMustAcquireExclusiveLock(key ...interface{}) {
+	// See comment within Del for why this is a no-op.
+}
+
+// Put method of the row.Putter interface.
 func (i KVInserter) Put(key, value interface{}) {
 	i(roachpb.KeyValue{
 		Key:   *key.(*roachpb.Key),
@@ -61,23 +72,29 @@ func (i KVInserter) Put(key, value interface{}) {
 	})
 }
 
-// InitPut method of the putter interface.
-func (i KVInserter) InitPut(key, value interface{}, failOnTombstones bool) {
-	i(roachpb.KeyValue{
-		Key:   *key.(*roachpb.Key),
-		Value: *value.(*roachpb.Value),
-	})
+func (c KVInserter) PutMustAcquireExclusiveLock(key, value interface{}) {
+	panic(errors.AssertionFailedf("unimplemented"))
 }
 func (c KVInserter) CPutWithOriginTimestamp(
-	key, value interface{}, expValue []byte, ts hlc.Timestamp, shouldWinTie bool,
+	key, value interface{}, expValue []byte, ts hlc.Timestamp,
 ) {
+	panic(errors.AssertionFailedf("unimplemented"))
 }
-func (c KVInserter) CPutTuplesEmpty(kys []roachpb.Key, values [][]byte)        {}
-func (c KVInserter) CPutValuesEmpty(kys []roachpb.Key, values []roachpb.Value) {}
-func (c KVInserter) PutBytes(kys []roachpb.Key, values [][]byte)               {}
-func (c KVInserter) InitPutBytes(kys []roachpb.Key, values [][]byte)           {}
-func (c KVInserter) PutTuples(kys []roachpb.Key, values [][]byte)              {}
-func (c KVInserter) InitPutTuples(kys []roachpb.Key, values [][]byte)          {}
+func (c KVInserter) CPutBytesEmpty(kys []roachpb.Key, values [][]byte) {
+	panic(errors.AssertionFailedf("unimplemented"))
+}
+func (c KVInserter) CPutTuplesEmpty(kys []roachpb.Key, values [][]byte) {
+	panic(errors.AssertionFailedf("unimplemented"))
+}
+func (c KVInserter) CPutValuesEmpty(kys []roachpb.Key, values []roachpb.Value) {
+	panic(errors.AssertionFailedf("unimplemented"))
+}
+func (c KVInserter) PutBytes(kys []roachpb.Key, values [][]byte) {
+	panic(errors.AssertionFailedf("unimplemented"))
+}
+func (c KVInserter) PutTuples(kys []roachpb.Key, values [][]byte) {
+	panic(errors.AssertionFailedf("unimplemented"))
+}
 
 // GenerateInsertRow prepares a row tuple for insertion. It fills in default
 // expressions, verifies non-nullable columns, and checks column widths.
@@ -500,7 +517,7 @@ func NewDatumRowConverter(
 	return c, nil
 }
 
-const rowIDBits = 64 - builtinconstants.UniqueIntNodeIDBits
+const rowIDBits = 64 - unique.UniqueIntNodeIDBits
 
 // Row inserts kv operations into the current kv batch, and triggers a SendBatch
 // if necessary.
@@ -561,13 +578,18 @@ func (c *DatumRowConverter) Row(ctx context.Context, sourceID int32, rowIndex in
 		c.EvalCtx.PopIVarContainer()
 	}
 
+	// TODO(mw5h, drewk): call into the vector index library to determine the partitions
+	// to update.
+	var vh VectorIndexUpdateHelper
+
 	if err := c.ri.InsertRow(
 		ctx,
 		c.kvInserter,
 		insertRow,
 		pm,
-		nil,   /* OriginTimestampCPutHelper */
-		true,  /* ignoreConflicts */
+		vh,
+		nil, /* OriginTimestampCPutHelper */
+		PutOp,
 		false, /* traceKV */
 	); err != nil {
 		return errors.Wrap(err, "insert row")

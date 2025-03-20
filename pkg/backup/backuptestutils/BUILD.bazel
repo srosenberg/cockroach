@@ -9,12 +9,12 @@ go_library(
     deps = [
         "//pkg/backup/backupbase",
         "//pkg/base",
+        "//pkg/clusterversion",
         "//pkg/jobs",
         "//pkg/keyvisualizer",
         "//pkg/kv/kvserver",
         "//pkg/sql/sqlstats",
         "//pkg/testutils",
-        "//pkg/testutils/skip",
         "//pkg/testutils/sqlutils",
         "//pkg/testutils/testcluster",
         "//pkg/util",

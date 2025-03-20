@@ -18,7 +18,6 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachprod-microbench/util"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
-	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/clusterstats"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
@@ -26,6 +25,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	roachprodErrors "github.com/cockroachdb/cockroach/pkg/roachprod/errors"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
@@ -57,6 +57,12 @@ var sysbenchWorkloadName = map[sysbenchWorkload]string{
 	oltpWriteOnly:      "oltp_write_only",
 }
 
+type extraSetup struct {
+	nameSuffix string
+	stmts      []string
+	useDRPC    bool
+}
+
 func (w sysbenchWorkload) String() string {
 	return sysbenchWorkloadName[w]
 }
@@ -69,6 +75,7 @@ type sysbenchOptions struct {
 	tables       int
 	rowsPerTable int
 	usePostgres  bool
+	extra        extraSetup // invoked before the workload starts
 }
 
 func (o *sysbenchOptions) cmd(haproxy bool) string {
@@ -143,12 +150,24 @@ func runSysbench(ctx context.Context, t test.Test, c cluster.Cluster, opts sysbe
 		}
 	} else {
 		t.Status("installing cockroach")
-		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.CRDBNodes())
+		settings := install.MakeClusterSettings()
+		if opts.extra.useDRPC {
+			settings.Env = append(settings.Env, "COCKROACH_EXPERIMENTAL_DRPC_ENABLED=true")
+			t.L().Printf("extra setup to use DRPC")
+		}
+		c.Start(ctx, t.L(), option.NewStartOpts(option.NoBackupSchedule), settings, c.CRDBNodes())
 		if len(c.CRDBNodes()) >= 3 {
 			err := roachtestutil.WaitFor3XReplication(ctx, t.L(), c.Conn(ctx, t.L(), 1))
 			require.NoError(t, err)
 		}
-		c.Run(ctx, option.WithNodes(c.Node(1)), `./cockroach sql --url={pgurl:1} -e "CREATE DATABASE sysbench"`)
+		conn := c.Conn(ctx, t.L(), 1)
+		runner := sqlutils.MakeSQLRunner(conn)
+		runner.Exec(t, `CREATE DATABASE sysbench`)
+		for _, stmt := range opts.extra.stmts {
+			runner.Exec(t, stmt)
+			t.L().Printf(`executed extra setup statement: %s`, stmt)
+		}
+		_ = conn.Close()
 	}
 
 	useHAProxy := len(c.CRDBNodes()) > 1
@@ -171,23 +190,42 @@ func runSysbench(ctx context.Context, t test.Test, c cluster.Cluster, opts sysbe
 	var start time.Time
 	runWorkload := func(ctx context.Context) error {
 		t.Status("preparing workload")
-		c.Run(ctx, option.WithNodes(c.WorkloadNode()), opts.cmd(false /* haproxy */)+" prepare")
+		cmd := opts.cmd(useHAProxy /* haproxy */)
+		{
+			result, err := c.RunWithDetailsSingleNode(ctx, t.L(), option.WithNodes(c.WorkloadNode()), cmd+" prepare")
+			if err != nil {
+				return err
+			} else if strings.Contains(result.Stdout, "FATAL") {
+				// sysbench prepare doesn't exit on errors for some reason, so we have
+				// to check that it didn't silently fail. We've seen it do so, causing
+				// the run step to segfault. Segfaults are an ignored error, so in the
+				// past, this would cause the test to silently fail.
+				return errors.Newf("sysbench prepare failed with FATAL error")
+			}
+		}
+
+		t.Status("warming up via oltp_read_only")
+		{
+			opts := opts
+			opts.workload = oltpReadOnly
+			opts.duration = 3 * time.Minute
+
+			result, err := c.RunWithDetailsSingleNode(ctx, t.L(), option.WithNodes(c.WorkloadNode()),
+				opts.cmd(useHAProxy)+" run")
+
+			if msg, crashed := detectSysbenchCrash(result); crashed {
+				t.L().Printf("%s; proceeding to main workload anyway", msg)
+				err = nil
+			}
+			require.NoError(t, err)
+		}
 
 		t.Status("running workload")
-		cmd := opts.cmd(useHAProxy /* haproxy */) + " run"
 		start = timeutil.Now()
-		result, err := c.RunWithDetailsSingleNode(ctx, t.L(), option.WithNodes(c.WorkloadNode()), cmd)
+		result, err := c.RunWithDetailsSingleNode(ctx, t.L(), option.WithNodes(c.WorkloadNode()), cmd+" run")
 
-		// Sysbench occasionally segfaults. When that happens, don't fail the
-		// test.
-		if result.RemoteExitStatus == roachprodErrors.SegmentationFaultExitCode {
-			t.L().Printf("sysbench segfaulted; passing test anyway")
-			return nil
-		} else if result.RemoteExitStatus == roachprodErrors.IllegalInstructionExitCode {
-			t.L().Printf("sysbench crashed with illegal instruction; passing test anyway")
-			return nil
-		} else if result.RemoteExitStatus == roachprodErrors.AssertionFailureExitCode {
-			t.L().Printf("sysbench crashed with an assertion failure; passing test anyway")
+		if msg, crashed := detectSysbenchCrash(result); crashed {
+			t.L().Printf("%s; passing test anyway", msg)
 			return nil
 		}
 
@@ -196,6 +234,11 @@ func runSysbench(ctx context.Context, t test.Test, c cluster.Cluster, opts sysbe
 		}
 
 		t.Status("exporting results")
+		idx := strings.Index(result.Stdout, "SQL statistics:")
+		if idx < 0 {
+			return errors.Errorf("no SQL statistics found in sysbench output:\n%s", result.Stdout)
+		}
+		t.L().Printf("sysbench results:\n%s", result.Stdout[idx:])
 		return exportSysbenchResults(t, c, result.Stdout, start, opts)
 	}
 	if opts.usePostgres {
@@ -210,20 +253,36 @@ func runSysbench(ctx context.Context, t test.Test, c cluster.Cluster, opts sysbe
 }
 
 func registerSysbench(r registry.Registry) {
+	coreThree := func(w sysbenchWorkload) bool {
+		switch w {
+		case oltpReadOnly, oltpReadWrite, oltpWriteOnly:
+			return true
+		default:
+			return false
+		}
+	}
+
 	for _, d := range []struct {
 		n, cpus int
 		pick    func(sysbenchWorkload) bool // nil means true for all
+		extra   extraSetup
 	}{
 		{n: 1, cpus: 32},
 		{n: 3, cpus: 32},
-		{n: 3, cpus: 8, pick: func(w sysbenchWorkload) bool {
-			switch w {
-			case oltpReadOnly, oltpReadWrite, oltpWriteOnly:
-				return true
-			default:
-				return false
-			}
-		}},
+		{n: 3, cpus: 8, pick: coreThree},
+		{n: 3, cpus: 8, pick: coreThree,
+			extra: extraSetup{
+				nameSuffix: "-settings",
+				stmts: []string{
+					`set cluster setting sql.stats.flush.enabled = false`,
+					`set cluster setting sql.metrics.statement_details.enabled = false`,
+					`set cluster setting kv.split_queue.enabled = false`,
+					`set cluster setting sql.stats.histogram_collection.enabled = false`,
+					`set cluster setting kv.consistency_queue.enabled = false`,
+				},
+				useDRPC: true,
+			},
+		},
 	} {
 		for w := sysbenchWorkload(0); w < numSysbenchWorkloads; w++ {
 			if d.pick != nil && !d.pick(w) {
@@ -237,10 +296,16 @@ func registerSysbench(r registry.Registry) {
 				concurrency:  conc,
 				tables:       10,
 				rowsPerTable: 10000000,
+				extra:        d.extra,
+			}
+
+			benchname := "sysbench"
+			if d.extra.nameSuffix != "" {
+				benchname += d.extra.nameSuffix
 			}
 
 			r.Add(registry.TestSpec{
-				Name:                      fmt.Sprintf("sysbench/%s/nodes=%d/cpu=%d/conc=%d", w, d.n, d.cpus, conc),
+				Name:                      fmt.Sprintf("%s/%s/nodes=%d/cpu=%d/conc=%d", benchname, w, d.n, d.cpus, conc),
 				Benchmark:                 true,
 				Owner:                     registry.OwnerTestEng,
 				Cluster:                   r.MakeClusterSpec(d.n+1, spec.CPU(d.cpus), spec.WorkloadNode(), spec.WorkloadNodeCPU(16)),
@@ -329,7 +394,7 @@ func exportSysbenchResults(
 		"rows-per-table": fmt.Sprintf("%d", opts.rowsPerTable),
 		"use-postgres":   fmt.Sprintf("%t", opts.usePostgres),
 	}
-	labelString := clusterstats.GetOpenmetricsLabelString(t, c, labels)
+	labelString := roachtestutil.GetOpenmetricsLabelString(t, c, labels)
 	openmetricsMap := make(map[string][]openmetricsValues)
 	tick := func(fields []string, qpsByType []string) error {
 		snapshotTick := sysbenchMetrics{
@@ -427,7 +492,7 @@ func getOpenmetricsBytes(openmetricsMap map[string][]openmetricsValues, labelStr
 	metricsBuf := bytes.NewBuffer([]byte{})
 	for key, values := range openmetricsMap {
 		metricName := util.SanitizeMetricName(key)
-		metricsBuf.WriteString(clusterstats.GetOpenmetricsGaugeType(metricName))
+		metricsBuf.WriteString(roachtestutil.GetOpenmetricsGaugeType(metricName))
 		for _, value := range values {
 			metricsBuf.WriteString(fmt.Sprintf("%s{%s} %s %d\n", metricName, labelString, value.Value, value.Time))
 		}
@@ -436,4 +501,17 @@ func getOpenmetricsBytes(openmetricsMap map[string][]openmetricsValues, labelStr
 	// Add # EOF at the end for openmetrics
 	metricsBuf.WriteString("# EOF\n")
 	return metricsBuf.Bytes()
+}
+
+func detectSysbenchCrash(result install.RunResultDetails) (string, bool) {
+	// Sysbench occasionally segfaults. When that happens, don't fail the
+	// test.
+	if result.RemoteExitStatus == roachprodErrors.SegmentationFaultExitCode {
+		return "sysbench segfaulted", true
+	} else if result.RemoteExitStatus == roachprodErrors.IllegalInstructionExitCode {
+		return "sysbench crashed with illegal instruction", true
+	} else if result.RemoteExitStatus == roachprodErrors.AssertionFailureExitCode {
+		return "sysbench crashed with an assertion failure", true
+	}
+	return "", false
 }

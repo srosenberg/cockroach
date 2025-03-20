@@ -213,30 +213,35 @@ func doAlterBackupSchedules(
 			return err
 		}
 
-		if err := emitAlteredSchedule(s.incJob, s.incStmt, resultsCh); err != nil {
+		if err := emitAlteredSchedule(ctx, p, s.incJob, s.incStmt, resultsCh); err != nil {
 			return err
 		}
 	}
 
 	// Emit the full backup schedule after the incremental.
 	// This matches behavior in CREATE SCHEDULE FOR BACKUP.
-	return emitAlteredSchedule(s.fullJob, s.fullStmt, resultsCh)
+	return emitAlteredSchedule(ctx, p, s.fullJob, s.fullStmt, resultsCh)
 }
 
 func emitAlteredSchedule(
-	job *jobs.ScheduledJob, stmt *tree.Backup, resultsCh chan<- tree.Datums,
+	ctx context.Context,
+	p sql.PlanHookState,
+	job *jobs.ScheduledJob,
+	stmt *tree.Backup,
+	resultsCh chan<- tree.Datums,
 ) error {
-	to := make([]string, len(stmt.To))
-	for i, dest := range stmt.To {
-		to[i] = tree.AsStringWithFlags(dest, tree.FmtBareStrings|tree.FmtShowFullURIs)
+	exprEval := p.ExprEvaluator("BACKUP")
+	to, err := exprEval.StringArray(ctx, tree.Exprs(stmt.To))
+	if err != nil {
+		return err
 	}
-	kmsURIs := make([]string, len(stmt.Options.EncryptionKMSURI))
-	for i, kmsURI := range stmt.Options.EncryptionKMSURI {
-		kmsURIs[i] = tree.AsStringWithFlags(kmsURI, tree.FmtBareStrings|tree.FmtShowFullURIs)
+	kmsURIs, err := exprEval.StringArray(ctx, tree.Exprs(stmt.Options.EncryptionKMSURI))
+	if err != nil {
+		return err
 	}
-	incDests := make([]string, len(stmt.Options.IncrementalStorage))
-	for i, incDest := range stmt.Options.IncrementalStorage {
-		incDests[i] = tree.AsStringWithFlags(incDest, tree.FmtBareStrings|tree.FmtShowFullURIs)
+	incDests, err := exprEval.StringArray(ctx, tree.Exprs(stmt.Options.IncrementalStorage))
+	if err != nil {
+		return err
 	}
 	if err := emitSchedule(job, stmt, to, kmsURIs, incDests, resultsCh); err != nil {
 		return err
@@ -767,18 +772,18 @@ func alterBackupScheduleTypeCheck(
 
 func alterBackupScheduleHook(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
-) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+) (sql.PlanHookRowFn, colinfo.ResultColumns, bool, error) {
 	alterScheduleStmt, ok := stmt.(*tree.AlterBackupSchedule)
 	if !ok {
-		return nil, nil, nil, false, nil
+		return nil, nil, false, nil
 	}
 
 	spec, err := makeAlterBackupScheduleSpec(ctx, p, alterScheduleStmt)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
-	fn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
+	fn := func(ctx context.Context, resultsCh chan<- tree.Datums) error {
 		err := doAlterBackupSchedules(ctx, p, spec, resultsCh)
 		if err != nil {
 			telemetry.Count("scheduled-backup.alter.failed")
@@ -787,7 +792,7 @@ func alterBackupScheduleHook(
 
 		return nil
 	}
-	return fn, scheduledBackupHeader, nil, false, nil
+	return fn, scheduledBackupHeader, false, nil
 }
 
 func init() {

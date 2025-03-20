@@ -118,27 +118,49 @@ func storeFromURI(
 	return s
 }
 
-// CheckExportStore runs an array of tests against a storeURI.
-func CheckExportStore(
-	t *testing.T,
-	storeURI string,
-	skipSingleFile bool,
-	user username.SQLUsername,
-	db isql.DB,
-	testSettings *cluster.Settings,
-) {
+type StoreInfo struct {
+	URI  string
+	User username.SQLUsername
+
+	// Fields below are optional.
+
+	TestSettings  *cluster.Settings
+	DB            isql.DB
+	ExternalIODir string
+}
+
+func (info StoreInfo) testSettings() *cluster.Settings {
+	if info.TestSettings != nil {
+		return info.TestSettings
+	}
+	return cluster.MakeTestingClusterSettings()
+}
+
+// CheckExportStore runs an array of tests against a store.
+func CheckExportStore(t *testing.T, info StoreInfo) {
+	checkExportStore(t, info, false /* skipSingleFile */)
+}
+
+// CheckExportStoreSkipSingleFile runs an array of tests against a store,
+// skipping single file tests.
+func CheckExportStoreSkipSingleFile(t *testing.T, info StoreInfo) {
+	checkExportStore(t, info, true /* skipSingleFile */)
+}
+
+// CheckExportStore runs an array of tests against a store.
+func checkExportStore(t *testing.T, info StoreInfo, skipSingleFile bool) {
 	ioConf := base.ExternalIODirConfig{}
 	ctx := context.Background()
+	testSettings := info.testSettings()
 
-	conf, err := cloud.ExternalStorageConfFromURI(storeURI, user)
+	conf, err := cloud.ExternalStorageConfFromURI(info.URI, info.User)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Setup a sink for the given args.
-	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
-	s, err := cloud.MakeExternalStorage(ctx, conf, ioConf, testSettings, clientFactory,
-		db, nil, cloud.NilMetrics)
+	clientFactory := blobs.TestBlobServiceClient(info.ExternalIODir)
+	s, err := cloud.MakeExternalStorage(ctx, conf, ioConf, testSettings, clientFactory, info.DB, nil, cloud.NilMetrics)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +193,7 @@ func CheckExportStore(
 			if err != nil {
 				t.Fatal(err)
 			}
+			//nolint:deferloop TODO(#137605)
 			defer r.Close(ctx)
 
 			res, err := ioctx.ReadAll(ctx, r)
@@ -249,8 +272,8 @@ func CheckExportStore(
 		if err := cloud.WriteFile(ctx, s, testingFilename, bytes.NewReader([]byte("aaa"))); err != nil {
 			t.Fatal(err)
 		}
-		singleFile := storeFromURI(ctx, t, appendPath(t, storeURI, testingFilename), clientFactory,
-			user, db, testSettings)
+		singleFile := storeFromURI(ctx, t, appendPath(t, info.URI, testingFilename), clientFactory,
+			info.User, info.DB, testSettings)
 		defer singleFile.Close()
 
 		res, _, err := singleFile.ReadFile(ctx, "", cloud.ReadOptions{NoFileSize: true})
@@ -270,8 +293,8 @@ func CheckExportStore(
 	})
 	t.Run("write-single-file-by-uri", func(t *testing.T) {
 		const testingFilename = "B"
-		singleFile := storeFromURI(ctx, t, appendPath(t, storeURI, testingFilename), clientFactory,
-			user, db, testSettings)
+		singleFile := storeFromURI(ctx, t, appendPath(t, info.URI, testingFilename), clientFactory,
+			info.User, info.DB, testSettings)
 		defer singleFile.Close()
 
 		if err := cloud.WriteFile(ctx, singleFile, "", bytes.NewReader([]byte("bbb"))); err != nil {
@@ -302,7 +325,7 @@ func CheckExportStore(
 		if err := cloud.WriteFile(ctx, s, testingFilename, bytes.NewReader([]byte("aaa"))); err != nil {
 			t.Fatal(err)
 		}
-		singleFile := storeFromURI(ctx, t, storeURI, clientFactory, user, db, testSettings)
+		singleFile := storeFromURI(ctx, t, info.URI, clientFactory, info.User, info.DB, testSettings)
 		defer singleFile.Close()
 
 		// Read a valid file.
@@ -330,33 +353,28 @@ func CheckExportStore(
 		require.True(t, errors.Is(err, cloud.ErrFileDoesNotExist), "Expected a file does not exist error but returned %s")
 
 		require.NoError(t, s.Delete(ctx, testingFilename))
+		// Deleting a file that does not exist is okay. This behavior is somewhat
+		// forced by the behavior of S3. In non-versioned S3 buckets, S3 does not
+		// return an error or metadata indicating the object did not exist before
+		// the delete. So if we want consistent behavior across all cloud.Storage
+		// interfaces, and we don't want to read before we delete an S3 object, we
+		// need to treat this as a non-error.
+		require.NoError(t, s.Delete(ctx, testingFilename))
 	})
 }
 
 // CheckListFiles tests the ListFiles() interface method for the ExternalStorage
 // specified by storeURI.
-func CheckListFiles(
-	t *testing.T,
-	storeURI string,
-	user username.SQLUsername,
-	db isql.DB,
-	testSettings *cluster.Settings,
-) {
-	CheckListFilesCanonical(t, storeURI, "", user, db, testSettings)
+func CheckListFiles(t *testing.T, info StoreInfo) {
+	CheckListFilesCanonical(t, info, "" /* canonical */)
 }
 
 // CheckListFilesCanonical is like CheckListFiles but takes a canonical prefix
 // that it should expect to see on returned listings, instead of storeURI (e.g.
 // if storeURI automatically expands).
-func CheckListFilesCanonical(
-	t *testing.T,
-	storeURI string,
-	canonical string,
-	user username.SQLUsername,
-	db isql.DB,
-	testSettings *cluster.Settings,
-) {
+func CheckListFilesCanonical(t *testing.T, info StoreInfo, canonical string) {
 	ctx := context.Background()
+	testSettings := info.testSettings()
 	dataLetterFiles := []string{"file/letters/dataA.csv", "file/letters/dataB.csv", "file/letters/dataC.csv"}
 	dataNumberFiles := []string{"file/numbers/data1.csv", "file/numbers/data2.csv", "file/numbers/data3.csv"}
 	letterFiles := []string{"file/abc/A.csv", "file/abc/B.csv", "file/abc/C.csv"}
@@ -364,9 +382,9 @@ func CheckListFilesCanonical(
 	fileNames = append(fileNames, letterFiles...)
 	sort.Strings(fileNames)
 
-	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+	clientFactory := blobs.TestBlobServiceClient(info.ExternalIODir)
 	for _, fileName := range fileNames {
-		file := storeFromURI(ctx, t, storeURI, clientFactory, user, db, testSettings)
+		file := storeFromURI(ctx, t, info.URI, clientFactory, info.User, info.DB, testSettings)
 		if err := cloud.WriteFile(ctx, file, fileName, bytes.NewReader([]byte("bbb"))); err != nil {
 			t.Fatal(err)
 		}
@@ -391,70 +409,70 @@ func CheckListFilesCanonical(
 		}{
 			{
 				"root",
-				storeURI,
+				info.URI,
 				"",
 				"",
 				foreach(fileNames, func(s string) string { return "/" + s }),
 			},
 			{
 				"file-slash-numbers-slash",
-				storeURI,
+				info.URI,
 				"file/numbers/",
 				"",
 				[]string{"data1.csv", "data2.csv", "data3.csv"},
 			},
 			{
 				"root-slash",
-				storeURI,
+				info.URI,
 				"/",
 				"",
 				foreach(fileNames, func(s string) string { return s }),
 			},
 			{
 				"file",
-				storeURI,
+				info.URI,
 				"file",
 				"",
 				foreach(fileNames, func(s string) string { return strings.TrimPrefix(s, "file") }),
 			},
 			{
 				"file-slash",
-				storeURI,
+				info.URI,
 				"file/",
 				"",
 				foreach(fileNames, func(s string) string { return strings.TrimPrefix(s, "file/") }),
 			},
 			{
 				"slash-f",
-				storeURI,
+				info.URI,
 				"/f",
 				"",
 				foreach(fileNames, func(s string) string { return strings.TrimPrefix(s, "f") }),
 			},
 			{
 				"nothing",
-				storeURI,
+				info.URI,
 				"nothing",
 				"",
 				nil,
 			},
 			{
 				"delim-slash-file-slash",
-				storeURI,
+				info.URI,
 				"file/",
 				"/",
 				[]string{"abc/", "letters/", "numbers/"},
 			},
 			{
 				"delim-data",
-				storeURI,
+				info.URI,
 				"",
 				"data",
 				[]string{"/file/abc/A.csv", "/file/abc/B.csv", "/file/abc/C.csv", "/file/letters/data", "/file/numbers/data"},
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				s := storeFromURI(ctx, t, tc.uri, clientFactory, user, db, testSettings)
+				s := storeFromURI(ctx, t, tc.uri, clientFactory, info.User, info.DB, testSettings)
 				var actual []string
 				require.NoError(t, s.List(ctx, tc.prefix, tc.delimiter, func(f string) error {
 					actual = append(actual, f)
@@ -467,7 +485,7 @@ func CheckListFilesCanonical(
 	})
 
 	for _, fileName := range fileNames {
-		file := storeFromURI(ctx, t, storeURI, clientFactory, user, db, testSettings)
+		file := storeFromURI(ctx, t, info.URI, clientFactory, info.User, info.DB, testSettings)
 		if err := file.Delete(ctx, fileName); err != nil {
 			t.Fatal(err)
 		}
@@ -548,24 +566,19 @@ func CheckAntagonisticRead(
 
 // CheckNoPermission checks that we do not have permission to list the external
 // storage at storeURI.
-func CheckNoPermission(
-	t *testing.T,
-	storeURI string,
-	user username.SQLUsername,
-	db isql.DB,
-	testSettings *cluster.Settings,
-) {
+func CheckNoPermission(t *testing.T, info StoreInfo) {
 	ioConf := base.ExternalIODirConfig{}
 	ctx := context.Background()
 
-	conf, err := cloud.ExternalStorageConfFromURI(storeURI, user)
+	conf, err := cloud.ExternalStorageConfFromURI(info.URI, info.User)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	clientFactory := blobs.TestBlobServiceClient(testSettings.ExternalIODir)
+	testSettings := info.testSettings()
+	clientFactory := blobs.TestBlobServiceClient(info.ExternalIODir)
 	s, err := cloud.MakeExternalStorage(
-		ctx, conf, ioConf, testSettings, clientFactory, db, nil, cloud.NilMetrics,
+		ctx, conf, ioConf, testSettings, clientFactory, info.DB, nil, cloud.NilMetrics,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -574,7 +587,7 @@ func CheckNoPermission(
 
 	err = s.List(ctx, "", "", nil)
 	if err == nil {
-		t.Fatalf("expected error when listing %s with no permissions", storeURI)
+		t.Fatalf("expected error when listing %s with no permissions", info.URI)
 	}
 
 	require.Regexp(t, "(failed|unable) to list", err)

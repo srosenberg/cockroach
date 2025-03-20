@@ -11,7 +11,11 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationutils"
+	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
+	"github.com/cockroachdb/cockroach/pkg/jobs/jobsauth"
+	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobsprotectedts"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
@@ -39,10 +43,12 @@ import (
 )
 
 type replicationStreamManagerImpl struct {
-	evalCtx   *eval.Context
-	resolver  resolver.SchemaResolver
-	txn       descs.Txn
-	sessionID clusterunique.ID
+	evalCtx    *eval.Context
+	resolver   resolver.SchemaResolver
+	txn        descs.Txn
+	sessionID  clusterunique.ID
+	knobs      *sql.StreamingTestingKnobs
+	authorized bool
 }
 
 // StartReplicationStream implements streaming.ReplicationStreamManager interface.
@@ -50,6 +56,9 @@ func (r *replicationStreamManagerImpl) StartReplicationStream(
 	ctx context.Context, tenantName roachpb.TenantName, req streampb.ReplicationProducerRequest,
 ) (streampb.ReplicationProducerSpec, error) {
 	if err := r.checkLicense(); err != nil {
+		return streampb.ReplicationProducerSpec{}, err
+	}
+	if err := r.Authorized("StartReplicationStream"); err != nil {
 		return streampb.ReplicationProducerSpec{}, err
 	}
 	return StartReplicationProducerJob(ctx, r.evalCtx, r.txn, tenantName, req, false)
@@ -62,11 +71,24 @@ func (r *replicationStreamManagerImpl) StartReplicationStreamForTables(
 	if err := r.checkLicense(); err != nil {
 		return streampb.ReplicationProducerSpec{}, err
 	}
+	if err := r.Authorized("StartReplicationStreamForTables"); err != nil {
+		return streampb.ReplicationProducerSpec{}, err
+	}
 
 	execConfig := r.evalCtx.Planner.ExecutorConfig().(*sql.ExecutorConfig)
 
+	if !execConfig.Settings.Version.ActiveVersion(ctx).AtLeast(clusterversion.V25_1.Version()) {
+		return streampb.ReplicationProducerSpec{}, errors.New("source of ldr stream be finalized on 25.1")
+	}
+
 	if execConfig.Codec.IsSystem() && !kvserver.RangefeedEnabled.Get(&execConfig.Settings.SV) {
 		return streampb.ReplicationProducerSpec{}, errors.Errorf("kv.rangefeed.enabled must be enabled on the source cluster for logical replication")
+	}
+	if err := maybeAuthorizeReverseStream(ctx, r, req); err != nil {
+		return streampb.ReplicationProducerSpec{}, errors.Wrap(err, "uri requires REPLICATIONDEST privilege for bidirectional replication")
+	}
+	if err := maybeValidateReverseURI(ctx, req.UnvalidatedReverseStreamURI, r.evalCtx.Planner.ExecutorConfig().(*sql.ExecutorConfig).InternalDB); err != nil {
+		return streampb.ReplicationProducerSpec{}, errors.Wrap(err, "reverse stream uri failed validation")
 	}
 
 	var replicationStartTime hlc.Timestamp
@@ -83,7 +105,7 @@ func (r *replicationStreamManagerImpl) StartReplicationStreamForTables(
 	mutableTableDescs := make([]*tabledesc.Mutable, 0, len(req.TableNames))
 	tableIDs := make([]uint32, 0, len(req.TableNames))
 
-	externalCatalog, err := externalcatalog.ExtractExternalCatalog(ctx, r.resolver, r.txn, r.txn.Descriptors(), req.TableNames...)
+	externalCatalog, err := externalcatalog.ExtractExternalCatalog(ctx, r.resolver, r.txn, r.txn.Descriptors(), req.AllowOffline, req.TableNames...)
 	if err != nil {
 		return streampb.ReplicationProducerSpec{}, err
 	}
@@ -137,6 +159,47 @@ func (r *replicationStreamManagerImpl) StartReplicationStreamForTables(
 	}, nil
 }
 
+func maybeAuthorizeReverseStream(
+	ctx context.Context, r *replicationStreamManagerImpl, req streampb.ReplicationProducerRequest,
+) error {
+	if req.UnvalidatedReverseStreamURI == "" {
+		return nil
+	}
+	if err := r.evalCtx.SessionAccessor.CheckPrivilege(ctx,
+		syntheticprivilege.GlobalPrivilegeObject,
+		privilege.REPLICATIONDEST); err != nil {
+		return replicationutils.AuthorizeTableLevelPriv(ctx, r.resolver, r.evalCtx.SessionAccessor, privilege.REPLICATIONDEST, req.TableNames)
+	}
+	return nil
+}
+
+func maybeValidateReverseURI(ctx context.Context, reverseURI string, db *sql.InternalDB) error {
+	if reverseURI == "" {
+		return nil
+	}
+	configUri, err := streamclient.ParseConfigUri(reverseURI)
+	if err != nil {
+		return err
+	}
+	if !configUri.IsExternalOrTestScheme() {
+		return errors.New("uri must be an external connection")
+	}
+
+	clusterUri, err := configUri.AsClusterUri(ctx, db)
+	if err != nil {
+		return err
+	}
+
+	client, err := streamclient.NewStreamClient(ctx, clusterUri, db, streamclient.WithLogical())
+	if err != nil {
+		return err
+	}
+	if err := client.Close(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
 func getUDTs(
 	ctx context.Context,
 	txn descs.Txn,
@@ -170,7 +233,7 @@ func getUDTs(
 
 		typeDescriptors = append(typeDescriptors, typeDesc.TypeDescriptor)
 	}
-	return typeDescriptors, nil, nil
+	return typeDescriptors, foundTypeDescriptors, nil
 }
 
 var useStreaksInLDR = settings.RegisterBoolSetting(
@@ -183,6 +246,11 @@ var useStreaksInLDR = settings.RegisterBoolSetting(
 func (r *replicationStreamManagerImpl) PlanLogicalReplication(
 	ctx context.Context, req streampb.LogicalReplicationPlanRequest,
 ) (*streampb.ReplicationStreamSpec, error) {
+
+	if err := r.Authorized("PlanLogicalReplication"); err != nil {
+		return nil, err
+	}
+
 	_, tenID, err := keys.DecodeTenantPrefix(r.evalCtx.Codec.TenantPrefix())
 	if err != nil {
 		return nil, err
@@ -202,7 +270,11 @@ func (r *replicationStreamManagerImpl) PlanLogicalReplication(
 		if err != nil {
 			return nil, err
 		}
-		spans = append(spans, td.PrimaryIndexSpan(r.evalCtx.Codec))
+		if req.UseTableSpan {
+			spans = append(spans, td.TableSpan(r.evalCtx.Codec))
+		} else {
+			spans = append(spans, td.PrimaryIndexSpan(r.evalCtx.Codec))
+		}
 		tableDescs = append(tableDescs, td.TableDescriptor)
 
 		typeDescriptors, foundTypeDescriptors, err = getUDTs(ctx, r.txn, typeDescriptors, foundTypeDescriptors, td)
@@ -211,7 +283,7 @@ func (r *replicationStreamManagerImpl) PlanLogicalReplication(
 		}
 	}
 
-	spec, err := buildReplicationStreamSpec(ctx, r.evalCtx, tenID, false, spans, useStreaksInLDR.Get(&r.evalCtx.Settings.SV))
+	spec, err := r.buildReplicationStreamSpec(ctx, r.evalCtx, tenID, false, spans, useStreaksInLDR.Get(&r.evalCtx.Settings.SV))
 	if err != nil {
 		return nil, err
 	}
@@ -228,6 +300,9 @@ func (r *replicationStreamManagerImpl) HeartbeatReplicationStream(
 	if err := r.checkLicense(); err != nil {
 		return streampb.StreamReplicationStatus{}, err
 	}
+	if err := r.Authorized("HeartbeatReplicationStream"); err != nil {
+		return streampb.StreamReplicationStatus{}, err
+	}
 	return heartbeatReplicationStream(ctx, r.evalCtx, r.txn, streamID, frontier)
 }
 
@@ -236,6 +311,9 @@ func (r *replicationStreamManagerImpl) StreamPartition(
 	ctx context.Context, streamID streampb.StreamID, opaqueSpec []byte,
 ) (eval.ValueGenerator, error) {
 	if err := r.checkLicense(); err != nil {
+		return nil, err
+	}
+	if err := r.Authorized("StreamPartition"); err != nil {
 		return nil, err
 	}
 
@@ -267,7 +345,10 @@ func (r *replicationStreamManagerImpl) GetPhysicalReplicationStreamSpec(
 	if err := r.checkLicense(); err != nil {
 		return nil, err
 	}
-	return getPhysicalReplicationStreamSpec(ctx, r.evalCtx, r.txn, streamID)
+	if err := r.Authorized("GetPhysicalReplicationStreamSpec"); err != nil {
+		return nil, err
+	}
+	return r.getPhysicalReplicationStreamSpec(ctx, r.evalCtx, r.txn, streamID)
 }
 
 // CompleteReplicationStream implements ReplicationStreamManager interface.
@@ -275,6 +356,9 @@ func (r *replicationStreamManagerImpl) CompleteReplicationStream(
 	ctx context.Context, streamID streampb.StreamID, successfulIngestion bool,
 ) error {
 	if err := r.checkLicense(); err != nil {
+		return err
+	}
+	if err := r.Authorized("CompleteReplicationStream"); err != nil {
 		return err
 	}
 	return completeReplicationStream(ctx, r.evalCtx, r.txn, streamID, successfulIngestion)
@@ -286,12 +370,15 @@ func (r *replicationStreamManagerImpl) SetupSpanConfigsStream(
 	if err := r.checkLicense(); err != nil {
 		return nil, err
 	}
-	return setupSpanConfigsStream(ctx, r.evalCtx, r.txn, tenantName)
+	if err := r.Authorized("SetupSpanConfigStream"); err != nil {
+		return nil, err
+	}
+	return r.setupSpanConfigsStream(ctx, r.evalCtx, r.txn, tenantName)
 }
 
 func (r *replicationStreamManagerImpl) DebugGetProducerStatuses(
 	ctx context.Context,
-) []streampb.DebugProducerStatus {
+) ([]streampb.DebugProducerStatus, error) {
 	// NB: we don't check license here since if a stream started but the license
 	// expired or was removed, we still want visibility into it during debugging.
 
@@ -301,7 +388,10 @@ func (r *replicationStreamManagerImpl) DebugGetProducerStatuses(
 	// is not the end of the world since only the system tenant can run these so
 	// as long as it is the only one that can see into the singleton we're ok.
 	if !r.evalCtx.Codec.ForSystemTenant() {
-		return nil
+		return nil, nil
+	}
+	if err := r.Authorized("DebugGetProducerStatuses"); err != nil {
+		return nil, err
 	}
 
 	res := streampb.GetActiveProducerStatuses()
@@ -309,21 +399,24 @@ func (r *replicationStreamManagerImpl) DebugGetProducerStatuses(
 		return res[i].Spec.ConsumerNode < res[j].Spec.ConsumerNode ||
 			(res[i].Spec.ConsumerNode == res[j].Spec.ConsumerNode && res[i].Spec.ConsumerProc < res[j].Spec.ConsumerProc)
 	})
-	return res
+	return res, nil
 }
 
 // DebugGetLogicalConsumerStatuses gets all logical consumer debug statuses in
 // active in this process.
 func (r *replicationStreamManagerImpl) DebugGetLogicalConsumerStatuses(
 	ctx context.Context,
-) []*streampb.DebugLogicalConsumerStatus {
+) ([]*streampb.DebugLogicalConsumerStatus, error) {
 	// NB: we don't check license here since if a stream started but the license
 	// expired or was removed, we still want visibility into it during debugging.
 
 	// TODO(dt): since this is per-process, not per-server, we can only let the
 	// the sys tenant inspect it; remove this when we move this into job registry.
 	if !r.evalCtx.Codec.ForSystemTenant() {
-		return nil
+		return nil, nil
+	}
+	if err := r.Authorized("DebugGetLogicalConsumerStatuses"); err != nil {
+		return nil, err
 	}
 
 	res := streampb.GetActiveLogicalConsumerStatuses()
@@ -332,22 +425,72 @@ func (r *replicationStreamManagerImpl) DebugGetLogicalConsumerStatuses(
 		return res[i].ProcessorID < res[j].ProcessorID
 	})
 
-	return res
+	return res, nil
 }
 
-func newReplicationStreamManagerWithPrivilegesCheck(
+func (r *replicationStreamManagerImpl) AuthorizeViaJob(
+	ctx context.Context, streamID streampb.StreamID,
+) error {
+	planHook, ok := r.evalCtx.Planner.(sql.PlanHookState)
+	if !ok {
+		return errors.AssertionFailedf("expected planner to implement PlanHookState")
+	}
+
+	globalPrivileges, err := jobsauth.GetGlobalJobPrivileges(ctx, planHook)
+	if err != nil {
+		return err
+	}
+
+	if err := jobsauth.Authorize(
+		ctx, planHook, jobspb.JobID(streamID), planHook.User(), jobspb.TypeReplicationStreamProducer, jobsauth.ControlAccess, globalPrivileges,
+	); err != nil {
+		return err
+	}
+	r.authorized = true
+	return nil
+}
+
+func (r *replicationStreamManagerImpl) AuthorizeViaReplicationPriv(ctx context.Context) error {
+	err := r.evalCtx.SessionAccessor.CheckPrivilege(ctx,
+		syntheticprivilege.GlobalPrivilegeObject,
+		privilege.REPLICATIONSOURCE)
+
+	if pgerror.GetPGCode(err) == pgcode.InsufficientPrivilege {
+		// Fallback to legacy REPLICATION priv.
+		if fallbackErr := r.evalCtx.SessionAccessor.CheckPrivilege(ctx,
+			syntheticprivilege.GlobalPrivilegeObject,
+			privilege.REPLICATION); fallbackErr != nil {
+			// We want to return the original error which relates to authorizing with
+			// the REPLICATIONSOURCE priv instead of the error from authorizing with
+			// the deprecated REPLICATION priv.
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+
+	r.authorized = true
+	return nil
+}
+
+func (r *replicationStreamManagerImpl) Authorized(operation string) error {
+	if !r.authorized {
+		return errors.Newf("replication manager not authorized run %s", operation)
+	}
+	return nil
+}
+
+func newReplicationStreamManager(
 	ctx context.Context,
 	evalCtx *eval.Context,
 	sc resolver.SchemaResolver,
 	txn descs.Txn,
 	sessionID clusterunique.ID,
 ) (eval.ReplicationStreamManager, error) {
-	if err := evalCtx.SessionAccessor.CheckPrivilege(ctx,
-		syntheticprivilege.GlobalPrivilegeObject,
-		privilege.REPLICATION); err != nil {
-		return nil, err
-	}
-	return &replicationStreamManagerImpl{evalCtx: evalCtx, txn: txn, sessionID: sessionID, resolver: sc}, nil
+	execCfg := evalCtx.Planner.ExecutorConfig().(*sql.ExecutorConfig)
+	knobs := execCfg.StreamingTestingKnobs
+
+	return &replicationStreamManagerImpl{evalCtx: evalCtx, txn: txn, sessionID: sessionID, resolver: sc, knobs: knobs}, nil
 }
 
 func (r *replicationStreamManagerImpl) checkLicense() error {
@@ -359,5 +502,5 @@ func (r *replicationStreamManagerImpl) checkLicense() error {
 }
 
 func init() {
-	repstream.GetReplicationStreamManagerHook = newReplicationStreamManagerWithPrivilegesCheck
+	repstream.GetReplicationStreamManagerHook = newReplicationStreamManager
 }

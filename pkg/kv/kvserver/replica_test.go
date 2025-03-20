@@ -3031,7 +3031,7 @@ func TestReplicaLatchingOptimisticEvaluationSkipLocked(t *testing.T) {
 						resp := br.Responses[i]
 						if err := kvpb.ResponseKeyIterate(req.GetInner(), resp.GetInner(), func(k roachpb.Key) {
 							respKeys = append(respKeys, k)
-						}); err != nil {
+						}, false /* includeLockedNonExisting */); err != nil {
 							return kvpb.NewError(err)
 						}
 					}
@@ -7498,7 +7498,7 @@ func TestEntries(t *testing.T) {
 			// Case 19: lo and hi are available, but entry cache evicted.
 			{lo: indexes[5], hi: indexes[9], expResultCount: 4, expCacheCount: 0, setup: func() {
 				// Manually evict cache for the first 10 log entries.
-				repl.store.raftEntryCache.Clear(rangeID, indexes[9]+1)
+				repl.store.raftEntryCache.Clear(rangeID, indexes[9])
 				indexes = append(indexes, populateLogs(10, 40)...)
 			}},
 			// Case 20: lo and hi are available, entry cache evicted and hi available in cache.
@@ -7547,6 +7547,7 @@ func TestEntries(t *testing.T) {
 	})
 }
 
+// TODO(pav-kv): this test belongs to logstore. And requires a cleanup.
 func TestTerm(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
@@ -7587,7 +7588,7 @@ func TestTerm(t *testing.T) {
 		repl.mu.Lock()
 		defer repl.mu.Unlock()
 
-		firstIndex := repl.raftFirstIndexRLocked()
+		firstIndex := repl.raftCompactedIndexRLocked() + 1
 		if firstIndex != indexes[5] {
 			t.Fatalf("expected firstIndex %d to be %d", firstIndex, indexes[4])
 		}
@@ -7600,7 +7601,6 @@ func TestTerm(t *testing.T) {
 			t.Errorf("expected ErrCompacted, got %s", err)
 		}
 
-		// FirstIndex-1 should return the term of firstIndex.
 		firstIndexTerm, err := tc.repl.raftTermLocked(firstIndex)
 		if err != nil {
 			t.Errorf("expect no error, got %s", err)
@@ -8161,7 +8161,10 @@ func TestReplicaRefreshPendingCommandsTicks(t *testing.T) {
 	cfg.RaftTickInterval = time.Hour
 	// Disable pre-campaign store liveness checks because we're disabling ticking
 	// above, and we don't want the first election attempt to guaranteed fail.
-	cfg.TestingDisablePreCampaignStoreLivenessCheck = true
+	cfg.TestingKnobs.RaftTestingKnobs = &raft.TestingKnobs{
+		DisablePreCampaignStoreLivenessCheck: true,
+	}
+
 	stopper := stop.NewStopper()
 	defer stopper.Stop(ctx)
 	tc.StartWithStoreConfig(ctx, t, stopper, cfg)
@@ -9016,7 +9019,8 @@ func TestReplicaMetrics(t *testing.T) {
 		return m
 	}
 
-	status := func(lead raftpb.PeerID, progress map[raftpb.PeerID]tracker.Progress) *raft.SparseStatus {
+	status := func(lead raftpb.PeerID, progress map[raftpb.PeerID]tracker.Progress,
+		leadSupportUntil hlc.Timestamp) *raft.SparseStatus {
 		status := &raft.SparseStatus{
 			Progress: progress,
 		}
@@ -9029,10 +9033,7 @@ func TestReplicaMetrics(t *testing.T) {
 			status.SoftState.RaftState = raftpb.StateFollower
 		}
 		status.HardState.Lead = lead
-		return status
-	}
-	leadSupportedStatus := func(leadSupportedUntil hlc.Timestamp) raft.LeadSupportStatus {
-		status := raft.LeadSupportStatus{LeadSupportUntil: leadSupportedUntil}
+		status.BasicStatus.LeadSupportUntil = leadSupportUntil
 		return status
 	}
 	desc := func(ids ...int) roachpb.RangeDescriptor {
@@ -9058,17 +9059,16 @@ func TestReplicaMetrics(t *testing.T) {
 	tc.StartWithStoreConfig(ctx, t, stopper, cfg)
 
 	testCases := []struct {
-		replicas            int32
-		storeID             roachpb.StoreID
-		desc                roachpb.RangeDescriptor
-		raftStatus          *raft.SparseStatus
-		liveness            livenesspb.NodeVitalityInterface
-		raftLogSize         int64
-		leaderSupportStatus raft.LeadSupportStatus
-		expected            ReplicaMetrics
+		replicas    int32
+		storeID     roachpb.StoreID
+		desc        roachpb.RangeDescriptor
+		raftStatus  *raft.SparseStatus
+		liveness    livenesspb.NodeVitalityInterface
+		raftLogSize int64
+		expected    ReplicaMetrics
 	}{
 		// The leader of a 1-replica range is up.
-		{1, 1, desc(1), status(1, progress(2)), live(1), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{1, 1, desc(1), status(1, progress(2), hlc.Timestamp{}), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9079,7 +9079,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{1, 0, 0},
 			}},
 		// The leader of a 2-replica range is up (only 1 replica present).
-		{2, 1, desc(1), status(1, progress(2)), live(1), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{2, 1, desc(1), status(1, progress(2), hlc.Timestamp{}), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9090,7 +9090,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{1, 0, 0},
 			}},
 		// The leader of a 2-replica range is up.
-		{2, 1, desc(1, 2), status(1, progress(2)), live(1), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{2, 1, desc(1, 2), status(1, progress(2), hlc.Timestamp{}), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9101,7 +9101,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{1, 0, 0},
 			}},
 		// Both replicas of a 2-replica range are up to date.
-		{2, 1, desc(1, 2), status(1, progress(2, 2)), live(1, 2), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{2, 1, desc(1, 2), status(1, progress(2, 2), hlc.Timestamp{}), live(1, 2), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9112,7 +9112,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{2, 0, 0},
 			}},
 		// Both replicas of a 2-replica range are up to date (local replica is not leader)
-		{2, 2, desc(1, 2), status(2, progress(2, 2)), live(1, 2), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{2, 2, desc(1, 2), status(2, progress(2, 2), hlc.Timestamp{}), live(1, 2), 0,
 			ReplicaMetrics{
 				Leader:              false,
 				RangeCounter:        false,
@@ -9121,7 +9121,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{0, 0, 0},
 			}},
 		// Both replicas of a 2-replica range are live, but follower is behind.
-		{2, 1, desc(1, 2), status(1, progress(2, 1)), live(1, 2), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{2, 1, desc(1, 2), status(1, progress(2, 1), hlc.Timestamp{}), live(1, 2), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9132,7 +9132,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{2, 0, 0},
 			}},
 		// Both replicas of a 2-replica range are up to date, but follower is dead.
-		{2, 1, desc(1, 2), status(1, progress(2, 2)), live(1), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{2, 1, desc(1, 2), status(1, progress(2, 2), hlc.Timestamp{}), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9143,7 +9143,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{2, 0, 0},
 			}},
 		// The leader of a 3-replica range is up.
-		{3, 1, desc(1, 2, 3), status(1, progress(1)), live(1), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(1), hlc.Timestamp{}), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9154,7 +9154,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{1, 0, 0},
 			}},
 		// All replicas of a 3-replica range are up to date.
-		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 2)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 2), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9166,7 +9166,7 @@ func TestReplicaMetrics(t *testing.T) {
 			}},
 		// All replicas of a 3-replica range are up to date (match = 0 is
 		// considered up to date).
-		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 0)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 0), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9177,7 +9177,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{3, 0, 0},
 			}},
 		// All replicas of a 3-replica range are live but one replica is behind.
-		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 1)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 1), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9188,7 +9188,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{3, 0, 0},
 			}},
 		// All replicas of a 3-replica range are live but two replicas are behind.
-		{3, 1, desc(1, 2, 3), status(1, progress(2, 1, 1)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(2, 1, 1), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9199,7 +9199,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{3, 0, 0},
 			}},
 		// All replicas of a 3-replica range are up to date, but one replica is dead.
-		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 2)), live(1, 2), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 2), hlc.Timestamp{}), live(1, 2), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9210,7 +9210,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{3, 0, 0},
 			}},
 		// All replicas of a 3-replica range are up to date, but two replicas are dead.
-		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 2)), live(1), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(1, progress(2, 2, 2), hlc.Timestamp{}), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9222,7 +9222,7 @@ func TestReplicaMetrics(t *testing.T) {
 			}},
 		// All replicas of a 3-replica range are up to date, but two replicas are
 		// dead, including the leader.
-		{3, 2, desc(1, 2, 3), status(0, progress(2, 2, 2)), live(2), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 2, desc(1, 2, 3), status(0, progress(2, 2, 2), hlc.Timestamp{}), live(2), 0,
 			ReplicaMetrics{
 				Leader:              false,
 				RangeCounter:        true,
@@ -9232,7 +9232,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{0, 0, 0},
 			}},
 		// Range has no leader, local replica is the range counter.
-		{3, 1, desc(1, 2, 3), status(0, progress(2, 2, 2)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 1, desc(1, 2, 3), status(0, progress(2, 2, 2), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              false,
 				RangeCounter:        true,
@@ -9241,7 +9241,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{0, 0, 0},
 			}},
 		// Range has no leader, local replica is the range counter.
-		{3, 3, desc(3, 2, 1), status(0, progress(2, 2, 2)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 3, desc(3, 2, 1), status(0, progress(2, 2, 2), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              false,
 				RangeCounter:        true,
@@ -9250,7 +9250,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{0, 0, 0},
 			}},
 		// Range has no leader, local replica is not the range counter.
-		{3, 2, desc(1, 2, 3), status(0, progress(2, 2, 2)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 2, desc(1, 2, 3), status(0, progress(2, 2, 2), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              false,
 				RangeCounter:        false,
@@ -9259,7 +9259,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{0, 0, 0},
 			}},
 		// Range has no leader, local replica is not the range counter.
-		{3, 3, desc(1, 2, 3), status(0, progress(2, 2, 2)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		{3, 3, desc(1, 2, 3), status(0, progress(2, 2, 2), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              false,
 				RangeCounter:        false,
@@ -9268,7 +9268,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{0, 0, 0},
 			}},
 		// The leader of a 1-replica range is up and raft log is too large.
-		{1, 1, desc(1), status(1, progress(2)), live(1), 5 * cfg.RaftLogTruncationThreshold, leadSupportedStatus(hlc.Timestamp{}),
+		{1, 1, desc(1), status(1, progress(2), hlc.Timestamp{}), live(1), 5 * cfg.RaftLogTruncationThreshold,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9280,7 +9280,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{1, 0, 0},
 			}},
 		// The leader of a 1-replica range is up, and the leader support expired.
-		{1, 1, desc(1), status(1, progress(2)), live(1), 0, leadSupportedStatus(hlc.MinTimestamp),
+		{1, 1, desc(1), status(1, progress(2), hlc.MinTimestamp), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9291,7 +9291,7 @@ func TestReplicaMetrics(t *testing.T) {
 				RaftFlowStateCounts: [3]int64{1, 0, 0},
 			}},
 		// The leader of a 1-replica range is up, and the support hasn't expired.
-		{1, 1, desc(1), status(1, progress(2)), live(1), 0, leadSupportedStatus(hlc.MaxTimestamp),
+		{1, 1, desc(1), status(1, progress(2), hlc.MaxTimestamp), live(1), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9304,7 +9304,7 @@ func TestReplicaMetrics(t *testing.T) {
 		// 2 replicas are in StateReplicate, and one in StateSnapshot.
 		{3, 1, desc(1, 2, 3), status(1, withStates(progress(2, 1, 1),
 			tracker.StateReplicate, tracker.StateReplicate, tracker.StateSnapshot,
-		)), live(1, 2, 3), 0, leadSupportedStatus(hlc.Timestamp{}),
+		), hlc.Timestamp{}), live(1, 2, 3), 0,
 			ReplicaMetrics{
 				Leader:              true,
 				RangeCounter:        true,
@@ -9321,10 +9321,11 @@ func TestReplicaMetrics(t *testing.T) {
 			spanConfig := cfg.DefaultSpanConfig
 			spanConfig.NumReplicas = c.replicas
 
-			// Alternate between quiescent and non-quiescent replicas to test the
-			// quiescent metric.
+			// Alternate between quiescent/asleep and non-quiescent/awake replicas to
+			// test the quiescent metric.
 			c.expected.Quiescent = i%2 == 0
-			c.expected.Ticking = !c.expected.Quiescent
+			c.expected.Asleep = i%3 == 0
+			c.expected.Ticking = !c.expected.Quiescent && !c.expected.Asleep
 			metrics := calcReplicaMetrics(calcReplicaMetricsInput{
 				raftCfg:            &cfg.RaftConfig,
 				conf:               spanConfig,
@@ -9333,11 +9334,11 @@ func TestReplicaMetrics(t *testing.T) {
 				raftStatus:         c.raftStatus,
 				storeID:            c.storeID,
 				quiescent:          c.expected.Quiescent,
+				asleep:             c.expected.Asleep,
 				ticking:            c.expected.Ticking,
 				raftLogSize:        c.raftLogSize,
 				raftLogSizeTrusted: true,
 				now:                tc.Clock().NowAsClockTimestamp(),
-				leadSupportStatus:  c.leaderSupportStatus,
 			})
 			require.Equal(t, c.expected, metrics)
 		})
@@ -11937,7 +11938,8 @@ func TestReplicaShouldTransferRaftLeadershipToLeaseholder(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	type params struct {
-		raftStatus              raft.SparseStatus
+		raftStatus              raft.BasicStatus
+		progress                *tracker.Progress
 		leaseStatus             kvserverpb.LeaseStatus
 		leaseAcquisitionPending bool
 		storeID                 roachpb.StoreID
@@ -11950,23 +11952,19 @@ func TestReplicaShouldTransferRaftLeadershipToLeaseholder(t *testing.T) {
 	const localID = 1
 	const remoteID = 2
 	base := params{
-		raftStatus: raft.SparseStatus{
-			BasicStatus: raft.BasicStatus{
-				SoftState: raft.SoftState{
-					RaftState: raftpb.StateLeader,
-				},
-				HardState: raftpb.HardState{
-					Lead:   localID,
-					Commit: 10,
-				},
+		raftStatus: raft.BasicStatus{
+			SoftState: raft.SoftState{
+				RaftState: raftpb.StateLeader,
 			},
-			Progress: map[raftpb.PeerID]tracker.Progress{
-				remoteID: {Match: 10},
+			HardState: raftpb.HardState{
+				Lead:   localID,
+				Commit: 10,
 			},
 		},
+		progress: &tracker.Progress{Match: 10},
 		leaseStatus: kvserverpb.LeaseStatus{
 			Lease: roachpb.Lease{Replica: roachpb.ReplicaDescriptor{
-				ReplicaID: remoteID,
+				StoreID: remoteID,
 			}},
 			State: kvserverpb.LeaseState_VALID,
 		},
@@ -11998,23 +11996,23 @@ func TestReplicaShouldTransferRaftLeadershipToLeaseholder(t *testing.T) {
 			p.leaseStatus.State = kvserverpb.LeaseState_EXPIRED
 		}},
 		"local lease": {false, func(p *params) {
-			p.leaseStatus.Lease.Replica.ReplicaID = localID
+			p.leaseStatus.Lease.Replica.StoreID = localID
 		}},
 		"lease request pending": {false, func(p *params) {
 			p.leaseAcquisitionPending = true
 		}},
 		"no progress": {false, func(p *params) {
-			p.raftStatus.Progress = map[raftpb.PeerID]tracker.Progress{}
+			p.progress = nil
 		}},
 		"insufficient progress": {false, func(p *params) {
-			p.raftStatus.Progress = map[raftpb.PeerID]tracker.Progress{remoteID: {Match: 9}}
+			p.progress = &tracker.Progress{Match: 9}
 		}},
 		"no progress, draining": {true, func(p *params) {
-			p.raftStatus.Progress = map[raftpb.PeerID]tracker.Progress{}
+			p.progress = nil
 			p.draining = true
 		}},
 		"insufficient progress, draining": {true, func(p *params) {
-			p.raftStatus.Progress = map[raftpb.PeerID]tracker.Progress{remoteID: {Match: 9}}
+			p.progress = &tracker.Progress{Match: 9}
 			p.draining = true
 		}},
 	}
@@ -12024,7 +12022,7 @@ func TestReplicaShouldTransferRaftLeadershipToLeaseholder(t *testing.T) {
 			p := base
 			tc.modify(&p)
 			require.Equal(t, tc.expect, shouldTransferRaftLeadershipToLeaseholderLocked(
-				p.raftStatus, p.leaseStatus, p.leaseAcquisitionPending, p.storeID, p.draining))
+				p.raftStatus, p.progress, p.leaseStatus, p.leaseAcquisitionPending, p.storeID, p.draining))
 		})
 	}
 }
@@ -15401,4 +15399,44 @@ func TestLockAcquisitions1PCInteractions(t *testing.T) {
 			})
 		})
 	})
+}
+
+// TestLeaderlessWatcherInit tests that the leaderless watcher is initialized
+// correctly.
+func TestLeaderlessWatcherInit(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	ctx := context.Background()
+	tc := testContext{}
+	stopper := stop.NewStopper()
+	defer stopper.Stop(ctx)
+
+	// Set the leaderless threshold to 10 second.
+	tsc := TestStoreConfig(nil /* clock */)
+	ReplicaLeaderlessUnavailableThreshold.Override(ctx, &tsc.Settings.SV, 10*time.Second)
+	tc.StartWithStoreConfig(ctx, t, stopper, tsc)
+
+	repl, err := tc.store.GetReplica(1)
+	require.NoError(t, err)
+
+	repl.LeaderlessWatcher.mu.RLock()
+	defer repl.LeaderlessWatcher.mu.RUnlock()
+
+	// Initially, the leaderWatcher doesn't consider the replica as unavailable.
+	require.False(t, repl.LeaderlessWatcher.mu.unavailable)
+
+	// The leaderless timestamp is not set.
+	require.Equal(t, time.Time{}, repl.LeaderlessWatcher.mu.leaderlessTimestamp)
+
+	// The error is always loaded.
+	require.Regexp(t, "replica has been leaderless for 10s", repl.LeaderlessWatcher.Err())
+
+	// The channel is closed.
+	c := repl.LeaderlessWatcher.C()
+	select {
+	case <-c:
+		// Channel is closed, which is expected
+	default:
+		t.Fatalf("expected LeaderlessWatcher channel to be closed")
+	}
 }

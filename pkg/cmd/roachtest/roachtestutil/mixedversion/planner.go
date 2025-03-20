@@ -55,6 +55,9 @@ type (
 		// isLocal indicates if this test plan is generated for a `local`
 		// run.
 		isLocal bool
+		// length denotes the total number of steps in this test plan.
+		// It is computed in `assignIDs`.
+		length int
 	}
 
 	// serviceSetup encapsulates the steps to setup a service in the
@@ -220,11 +223,6 @@ var planMutators = []mutator{
 	),
 	newClusterSettingMutator(
 		"storage.ingest_split.enabled",
-		[]bool{true, false},
-		clusterSettingMinimumVersion("v23.2.0"),
-	),
-	newClusterSettingMutator(
-		"kv.snapshot_receiver.excise.enabled",
 		[]bool{true, false},
 		clusterSettingMinimumVersion("v23.2.0"),
 	),
@@ -554,6 +552,11 @@ func (p *testPlanner) systemSetupSteps() []testStep {
 	}
 
 	setupContext := p.nonUpgradeContext(initialVersion, SystemSetupStage)
+
+	clusterStartHooks := p.hooks.BeforeClusterStartSteps(setupContext, p.prng)
+	if len(clusterStartHooks) > 0 {
+		steps = append(steps, p.concurrently(beforeClusterStartLabel, clusterStartHooks)...)
+	}
 	return append(steps,
 		p.newSingleStepWithContext(setupContext, startStep{
 			version:            initialVersion,
@@ -576,6 +579,7 @@ func (p *testPlanner) systemSetupSteps() []testStep {
 // passed is the version in which the tenant is created.
 func (p *testPlanner) tenantSetupSteps(v *clusterupgrade.Version) []testStep {
 	setupContext := p.nonUpgradeContext(v, TenantSetupStage)
+	var steps []testStep
 	shouldGrantCapabilities := p.deploymentMode == SeparateProcessDeployment ||
 		(p.deploymentMode == SharedProcessDeployment && !v.AtLeast(TenantsAndSystemAlignedSettingsVersion))
 
@@ -595,11 +599,15 @@ func (p *testPlanner) tenantSetupSteps(v *clusterupgrade.Version) []testStep {
 		}
 	}
 
+	clusterStartHooks := p.hooks.BeforeClusterStartSteps(setupContext, p.prng)
+	if len(clusterStartHooks) > 0 {
+		steps = append(steps, p.concurrently(beforeClusterStartLabel, clusterStartHooks)...)
+	}
 	// We are creating a virtual cluster: we first create it, then wait
 	// for the cluster version to match the expected version, then set
 	// it as the default cluster, and finally give it all capabilities
 	// if necessary.
-	steps := []testStep{
+	steps = append(steps,
 		p.newSingleStepWithContext(setupContext, startStep),
 		p.newSingleStepWithContext(setupContext, waitForStableClusterVersionStep{
 			nodes:              p.currentContext.Tenant.Descriptor.Nodes,
@@ -607,7 +615,7 @@ func (p *testPlanner) tenantSetupSteps(v *clusterupgrade.Version) []testStep {
 			desiredVersion:     versionToClusterVersion(v),
 			virtualClusterName: p.tenantName(),
 		}),
-	}
+	)
 
 	// We only use the 'default tenant' cluster setting in
 	// shared-process deployments. For separate-process deployments, we
@@ -742,7 +750,7 @@ func (p *testPlanner) upgradeSteps(
 	p.setStage(service, stage)
 	nodes := service.Descriptor.Nodes
 	msg := fmt.Sprintf("upgrade nodes %v from %q to %q", nodes, from.String(), to.String())
-	return p.changeVersionSteps(service, from, to, msg, scheduleHooks, virtualClusterRunning)
+	return p.changeVersionSteps(service, to, msg, scheduleHooks, virtualClusterRunning)
 }
 
 func (p *testPlanner) downgradeSteps(
@@ -753,7 +761,7 @@ func (p *testPlanner) downgradeSteps(
 	p.setStage(service, RollbackUpgradeStage)
 	nodes := p.currentContext.System.Descriptor.Nodes
 	msg := fmt.Sprintf("downgrade nodes %v from %q to %q", nodes, from.String(), to.String())
-	return p.changeVersionSteps(service, from, to, msg, scheduleHooks, virtualClusterRunning)
+	return p.changeVersionSteps(service, to, msg, scheduleHooks, virtualClusterRunning)
 }
 
 // changeVersionSteps returns the sequence of steps to be performed
@@ -764,7 +772,7 @@ func (p *testPlanner) downgradeSteps(
 // upgrade/downgrade process.
 func (p *testPlanner) changeVersionSteps(
 	service *ServiceContext,
-	from, to *clusterupgrade.Version,
+	to *clusterupgrade.Version,
 	label string,
 	scheduleHooks, virtualClusterRunning bool,
 ) []testStep {
@@ -1504,6 +1512,8 @@ func (plan *TestPlan) assignIDs() {
 		ss.ID = stepID
 		return []testStep{ss}
 	})
+	// Record the length, which corresponds to the last stepID assigned.
+	plan.length = currentID
 }
 
 // allUpgrades returns a list of all upgrades encoded in this test

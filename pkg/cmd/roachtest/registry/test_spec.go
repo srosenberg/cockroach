@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 )
@@ -24,6 +25,22 @@ var LibGEOS = []string{"libgeos", "libgeos_c"}
 // PrometheusNameSpace is the namespace which all metrics exposed on the roachtest
 // endpoint should use.
 var PrometheusNameSpace = "roachtest"
+
+var DefaultProcessFunction = func(test string, histograms *roachtestutil.HistogramMetric) (roachtestutil.AggregatedPerfMetrics, error) {
+	totalOps := 0.0
+	for _, summary := range histograms.Summaries {
+		totalOps += float64(summary.TotalCount*1000) / float64(summary.TotalElapsed)
+	}
+
+	return roachtestutil.AggregatedPerfMetrics{
+		{
+			Name:           fmt.Sprintf("%s_%s", test, "total_ops_per_s"),
+			Value:          roachtestutil.MetricPoint(totalOps),
+			Unit:           "ops/s",
+			IsHigherBetter: true,
+		},
+	}, nil
+}
 
 // testStats is internally populated based on its previous runs and used for
 // deciding on the current execution approach. This includes decisions like
@@ -167,8 +184,18 @@ type TestSpec struct {
 	// important.
 	Randomized bool
 
+	// Monitor specifies whether the test initiates a process monitor. Eventually,
+	// this should replace all instances of `cluster.NewMonitor`. To make this
+	// transition, tests should be modified to utilize the `test.Monitor` and
+	// `roachtestutil.Task` interfaces provided with each test.
+	Monitor bool
+
 	// stats are populated by test selector based on previous execution data
 	stats *testStats
+
+	// PostProcessPerfMetrics can be used to custom aggregated metrics
+	// from the histogram metrics that are emitted by the roachtest
+	PostProcessPerfMetrics func(string, *roachtestutil.HistogramMetric) (roachtestutil.AggregatedPerfMetrics, error)
 }
 
 // SetStats sets the stats for the test
@@ -184,6 +211,14 @@ func (ts *TestSpec) IsLastFailurePreempt() bool {
 	return ts.stats != nil && ts.stats.LastFailureIsPreempt
 }
 
+func (ts *TestSpec) GetPostProcessWorkloadMetricsFunction() func(string, *roachtestutil.HistogramMetric) (roachtestutil.AggregatedPerfMetrics, error) {
+	if ts.PostProcessPerfMetrics != nil {
+		return ts.PostProcessPerfMetrics
+	}
+
+	return DefaultProcessFunction
+}
+
 // PostValidation is a type of post-validation that runs after a test completes.
 type PostValidation int
 
@@ -196,6 +231,9 @@ const (
 	// the crdb_internal.invalid_objects virtual table.
 	PostValidationInvalidDescriptors
 	// PostValidationNoDeadNodes checks if there are any dead nodes in the cluster.
+	// TODO: Deprecate or replace this functionality.
+	// In its current state it is no longer functional.
+	// See: https://github.com/cockroachdb/cockroach/issues/137329 for details.
 	PostValidationNoDeadNodes
 )
 
@@ -355,7 +393,6 @@ const (
 	ORM                   = "orm"
 	Driver                = "driver"
 	Tool                  = "tool"
-	Smoketest             = "smoketest"
 	Quick                 = "quick"
 	Fixtures              = "fixtures"
 	Pebble                = "pebble"
@@ -365,12 +402,13 @@ const (
 	Roachtest             = "roachtest"
 	Acceptance            = "acceptance"
 	Perturbation          = "perturbation"
+	MixedVersion          = "mixedversion"
 )
 
 var allSuites = []string{
-	Nightly, Weekly, ReleaseQualification, ORM, Driver, Tool, Smoketest, Quick, Fixtures,
+	Nightly, Weekly, ReleaseQualification, ORM, Driver, Tool, Quick, Fixtures,
 	Pebble, PebbleNightlyWrite, PebbleNightlyYCSB, PebbleNightlyYCSBRace, Roachtest, Acceptance,
-	Perturbation,
+	Perturbation, MixedVersion,
 }
 
 // SuiteSet represents a set of suites.

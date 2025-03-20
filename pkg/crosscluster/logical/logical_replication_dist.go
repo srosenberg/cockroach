@@ -9,7 +9,6 @@ import (
 	"context"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
-	"github.com/cockroachdb/cockroach/pkg/crosscluster"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/physical"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
@@ -23,7 +22,7 @@ import (
 
 func constructLogicalReplicationWriterSpecs(
 	ctx context.Context,
-	streamAddress crosscluster.StreamAddress,
+	partitionUri streamclient.ClusterUri,
 	topology streamclient.Topology,
 	destSQLInstances []sql.InstanceLocality,
 	initialScanTimestamp hlc.Timestamp,
@@ -43,7 +42,7 @@ func constructLogicalReplicationWriterSpecs(
 		PreviousReplicatedTimestamp: previousReplicatedTimestamp,
 		InitialScanTimestamp:        initialScanTimestamp,
 		Checkpoint:                  checkpoint, // TODO: Only forward relevant checkpoint info
-		StreamAddress:               string(streamAddress),
+		PartitionConnUri:            partitionUri.Serialize(),
 		TableMetadataByDestID:       tableMetadataByDestID,
 		Discard:                     discard,
 		Mode:                        mode,
@@ -69,7 +68,65 @@ func constructLogicalReplicationWriterSpecs(
 		spec.PartitionSpec = execinfrapb.StreamIngestionPartitionSpec{
 			PartitionID:       partition.ID,
 			SubscriptionToken: string(partition.SubscriptionToken),
-			Address:           string(partition.SrcAddr),
+			PartitionConnUri:  partition.ConnUri.Serialize(),
+			Spans:             partition.Spans,
+			SrcInstanceID:     base.SQLInstanceID(partition.SrcInstanceID),
+			DestInstanceID:    destID,
+		}
+		writerSpecs[destID] = append(writerSpecs[destID], spec)
+		spanGroup.Add(partition.Spans...)
+	}
+
+	// TODO(ssd): Add assertion that the spanGroup covers all of the table spans we should be following.
+
+	return writerSpecs, nil
+}
+
+func constructOfflineInitialScanSpecs(
+	ctx context.Context,
+	clusterUri streamclient.ClusterUri,
+	topology streamclient.Topology,
+	destSQLInstances []sql.InstanceLocality,
+	initialScanTimestamp hlc.Timestamp,
+	checkpoint jobspb.StreamIngestionCheckpoint,
+	jobID jobspb.JobID,
+	streamID streampb.StreamID,
+	rekey []execinfrapb.TableRekey,
+	metricsLabel string,
+) (map[base.SQLInstanceID][]execinfrapb.LogicalReplicationOfflineScanSpec, error) {
+	spanGroup := roachpb.SpanGroup{}
+	baseSpec := execinfrapb.LogicalReplicationOfflineScanSpec{
+		StreamID:             uint64(streamID),
+		JobID:                int64(jobID),
+		InitialScanTimestamp: initialScanTimestamp,
+		Checkpoint:           checkpoint, // TODO: Only forward relevant checkpoint info
+		StreamAddress:        clusterUri.Serialize(),
+		Rekey:                rekey,
+		MetricsLabel:         metricsLabel,
+	}
+
+	writerSpecs := make(map[base.SQLInstanceID][]execinfrapb.LogicalReplicationOfflineScanSpec, len(destSQLInstances))
+
+	// Update stream ingestion specs with their matched source node.
+	//
+	// TODO(msbutler): deduplicate this code with generics.
+	matcher := physical.MakeNodeMatcher(destSQLInstances)
+	for _, candidate := range matcher.FindSourceNodePriority(topology) {
+		destID := matcher.FindMatch(candidate.ClosestDestIDs)
+		partition := candidate.Partition
+
+		log.VInfof(ctx, 2, "logical replication src-dst pair candidate: %s (locality %s) - %d ("+
+			"locality %s)",
+			partition.ID,
+			partition.SrcLocality,
+			destID,
+			matcher.DestNodeToLocality(destID),
+		)
+		spec := baseSpec
+		spec.PartitionSpec = execinfrapb.StreamIngestionPartitionSpec{
+			PartitionID:       partition.ID,
+			SubscriptionToken: string(partition.SubscriptionToken),
+			PartitionConnUri:  partition.ConnUri.Serialize(),
 			Spans:             partition.Spans,
 			SrcInstanceID:     base.SQLInstanceID(partition.SrcInstanceID),
 			DestInstanceID:    destID,

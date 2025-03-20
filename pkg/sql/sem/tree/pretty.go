@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree/treecmp"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree/treewindow"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -185,7 +186,7 @@ func (p *PrettyCfg) fmtFlags() FmtFlags {
 		return p.FmtFlags
 	}
 
-	prettyFlags := FmtShowPasswords | FmtParsable | FmtTagDollarQuotes
+	prettyFlags := FmtShowPasswords | FmtParsable
 	if p.ValueRedaction {
 		prettyFlags |= FmtMarkRedactionNode | FmtOmitNameRedaction
 	}
@@ -1628,7 +1629,7 @@ func (node *ShardedIndexDef) doc(p *PrettyCfg) pretty.Doc {
 
 func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 	// Final layout:
-	// CREATE [UNIQUE] [INVERTED] INDEX [name]
+	// CREATE [UNIQUE] [INVERTED | VECTOR] INDEX [name]
 	//    ON tbl (cols...)
 	//    [STORING ( ... )]
 	//    [INTERLEAVE ...]
@@ -1642,8 +1643,11 @@ func (node *CreateIndex) doc(p *PrettyCfg) pretty.Doc {
 	if node.Unique {
 		title = append(title, pretty.Keyword("UNIQUE"))
 	}
-	if node.Inverted {
+	switch node.Type {
+	case idxtype.INVERTED:
 		title = append(title, pretty.Keyword("INVERTED"))
+	case idxtype.VECTOR:
+		title = append(title, pretty.Keyword("VECTOR"))
 	}
 	title = append(title, pretty.Keyword("INDEX"))
 	if node.Concurrently {
@@ -1724,7 +1728,7 @@ func (node *LikeTableDef) doc(p *PrettyCfg) pretty.Doc {
 
 func (node *IndexTableDef) doc(p *PrettyCfg) pretty.Doc {
 	// Final layout:
-	// [INVERTED] INDEX [name] (columns...)
+	// [INVERTED | VECTOR] INDEX [name] (columns...)
 	//    [STORING ( ... )]
 	//    [INTERLEAVE ...]
 	//    [PARTITION BY ...]
@@ -1735,8 +1739,11 @@ func (node *IndexTableDef) doc(p *PrettyCfg) pretty.Doc {
 	if node.Name != "" {
 		title = pretty.ConcatSpace(title, p.Doc(&node.Name))
 	}
-	if node.Inverted {
+	switch node.Type {
+	case idxtype.INVERTED:
 		title = pretty.ConcatSpace(pretty.Keyword("INVERTED"), title)
+	case idxtype.VECTOR:
+		title = pretty.ConcatSpace(pretty.Keyword("VECTOR"), title)
 	}
 	title = pretty.ConcatSpace(title, p.bracket("(", p.Doc(&node.Columns), ")"))
 

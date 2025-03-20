@@ -36,12 +36,17 @@ var tableInserterPool = sync.Pool{
 }
 
 type insertNode struct {
-	source planNode
+	singleInputPlanNode
 
 	// columns is set if this INSERT is returning any rows, to be
 	// consumed by a renderNode upstream. This occurs when there is a
 	// RETURNING clause with some scalar expressions.
 	columns colinfo.ResultColumns
+
+	// vectorInsert is set if this INSERT should be executed via a specialized
+	// implementation in the vectorized engine. Currently only set for inserts
+	// executed on behalf of COPY statements.
+	vectorInsert bool
 
 	run insertRun
 }
@@ -197,31 +202,38 @@ func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) erro
 		return err
 	}
 
+	rowVals = rowVals[len(insertVals):]
+
+	// Verify the CHECK constraint results, if any.
+	if n := r.checkOrds.Len(); n > 0 {
+		if err := checkMutationInput(
+			params.ctx, params.p.EvalContext(), &params.p.semaCtx, params.p.SessionData(),
+			r.ti.tableDesc(), r.checkOrds, rowVals[:n],
+		); err != nil {
+			return err
+		}
+		rowVals = rowVals[n:]
+	}
+
 	// Create a set of partial index IDs to not write to. Indexes should not be
 	// written to when they are partial indexes and the row does not satisfy the
 	// predicate. This set is passed as a parameter to tableInserter.row below.
 	var pm row.PartialIndexUpdateHelper
 	if n := len(r.ti.tableDesc().PartialIndexes()); n > 0 {
-		offset := len(r.insertCols) + r.checkOrds.Len()
-		partialIndexPutVals := rowVals[offset : offset+n]
-
-		err := pm.Init(partialIndexPutVals, nil /* partialIndexDelVals */, r.ti.tableDesc())
+		err := pm.Init(rowVals[:n], nil /* partialIndexDelVals */, r.ti.tableDesc())
 		if err != nil {
 			return err
 		}
+		rowVals = rowVals[n:]
 	}
 
-	// Verify the CHECK constraint results, if any.
-	if n := r.checkOrds.Len(); n > 0 {
-		// CHECK constraint results are after the insert columns.
-		offset := len(r.insertCols)
-		checkVals := rowVals[offset : offset+n]
-		if err := checkMutationInput(
-			params.ctx, params.p.EvalContext(), &params.p.semaCtx, params.p.SessionData(),
-			r.ti.tableDesc(), r.checkOrds, checkVals,
-		); err != nil {
-			return err
-		}
+	// Keep track of the vector index partitions to update, as well as the
+	// quantized vectors. This information is passed to tableInserter.row below.
+	// Input is one partition key per vector index followed by one quantized vector
+	// per index.
+	var vh row.VectorIndexUpdateHelper
+	if n := len(r.ti.tableDesc().VectorIndexes()); n > 0 {
+		vh.InitForPut(rowVals[:n], rowVals[n:n*2], r.ti.tableDesc())
 	}
 
 	// Error out the insert if the enforce_home_region session setting is on and
@@ -231,7 +243,7 @@ func (r *insertRun) processSourceRow(params runParams, rowVals tree.Datums) erro
 	}
 
 	// Queue the insert in the KV batch.
-	if err := r.ti.row(params.ctx, insertVals, pm, r.traceKV); err != nil {
+	if err := r.ti.row(params.ctx, insertVals, pm, vh, r.traceKV); err != nil {
 		return err
 	}
 
@@ -292,7 +304,7 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 		}
 
 		// Advance one individual row.
-		if next, err := n.source.Next(params); !next {
+		if next, err := n.input.Next(params); !next {
 			lastBatch = true
 			if err != nil {
 				// TODO(richardjcai): Don't like this, not sure how to check if the
@@ -315,7 +327,7 @@ func (n *insertNode) BatchedNext(params runParams) (bool, error) {
 
 		// Process the insertion for the current source row, potentially
 		// accumulating the result row for later.
-		if err := n.run.processSourceRow(params, n.source.Values()); err != nil {
+		if err := n.run.processSourceRow(params, n.input.Values()); err != nil {
 			return false, err
 		}
 
@@ -358,7 +370,7 @@ func (n *insertNode) BatchedCount() int { return n.run.ti.lastBatchSize }
 func (n *insertNode) BatchedValues(rowIdx int) tree.Datums { return n.run.ti.rows.At(rowIdx) }
 
 func (n *insertNode) Close(ctx context.Context) {
-	n.source.Close(ctx)
+	n.input.Close(ctx)
 	n.run.ti.close(ctx)
 	*n = insertNode{}
 	insertNodePool.Put(n)

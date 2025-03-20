@@ -35,7 +35,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catconstants"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/plpgsqltree"
-	"github.com/cockroachdb/cockroach/pkg/sql/sem/plpgsqltree/utils"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
@@ -43,6 +42,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logpb"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/redact"
 	"github.com/lib/pq/oid"
 )
 
@@ -75,7 +75,7 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 			return
 		}
 		// Set a target for the element but check for concurrent schema changes.
-		_ = b.checkForConcurrentSchemaChanges(e)
+		_ = b.checkForConcurrentSchemaChanges(e, target)
 		b.addNewElementState(elementState{
 			element:  e,
 			initial:  scpb.Status_ABSENT,
@@ -94,7 +94,7 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 	// Check that there are no concurrent schema changes on the descriptors
 	// referenced by this element. Re-assign dst because of potential
 	// re-allocations.
-	dst = b.checkForConcurrentSchemaChanges(e)
+	dst = b.checkForConcurrentSchemaChanges(e, target)
 
 	// We were about to overwrite an element's target and metadata. Assert one
 	// disallowed case: reviving a "ghost" element, that is, add an element that
@@ -110,8 +110,13 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 		dst.target == scpb.ToAbsent &&
 		(target == scpb.ToPublic || target == scpb.Transient) &&
 		dst.metadata.IsLinkedToSchemaChange() {
-		panic(scerrors.NotImplementedErrorf(nil, "attempt to revive a ghost element:"+
-			" [elem=%v],[current=ABSENT],[target=ToAbsent],[newTarget=%v]", dst.element.String(), target.Status()))
+		panic(scerrors.NotImplementedErrorf(
+			nil,
+			redact.Sprintf(
+				"attempt to revive a ghost element: [elem=%v],[current=ABSENT],[target=ToAbsent],[newTarget=%v]",
+				dst.element.String(), target.Status(),
+			),
+		))
 	}
 
 	// Henceforth all possibilities lead to the target and metadata being
@@ -176,15 +181,29 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 	panic(errors.AssertionFailedf("unsupported incumbent target %s", oldTarget.Status()))
 }
 
-func (b *builderState) checkForConcurrentSchemaChanges(e scpb.Element) *elementState {
+func (b *builderState) checkForConcurrentSchemaChanges(
+	e scpb.Element, targetStatus scpb.TargetStatus,
+) *elementState {
 	b.ensureDescriptors(e)
 	// Check that there are no descriptors which are undergoing a concurrent
 	// schema change which might interfere with this one.
-	screl.AllTargetDescIDs(e).ForEach(func(id descpb.ID) {
+	checkID := func(id descpb.ID) {
 		if c := b.descCache[id]; c != nil && c.desc != nil && c.desc.HasConcurrentSchemaChanges() {
 			panic(scerrors.ConcurrentSchemaChangeError(c.desc))
 		}
-	})
+	}
+	screl.AllTargetDescIDs(e).ForEach(checkID)
+	// For new namespace elements we need to also check their parents
+	// are not in middle of a schema change. Otherwise, it's possible to
+	// add an new namespace entry inside a dropped SCHEMA or DATABASE.
+	if namespace, ok := (e).(*scpb.Namespace); ok && targetStatus == scpb.ToPublic {
+		if namespace.DatabaseID != descpb.InvalidID {
+			checkID(namespace.DatabaseID)
+		}
+		if namespace.SchemaID != descpb.InvalidID {
+			checkID(namespace.SchemaID)
+		}
+	}
 	// We may have mutated the builder state for this element.
 	// Specifically, the output slice might have grown and have been realloc'ed.
 	return b.getExistingElementState(e)
@@ -504,6 +523,35 @@ func (b *builderState) NextTableTriggerID(tableID catid.DescID) (ret catid.Trigg
 		v, _ := screl.Schema.GetAttribute(screl.TriggerID, e)
 		if id, ok := v.(catid.TriggerID); ok {
 			if id < catid.TriggerID(scbuildstmt.TableTentativeIdsStart) && id >= ret {
+				ret = id + 1
+			}
+		}
+	})
+	return ret
+}
+
+// NextTablePolicyID implements the scbuildstmt.TableHelpers interface.
+func (b *builderState) NextTablePolicyID(tableID catid.DescID) (ret catid.PolicyID) {
+	{
+		b.ensureDescriptor(tableID)
+		desc := b.descCache[tableID].desc
+		tbl, ok := desc.(catalog.TableDescriptor)
+		if !ok {
+			panic(errors.AssertionFailedf("Expected table descriptor for ID %d, instead got %s",
+				desc.GetID(), desc.DescriptorType()))
+		}
+		ret = tbl.GetNextPolicyID()
+		if ret == 0 {
+			ret = 1
+		}
+	}
+	// Consult all present element in case they have a larger PolicyID field.
+	b.QueryByID(tableID).ForEach(func(
+		_ scpb.Status, _ scpb.TargetStatus, e scpb.Element,
+	) {
+		v, _ := screl.Schema.GetAttribute(screl.PolicyID, e)
+		if id, ok := v.(catid.PolicyID); ok {
+			if id < catid.PolicyID(scbuildstmt.TableTentativeIdsStart) && id >= ret {
 				ret = id + 1
 			}
 		}
@@ -1442,6 +1490,30 @@ func (b *builderState) ResolveTrigger(
 	})
 }
 
+func (b *builderState) ResolvePolicy(
+	tableID catid.DescID, policyName tree.Name, p scbuildstmt.ResolveParams,
+) scbuildstmt.ElementResultSet {
+	b.ensureDescriptor(tableID)
+	tbl := b.descCache[tableID].desc.(catalog.TableDescriptor)
+	elems := b.QueryByID(tbl.GetID())
+	var policyID catid.PolicyID
+	elems.ForEach(func(_ scpb.Status, _ scpb.TargetStatus, e scpb.Element) {
+		if t, ok := e.(*scpb.PolicyName); ok && t.Name == string(policyName) {
+			policyID = t.PolicyID
+		}
+	})
+	if policyID == 0 {
+		if p.IsExistenceOptional {
+			return nil
+		}
+		panic(sqlerrors.NewUndefinedPolicyError(string(policyName), tbl.GetName()))
+	}
+	return elems.Filter(func(_ scpb.Status, _ scpb.TargetStatus, e scpb.Element) bool {
+		id, _ := screl.Schema.GetAttribute(screl.PolicyID, e)
+		return id != nil && id.(catid.PolicyID) == policyID
+	})
+}
+
 func (b *builderState) newCachedDesc(id descpb.ID) *cachedDesc {
 	return &cachedDesc{
 		desc:            b.readDescriptor(id),
@@ -1472,8 +1544,10 @@ func (b *builderState) resolveBackReferences(c *cachedDesc) {
 	case catalog.DatabaseDescriptor:
 		if !d.HasPublicSchemaWithDescriptor() {
 			panic(scerrors.NotImplementedErrorf(nil, /* n */
-				"database %q (%d) with a descriptorless public schema",
-				d.GetName(), d.GetID()))
+				redact.Sprintf(
+					"database %q (%d) with a descriptorless public schema",
+					d.GetName(), d.GetID()),
+			))
 		}
 		// Handle special case of database children, which may include temporary
 		// schemas, which aren't explicitly referenced in the database's schemas
@@ -1606,7 +1680,7 @@ func (b *builderState) readDescriptor(id catid.DescID) catalog.Descriptor {
 		panic(errors.AssertionFailedf("invalid descriptor ID %d", id))
 	}
 	if id == keys.SystemPublicSchemaID || id == keys.PublicSchemaIDForBackup || id == keys.PublicSchemaID {
-		panic(scerrors.NotImplementedErrorf(nil /* n */, "descriptorless public schema %d", id))
+		panic(scerrors.NotImplementedErrorf(nil /* n */, redact.Sprintf("descriptorless public schema %d", id)))
 	}
 	if tempSchema := b.tempSchemas[id]; tempSchema != nil {
 		return tempSchema
@@ -1804,7 +1878,7 @@ func (b *builderState) replaceSeqNamesWithIDs(
 		}
 		stmts = plstmt.AST
 
-		v := utils.SQLStmtVisitor{Fn: replaceSeqFunc}
+		v := plpgsqltree.SQLStmtVisitor{Fn: replaceSeqFunc}
 		newStmt := plpgsqltree.Walk(&v, stmts)
 		fmtCtx.FormatNode(newStmt)
 	default:
@@ -1920,12 +1994,12 @@ func (b *builderState) serializeUserDefinedTypes(
 		}
 		stmts = plstmt.AST
 
-		v := utils.SQLStmtVisitor{Fn: replaceFunc}
+		v := plpgsqltree.SQLStmtVisitor{Fn: replaceFunc}
 		newStmt := plpgsqltree.Walk(&v, stmts)
 		// Some PLpgSQL statements (i.e., declarations), may contain type
 		// annotations containing the UDT. We need to walk the AST to replace them,
 		// too.
-		v2 := utils.TypeRefVisitor{Fn: replaceTypeFunc}
+		v2 := plpgsqltree.TypeRefVisitor{Fn: replaceTypeFunc}
 		newStmt = plpgsqltree.Walk(&v2, newStmt)
 		fmtCtx.FormatNode(newStmt)
 	default:

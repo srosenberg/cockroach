@@ -143,6 +143,13 @@ func initJepsen(ctx context.Context, t test.Test, c cluster.Cluster, j jepsenCon
 	c.Run(ctx, option.WithNodes(c.All()), "sh", "-c", `"sudo apt-get -y update > logs/apt-upgrade.log 2>&1"`)
 	c.Run(ctx, option.WithNodes(c.All()), "sh", "-c", `"sudo DEBIAN_FRONTEND=noninteractive apt-get -y upgrade -o Dpkg::Options::='--force-confold' -o DPkg::options::='--force-confdef' > logs/apt-upgrade.log 2>&1"`)
 
+	// Jepsen artifact collection requires bzip2, which is not installed
+	// on the base image.
+	t.L().Printf("installing bzip2")
+	if err := c.Install(ctx, t.L(), c.All(), "bzip2"); err != nil {
+		t.Fatal(err)
+	}
+
 	// TODO(bdarnell): copying the raw binary and compressing it on the
 	// other side is silly, but this lets us avoid platform-specific
 	// quirks in tar. The --transform option is only available on gnu
@@ -182,12 +189,8 @@ func initJepsen(ctx context.Context, t test.Test, c cluster.Cluster, j jepsenCon
 	c.Run(ctx, option.WithNodes(workers), "sh", "-c", `"cat controller_id_rsa.pub >> .ssh/authorized_keys"`)
 	// Prime the known hosts file, and use the unhashed format to
 	// work around JSCH auth error: https://github.com/jepsen-io/jepsen/blob/master/README.md
-	ips, err := c.InternalIP(ctx, t.L(), workers)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ip := range ips {
-		c.Run(ctx, option.WithNodes(controller), "sh", "-c", fmt.Sprintf(`"ssh-keyscan -t rsa %s >> .ssh/known_hosts"`, ip))
+	for _, worker := range workers {
+		c.Run(ctx, option.WithNodes(controller), "sh", "-c", fmt.Sprintf(`"ssh-keyscan -t rsa {ip:%d} >> .ssh/known_hosts"`, worker))
 	}
 
 	t.L().Printf("cluster initialization complete\n")
@@ -306,12 +309,8 @@ func runJepsen(ctx context.Context, t test.Test, c cluster.Cluster, testName, ne
 
 	// Get the IP addresses for all our workers.
 	var nodeFlags []string
-	ips, err := c.InternalIP(ctx, t.L(), c.Range(1, c.Spec().NodeCount-1))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ip := range ips {
-		nodeFlags = append(nodeFlags, "-n "+ip)
+	for _, node := range c.Range(1, c.Spec().NodeCount-1) {
+		nodeFlags = append(nodeFlags, fmt.Sprintf("-n {ip:%d}", node))
 	}
 	nodesStr := strings.Join(nodeFlags, " ")
 

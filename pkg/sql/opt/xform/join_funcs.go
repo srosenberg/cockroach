@@ -56,7 +56,7 @@ func (c *CustomFuncs) GenerateMergeJoins(
 	leftCols := leftEq.ToSet()
 	// NOTE: leftCols cannot be mutated after this point because it is used as a
 	// key to cache the restricted orderings in left's logical properties.
-	orders := ordering.DeriveRestrictedInterestingOrderings(left, leftCols).Copy()
+	orders := ordering.DeriveRestrictedInterestingOrderings(c.e.mem, left, leftCols).Copy()
 
 	var mustGenerateMergeJoin bool
 	leftFDs := &left.Relational().FuncDeps
@@ -69,7 +69,7 @@ func (c *CustomFuncs) GenerateMergeJoins(
 	if !c.NoJoinHints(joinPrivate) || c.e.evalCtx.SessionData().ReorderJoinsLimit == 0 {
 		// If we are using a hint, or the join limit is set to zero, the join won't
 		// be commuted. Add the orderings from the right side.
-		rightOrders := ordering.DeriveInterestingOrderings(right).Copy()
+		rightOrders := ordering.DeriveInterestingOrderings(c.e.mem, right).Copy()
 		rightOrders.RestrictToCols(rightEq.ToSet(), &right.Relational().FuncDeps)
 		orders = append(orders, rightOrders...)
 
@@ -368,7 +368,7 @@ func (c *CustomFuncs) generateLookupJoinsImpl(
 	c.cb.Init(
 		c.e.ctx,
 		c.e.f,
-		c.e.mem.Metadata(),
+		md,
 		c.e.evalCtx,
 		scanPrivate.Table,
 		inputProps.OutputCols,
@@ -396,8 +396,8 @@ func (c *CustomFuncs) generateLookupJoinsImpl(
 			scanPrivate2 = &scanExpr.ScanPrivate
 			// The scan should already exist in the memo. We need to look it up so we
 			// have a `ScanExpr` with properties fully populated.
-			input2 = scanExpr.Memo().MemoizeScan(scanPrivate)
-			tabMeta := c.e.mem.Metadata().TableMeta(scanPrivate2.Table)
+			input2 = c.e.mem.MemoizeScan(scanPrivate)
+			tabMeta := md.TableMeta(scanPrivate2.Table)
 			indexCols2 = tabMeta.IndexColumns(scanPrivate2.Index)
 			onClauseLookupRelStrictKeyCols, lookupRelEquijoinCols, inputRelJoinCols, lookupIsKey2 =
 				c.GetEquijoinStrictKeyCols(on, scanPrivate2, input2)
@@ -407,7 +407,8 @@ func (c *CustomFuncs) generateLookupJoinsImpl(
 	var pkCols opt.ColList
 	var newScanPrivate *memo.ScanPrivate
 	var iter scanIndexIter
-	iter.Init(c.e.evalCtx, c.e, c.e.mem, &c.im, scanPrivate, on, rejectInvertedIndexes)
+	reject := rejectInvertedIndexes | rejectVectorIndexes
+	iter.Init(c.e.evalCtx, c.e, c.e.mem, &c.im, scanPrivate, on, reject)
 	iter.ForEach(func(index cat.Index, onFilters memo.FiltersExpr, indexCols opt.ColSet, _ bool, _ memo.ProjectionsExpr) {
 		// Skip indexes that do not cover all virtual projection columns, if
 		// there are any. This can happen when there are multiple virtual
@@ -806,7 +807,7 @@ func (c *CustomFuncs) GenerateInvertedJoins(
 	iter.Init(c.e.evalCtx, c.e, c.e.mem, &c.im, scanPrivate, on, rejectNonInvertedIndexes)
 	iter.ForEach(func(index cat.Index, onFilters memo.FiltersExpr, indexCols opt.ColSet, _ bool, _ memo.ProjectionsExpr) {
 		invertedJoin := memo.InvertedJoinExpr{Input: input}
-		numPrefixCols := index.NonInvertedPrefixColumnCount()
+		numPrefixCols := index.PrefixColumnCount()
 
 		var allFilters memo.FiltersExpr
 		if numPrefixCols > 0 {
@@ -926,7 +927,7 @@ func (c *CustomFuncs) GenerateInvertedJoins(
 		// doesn't actually, and it is only valid to extract the primary key
 		// columns and non-inverted prefix columns from it.
 		indexCols = pkCols.ToSet()
-		for i, n := 0, index.NonInvertedPrefixColumnCount(); i < n; i++ {
+		for i, n := 0, index.PrefixColumnCount(); i < n; i++ {
 			prefixCol := scanPrivate.Table.IndexColumnID(index, i)
 			indexCols.Add(prefixCol)
 		}
@@ -1049,7 +1050,7 @@ func (c *CustomFuncs) mapInvertedJoin(
 	// columns and non-inverted prefix columns from it.
 	newPkCols := c.getPkCols(newTabID)
 	newIndexCols := newPkCols.ToSet()
-	for i, n := 0, index.NonInvertedPrefixColumnCount(); i < n; i++ {
+	for i, n := 0, index.PrefixColumnCount(); i < n; i++ {
 		prefixCol := newTabID.IndexColumnID(index, i)
 		newIndexCols.Add(prefixCol)
 	}
@@ -1907,7 +1908,9 @@ func (c *CustomFuncs) CanMaybeGenerateLocalityOptimizedSearchOfLookupJoins(
 func (c *CustomFuncs) LookupsAreLocal(
 	lookupJoinExpr *memo.LookupJoinExpr, required *physical.Required,
 ) bool {
-	_, provided := distribution.BuildLookupJoinLookupTableDistribution(c.e.ctx, c.e.f.EvalContext(), lookupJoinExpr, required, c.e.o.MaybeGetBestCostRelation)
+	_, provided := distribution.BuildLookupJoinLookupTableDistribution(
+		c.e.ctx, c.e.f.EvalContext(), c.e.mem, lookupJoinExpr, required, c.e.o.MaybeGetBestCostRelation,
+	)
 	if provided.Any() || len(provided.Regions) != 1 {
 		return false
 	}

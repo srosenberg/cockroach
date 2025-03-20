@@ -134,7 +134,7 @@ func (s startSharedProcessVirtualClusterStep) Run(
 	// When we first start the shared-process on the cluster, we wait
 	// until we are able to connect to the tenant on every node before
 	// moving on. The test runner infrastructure relies on that ability.
-	return waitForSharedProcess(ctx, l, h, h.Tenant.Descriptor.Nodes)
+	return waitForTenantProcess(ctx, l, h, h.Tenant.Descriptor.Nodes, h.DeploymentMode())
 }
 
 // startSeparateProcessVirtualCluster step creates a new separate-process
@@ -171,9 +171,9 @@ func (s startSeparateProcessVirtualClusterStep) Run(
 	if err := h.runner.cluster.StartServiceForVirtualClusterE(ctx, l, startOpts, settings); err != nil {
 		return err
 	}
-
 	h.runner.cluster.SetDefaultVirtualCluster(s.name)
-	return nil
+
+	return waitForTenantProcess(ctx, l, h, h.Tenant.Descriptor.Nodes, h.DeploymentMode())
 }
 
 type restartVirtualClusterStep struct {
@@ -210,7 +210,12 @@ func (s restartVirtualClusterStep) Run(
 	// Assume the binary already exists on the node as this step should
 	// only be scheduled after the storage cluster has already upgraded.
 	binaryPath := clusterupgrade.BinaryPathForVersion(s.rt, s.version, "cockroach")
-	startOpts := option.StartVirtualClusterOpts(s.virtualCluster, node, startStopOpts()...)
+	opts := startStopOpts()
+	// Specify the storage cluster if it's separate process.
+	if h.DeploymentMode() == SeparateProcessDeployment {
+		opts = append(opts, option.StorageCluster(h.System.Descriptor.Nodes))
+	}
+	startOpts := option.StartVirtualClusterOpts(s.virtualCluster, node, opts...)
 	settings := install.MakeClusterSettings(append(s.settings, install.BinaryOption(binaryPath))...)
 	return h.runner.cluster.StartServiceForVirtualClusterE(ctx, l, startOpts, settings)
 }
@@ -337,7 +342,7 @@ func (s restartWithNewBinaryStep) Run(
 		// If we are in shared-process mode and the tenant is already
 		// running at this point, we wait for the server on the restarted
 		// node to be up before moving on.
-		return waitForSharedProcess(ctx, l, h, h.runner.cluster.Node(s.node))
+		return waitForTenantProcess(ctx, l, h, h.runner.cluster.Node(s.node), s.deploymentMode)
 	}
 
 	return nil
@@ -634,10 +639,14 @@ func serviceByName(h *Helper, virtualClusterName string) *Service {
 	return h.Tenant
 }
 
-// waitForSharedProcess waits for the shared-process created for this
+// waitForTenantProcess waits for the tenant-process created for this
 // test to be ready to accept connections on the `nodes` provided.
-func waitForSharedProcess(
-	ctx context.Context, l *logger.Logger, h *Helper, nodes option.NodeListOption,
+func waitForTenantProcess(
+	ctx context.Context,
+	l *logger.Logger,
+	h *Helper,
+	nodes option.NodeListOption,
+	deployment DeploymentMode,
 ) error {
 	group := ctxgroup.WithContext(ctx)
 	for _, n := range nodes {
@@ -648,7 +657,7 @@ func waitForSharedProcess(
 				ctx, l, n, option.VirtualClusterName(h.Tenant.Descriptor.Name),
 			)
 			if err != nil {
-				return errors.Wrap(err, "waitForSharedProcess: failed to connect to tenant")
+				return errors.Wrapf(err, "waitForTenantProcess: failed to connect to %s tenant", deployment)
 			}
 			defer db.Close()
 
@@ -660,10 +669,10 @@ func waitForSharedProcess(
 			// unexpected and should cause the test to fail.
 			err = retryOpts.Do(ctx, func(ctx context.Context) error {
 				_, err := db.ExecContext(ctx, "SELECT 1")
-				err = errors.Wrapf(err, "waiting for shared-process tenant on n%d", n)
+				err = errors.Wrapf(err, "waiting for %s tenant on n%d", deployment, n)
 
 				if err != nil && strings.Contains(err.Error(), "service unavailable for target tenant") {
-					l.Printf("failed to connect to shared-process tenant, retrying: %v", err)
+					l.Printf("failed to connect to %s tenant, retrying: %v", deployment, err)
 					return err
 				}
 
@@ -692,9 +701,7 @@ func quoteVersionForPresentation(v string) string {
 // regular backups as some tests check for running jobs and the
 // scheduled backup may make things non-deterministic. In the future,
 // we should change the default and add an API for tests to opt-out of
-// the default scheduled backup if necessary. We disable WAL failover
-// because some versions before v24.1 will early exit since they don't
-// understand the `--wal-failover` flag.
+// the default scheduled backup if necessary.
 func startOpts(opts ...option.StartStopOption) option.StartOpts {
 	return option.NewStartOpts(
 		startStopOpts(opts...)...,
@@ -706,6 +713,5 @@ func startOpts(opts ...option.StartStopOption) option.StartOpts {
 func startStopOpts(opts ...option.StartStopOption) []option.StartStopOption {
 	return append([]option.StartStopOption{
 		option.NoBackupSchedule,
-		option.DisableWALFailover,
 	}, opts...)
 }

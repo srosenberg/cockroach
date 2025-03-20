@@ -62,6 +62,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptutil"
 	"github.com/cockroachdb/cockroach/pkg/multitenant/mtinfopb"
+	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilitiespb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/security/securitytest"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
@@ -81,6 +82,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/randgen"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqltestutils"
 	"github.com/cockroachdb/cockroach/pkg/sql/stats"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/fingerprintutils"
@@ -108,7 +110,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/redact"
-	pgx "github.com/jackc/pgx/v4"
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -588,9 +590,10 @@ func TestBackupRestoreAppend(t *testing.T) {
 	tc, sqlDB, tmpDir, cleanupFn := backupRestoreTestSetupWithParams(t, multiNode, numAccounts, InitManualReplication, params)
 	defer cleanupFn()
 
-	if !tc.ApplicationLayer(0).Codec().ForSystemTenant() {
-		systemRunner := sqlutils.MakeSQLRunner(tc.SystemLayer(0).SQLConn(t))
-		systemRunner.Exec(t, `ALTER TENANT [$1] GRANT CAPABILITY can_admin_relocate_range=true`, serverutils.TestTenantID().ToUint64())
+	if tc.DefaultTenantDeploymentMode().IsExternal() {
+		tc.GrantTenantCapabilities(
+			ctx, t, serverutils.TestTenantID(),
+			map[tenantcapabilitiespb.ID]string{tenantcapabilitiespb.CanAdminRelocateRange: "true"})
 	}
 
 	// Ensure that each node has at least one leaseholder. (These splits were
@@ -909,7 +912,7 @@ func backupAndRestore(
 
 		found := false
 		stmt := `
-SELECT payload FROM "".crdb_internal.system_jobs ORDER BY created DESC LIMIT 10
+SELECT payload FROM "".crdb_internal.system_jobs WHERE job_type = 'BACKUP' ORDER BY created DESC LIMIT 10
 `
 		rows := sqlDB.Query(t, stmt)
 		for rows.Next() {
@@ -1129,7 +1132,7 @@ func TestBackupRestoreSystemJobs(t *testing.T) {
 	fullDir := getLatestFullDir(t, sqlDB, collectionDir)
 
 	sqlDB.Exec(t, `BACKUP TABLE bank INTO LATEST IN $1`, collectionDir)
-	if err := jobutils.VerifySystemJob(t, sqlDB, 1, jobspb.TypeBackup, jobs.StatusSucceeded, jobs.Record{
+	if err := jobutils.VerifySystemJob(t, sqlDB, 1, jobspb.TypeBackup, jobs.StateSucceeded, jobs.Record{
 		Username: username.RootUserName(),
 		Description: fmt.Sprintf(
 			`BACKUP TABLE bank INTO '%s' IN '%s'`, fullDir, sanitizedCollectionDir+"redacted"),
@@ -1144,7 +1147,7 @@ func TestBackupRestoreSystemJobs(t *testing.T) {
 
 	sqlDB.Exec(t, `RESTORE TABLE bank FROM LATEST IN $1 WITH OPTIONS (into_db='restoredb')`, collectionDir)
 
-	if err := jobutils.VerifySystemJob(t, sqlDB, 0, jobspb.TypeRestore, jobs.StatusSucceeded, jobs.Record{
+	if err := jobutils.VerifySystemJob(t, sqlDB, 0, jobspb.TypeRestore, jobs.StateSucceeded, jobs.Record{
 		Username: username.RootUserName(),
 		Description: fmt.Sprintf(
 			`RESTORE TABLE bank FROM '%s' IN '%sredacted' WITH OPTIONS (into_db = 'restoredb')`,
@@ -1229,7 +1232,7 @@ func TestEncryptedBackupRestoreSystemJobs(t *testing.T) {
 			fullDir := getLatestFullDir(t, sqlDB, backupLoc1)
 
 			// Verify the BACKUP job description is sanitized.
-			if err := jobutils.VerifySystemJob(t, sqlDB, 0, jobspb.TypeBackup, jobs.StatusSucceeded,
+			if err := jobutils.VerifySystemJob(t, sqlDB, 0, jobspb.TypeBackup, jobs.StateSucceeded,
 				jobs.Record{
 					Username: username.RootUserName(),
 					Description: fmt.Sprintf(
@@ -1249,7 +1252,7 @@ func TestEncryptedBackupRestoreSystemJobs(t *testing.T) {
 into_db='restoredb', %s)`, encryptionOption), backupLoc1)
 
 			// Verify the RESTORE job description is sanitized.
-			if err := jobutils.VerifySystemJob(t, sqlDB, 0, jobspb.TypeRestore, jobs.StatusSucceeded, jobs.Record{
+			if err := jobutils.VerifySystemJob(t, sqlDB, 0, jobspb.TypeRestore, jobs.StateSucceeded, jobs.Record{
 				Username: username.RootUserName(),
 				Description: fmt.Sprintf(
 					`RESTORE TABLE data.bank FROM '%s' IN '%s' WITH OPTIONS (%s, into_db = 'restoredb')`,
@@ -1529,6 +1532,7 @@ func TestRestoreRetryProcErr(t *testing.T) {
 func TestRestoreReplanOnLag(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
+	skip.WithIssue(t, 137098, "move logic to roachtest")
 
 	skip.UnderRace(t, "slow test under stress race")
 
@@ -1682,7 +1686,7 @@ func createAndWaitForJob(
 	var jobID jobspb.JobID
 	db.QueryRow(
 		t, `INSERT INTO system.jobs (created, status) VALUES ($1, $2) RETURNING id`,
-		timeutil.FromUnixMicros(now), jobs.StatusRunning,
+		timeutil.FromUnixMicros(now), jobs.StateRunning,
 	).Scan(&jobID)
 	db.Exec(
 		t, `INSERT INTO system.job_info (job_id, info_key, value) VALUES ($1, $2, $3)`, jobID, jobs.GetLegacyPayloadKey(), payload,
@@ -3962,6 +3966,9 @@ func TestBackupRestoreChecksum(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
+	// Test Server too slow under deadlock.
+	skip.UnderDeadlock(t)
+
 	const numAccounts = 1000
 	_, sqlDB, dir, cleanupFn := backupRestoreTestSetup(t, singleNode, numAccounts, InitManualReplication)
 	defer cleanupFn()
@@ -4719,7 +4726,7 @@ func TestRestoreDatabaseVersusTable(t *testing.T) {
 	tc, origDB, _, cleanupFn := backupRestoreTestSetup(t, singleNode, numAccounts, InitManualReplication)
 	defer cleanupFn()
 	s := tc.ApplicationLayer(0)
-	args := base.TestServerArgs{ExternalIODir: s.ClusterSettings().ExternalIODir}
+	args := base.TestServerArgs{ExternalIODir: s.ExternalIODir()}
 
 	for _, q := range []string{
 		`CREATE DATABASE d2`,
@@ -5083,7 +5090,7 @@ func waitForSuccessfulJob(t *testing.T, tc *testcluster.TestCluster, id jobspb.J
 		var unused int64
 		return tc.ServerConn(0).QueryRow(
 			"SELECT job_id FROM [SHOW JOBS] WHERE job_id = $1 AND status = $2",
-			id, jobs.StatusSucceeded).Scan(&unused)
+			id, jobs.StateSucceeded).Scan(&unused)
 	})
 }
 
@@ -7104,23 +7111,18 @@ func TestBackupRestoreTenant(t *testing.T) {
 		})
 		restoreDB.Exec(t, `RESTORE TENANT 10 FROM LATEST IN 'nodelocal://1/t10'`)
 		restoreDB.CheckQueryResults(t,
-			`SELECT id, active, name, data_state, service_mode,
-				crdb_internal.pb_to_json('cockroach.multitenant.ProtoInfo', info)->'capabilities',
-				crdb_internal.pb_to_json('cockroach.multitenant.ProtoInfo', info)->'previousSourceTenant'->'clusterId',
-				crdb_internal.pb_to_json('cockroach.multitenant.ProtoInfo', info)->'previousSourceTenant'->'cutoverTimestamp'->'wallTime'
+			`SELECT id, active, name, data_state, service_mode
 				FROM system.tenants`,
 			[][]string{
 				{
 					`1`, `true`, `system`,
 					strconv.Itoa(int(mtinfopb.DataStateReady)),
 					strconv.Itoa(int(mtinfopb.ServiceModeShared)),
-					`{}`, `NULL`, `NULL`,
 				},
 				{
 					`10`, `true`, `cluster-10`,
 					strconv.Itoa(int(mtinfopb.DataStateReady)),
 					strconv.Itoa(int(mtinfopb.ServiceModeExternal)),
-					`{"canUseNodelocalStorage": true}`, `"` + clusterID + `"`, `"` + strings.Split(ts2, ".")[0] + `"`,
 				},
 			},
 		)
@@ -7288,7 +7290,7 @@ func TestBackupRestoreTenant(t *testing.T) {
 		restoreDB.CheckQueryResults(t,
 			`select id, active, name, data_state, service_mode,
 				crdb_internal.pb_to_json('cockroach.multitenant.ProtoInfo', info)->'capabilities'
-			from system.tenants`,
+			from system.tenants order by id`,
 			[][]string{
 				{
 					`1`, `true`, `system`,
@@ -7333,13 +7335,10 @@ func TestBackupRestoreTenant(t *testing.T) {
 		restoreDB.Exec(t, `RESTORE TENANT 10 FROM $1 IN 'nodelocal://1/t10'`, ts1BackupPath)
 
 		restoreDB.CheckQueryResults(t,
-			`select id, name,
-			crdb_internal.pb_to_json('cockroach.multitenant.ProtoInfo', info)->'previousSourceTenant'->'clusterId',
-			crdb_internal.pb_to_json('cockroach.multitenant.ProtoInfo', info)->'previousSourceTenant'->'cutoverTimestamp'->'wallTime'
-			from system.tenants`,
+			`select id, name from system.tenants order by id`,
 			[][]string{
-				{`1`, `system`, `NULL`, `NULL`},
-				{`10`, `cluster-10`, `"` + clusterID + `"`, `"` + strings.Split(ts1, ".")[0] + `"`},
+				{`1`, `system`},
+				{`10`, `cluster-10`},
 			})
 
 		tenantID := roachpb.MustMakeTenantID(10)
@@ -7388,6 +7387,8 @@ func TestBackupRestoreTenant(t *testing.T) {
 func TestClientDisconnect(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
+
+	skip.UnderRace(t, "may cause connection delays, leading to a context deadline exceeded error")
 
 	const restoreDB = "restoredb"
 
@@ -7481,7 +7482,9 @@ func TestClientDisconnect(t *testing.T) {
 				assert.NoError(t, err)
 				defer func() { assert.NoError(t, db.Close(ctx)) }()
 				_, err = db.Exec(ctxToCancel, command)
-				assert.Equal(t, context.Canceled, errors.Unwrap(err))
+				// Check the root cause of the error, as pgx v5 may wrap additional
+				// errors around a context-canceled error.
+				assert.Equal(t, context.Canceled, errors.Cause(err))
 			}(testCase.jobCommand)
 
 			// Wait for the job to start.
@@ -8653,7 +8656,7 @@ func TestRestoreJobEventLogging(t *testing.T) {
 	var unused interface{}
 	sqlDB.QueryRow(t, restoreQuery).Scan(&jobID, &unused, &unused, &unused)
 
-	expectedStatus := []string{string(jobs.StatusSucceeded), string(jobs.StatusRunning)}
+	expectedStatus := []string{string(jobs.StateSucceeded), string(jobs.StateRunning)}
 	expectedRecoveryEvent := eventpb.RecoveryEvent{
 		RecoveryType: restoreJobEventType,
 		NumRows:      int64(3),
@@ -8672,8 +8675,8 @@ func TestRestoreJobEventLogging(t *testing.T) {
 	row.Scan(&jobID)
 
 	expectedStatus = []string{
-		string(jobs.StatusFailed), string(jobs.StatusReverting),
-		string(jobs.StatusRunning),
+		string(jobs.StateFailed), string(jobs.StateReverting),
+		string(jobs.StateRunning),
 	}
 	expectedRecoveryEvent = eventpb.RecoveryEvent{
 		RecoveryType: restoreJobEventType,
@@ -10473,7 +10476,7 @@ func TestBackupRestoreTelemetryEvents(t *testing.T) {
 			EventType: "recovery_event",
 		},
 		RecoveryType: backupJobEventType,
-		ResultStatus: string(jobs.StatusSucceeded),
+		ResultStatus: string(jobs.StateSucceeded),
 	}
 
 	requireRecoveryEvent(t, beforeBackup.UnixNano(), backupEventType, expectedBackupEvent)
@@ -10508,7 +10511,7 @@ func TestBackupRestoreTelemetryEvents(t *testing.T) {
 			EventType: "recovery_event",
 		},
 		RecoveryType: restoreJobEventType,
-		ResultStatus: string(jobs.StatusSucceeded),
+		ResultStatus: string(jobs.StateSucceeded),
 	}
 
 	requireRecoveryEvent(t, beforeRestore.UnixNano(), restoreEventType, expectedRestoreEvent)
@@ -10526,7 +10529,7 @@ func TestBackupRestoreTelemetryEvents(t *testing.T) {
 			EventType: "recovery_event",
 		},
 		RecoveryType: restoreJobEventType,
-		ResultStatus: string(jobs.StatusFailed),
+		ResultStatus: string(jobs.StateFailed),
 		ErrorText:    redact.Sprintf("testing injected failure: %s", "sensitive text"),
 	}
 	requireRecoveryEvent(t, beforeRestore.UnixNano(), restoreJobEventType, expectedRestoreFailEvent)
@@ -10702,7 +10705,7 @@ $$;
 	require.Equal(t, 1, len(rows[0]))
 	udfID, err := strconv.Atoi(rows[0][0])
 	require.NoError(t, err)
-	err = sql.TestingDescsTxn(ctx, srcServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
+	err = sqltestutils.TestingDescsTxn(ctx, srcServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
 		dbDesc, err := col.ByNameWithLeased(txn.KV()).Get().Database(ctx, "db1")
 		require.NoError(t, err)
 		require.Equal(t, 104, int(dbDesc.GetID()))
@@ -10754,7 +10757,7 @@ $$;
 	require.Equal(t, 1, len(rows[0]))
 	udfID, err = strconv.Atoi(rows[0][0])
 	require.NoError(t, err)
-	err = sql.TestingDescsTxn(ctx, srcServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
+	err = sqltestutils.TestingDescsTxn(ctx, srcServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
 		dbDesc, err := col.ByNameWithLeased(txn.KV()).Get().Database(ctx, "db1_new")
 		require.NoError(t, err)
 		require.Equal(t, 112, int(dbDesc.GetID()))
@@ -10862,7 +10865,7 @@ $$;
 		require.Equal(t, 1, len(rows[0]))
 		udfID, err := strconv.Atoi(rows[0][0])
 		require.NoError(t, err)
-		err = sql.TestingDescsTxn(ctx, srcServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
+		err = sqltestutils.TestingDescsTxn(ctx, srcServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
 			dbDesc, err := col.ByNameWithLeased(txn.KV()).Get().Database(ctx, "db1")
 			require.NoError(t, err)
 			require.Equal(t, 104, int(dbDesc.GetID()))
@@ -10918,7 +10921,7 @@ $$;
 		require.NoError(t, err)
 
 		const startingDescID = 123
-		err = sql.TestingDescsTxn(ctx, tgtServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
+		err = sqltestutils.TestingDescsTxn(ctx, tgtServer, func(ctx context.Context, txn isql.Txn, col *descs.Collection) error {
 			dbDesc, err := col.ByNameWithLeased(txn.KV()).Get().Database(ctx, "db1")
 			require.NoError(t, err)
 			require.Equal(t, startingDescID, int(dbDesc.GetID()))
@@ -11078,6 +11081,7 @@ func TestBackupRestoreForeignKeys(t *testing.T) {
 
 	sqlDB.Exec(t, `CREATE DATABASE test`)
 	sqlDB.Exec(t, `SET database = test`)
+	sqlDB.Exec(t, `SET autocommit_before_ddl = false`)
 	sqlDB.Exec(t, `
 CREATE TABLE circular (k INT8 PRIMARY KEY, selfid INT8 UNIQUE);
 ALTER TABLE circular ADD CONSTRAINT self_fk FOREIGN KEY (selfid) REFERENCES circular (selfid);
@@ -11085,6 +11089,7 @@ CREATE TABLE parent (k INT8 PRIMARY KEY, j INT8 UNIQUE);
 CREATE TABLE child (k INT8 PRIMARY KEY, parent_i INT8 REFERENCES parent, parent_j INT8 REFERENCES parent (j));
 CREATE TABLE child_pk (k INT8 PRIMARY KEY REFERENCES parent);
 `)
+	sqlDB.Exec(t, `RESET autocommit_before_ddl`)
 
 	sqlDB.Exec(t, `BACKUP INTO $1 WITH revision_history`, localFoo)
 

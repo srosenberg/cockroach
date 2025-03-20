@@ -86,21 +86,15 @@ func (p *pendingLogTruncations) computePostTruncLogSize(raftLogSize int64) int64
 	return raftLogSize
 }
 
-// computePostTruncFirstIndex computes the first log index that is not
-// truncated, under the pretense that the pending truncations have been
-// enacted.
-func (p *pendingLogTruncations) computePostTruncFirstIndex(
-	firstIndex kvpb.RaftIndex,
-) kvpb.RaftIndex {
+// nextCompactedIndex computes the new compacted index, under the pretense
+// that all pending truncations have been enacted.
+func (p *pendingLogTruncations) nextCompactedIndex(compIndex kvpb.RaftIndex) kvpb.RaftIndex {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.iterateLocked(func(_ int, trunc pendingTruncation) {
-		firstIndexAfterTrunc := trunc.firstIndexAfterTrunc()
-		if firstIndex < firstIndexAfterTrunc {
-			firstIndex = firstIndexAfterTrunc
-		}
+		compIndex = max(compIndex, trunc.compactedIndex())
 	})
-	return firstIndex
+	return compIndex
 }
 
 func (p *pendingLogTruncations) isEmptyLocked() bool {
@@ -173,9 +167,9 @@ type pendingTruncation struct {
 	isDeltaTrusted bool
 }
 
-func (pt *pendingTruncation) firstIndexAfterTrunc() kvpb.RaftIndex {
+func (pt *pendingTruncation) compactedIndex() kvpb.RaftIndex {
 	// Reminder: RaftTruncatedState.Index is inclusive.
-	return pt.Index + 1
+	return pt.Index
 }
 
 // raftLogTruncator is responsible for actually enacting truncations.
@@ -247,19 +241,14 @@ type replicaForTruncator interface {
 	// Returns the current truncated state.
 	getTruncatedState() kvserverpb.RaftTruncatedState
 	// Updates the replica state after the truncation is enacted.
-	setTruncatedStateAndSideEffects(
-		_ context.Context, _ *kvserverpb.RaftTruncatedState, expectedFirstIndexPreTruncation kvpb.RaftIndex,
-	) (expectedFirstIndexWasAccurate bool)
-	// Updates the stats related to the raft log size after the truncation is
-	// enacted.
-	setTruncationDeltaAndTrusted(deltaBytes int64, isDeltaTrusted bool)
+	handleTruncationResult(_ context.Context, _ pendingTruncation)
 	// Returns the pending truncations queue. The caller is allowed to mutate
 	// the return value by additionally acquiring pendingLogTruncations.mu.
 	getPendingTruncs() *pendingLogTruncations
 	// Returns the sideloaded bytes that would be freed if we were to truncate
-	// [from, to).
+	// (from, to].
 	sideloadedBytesIfTruncatedFromTo(
-		_ context.Context, from, to kvpb.RaftIndex) (freed int64, _ error)
+		_ context.Context, _ kvpb.RaftSpan) (freed int64, _ error)
 	getStateLoader() stateloader.StateLoader
 	// NB: Setting the persistent raft state is via the Engine exposed by
 	// storeForTruncator.
@@ -321,8 +310,9 @@ func (t *raftLogTruncator) addPendingTruncation(
 	// In the common case of alreadyTruncIndex+1 == raftExpectedFirstIndex, the
 	// computation returns the same result regardless of which is plugged in as
 	// the lower bound.
-	sideloadedFreed, err := r.sideloadedBytesIfTruncatedFromTo(
-		ctx, alreadyTruncIndex+1, pendingTrunc.firstIndexAfterTrunc())
+	sideloadedFreed, err := r.sideloadedBytesIfTruncatedFromTo(ctx, kvpb.RaftSpan{
+		After: alreadyTruncIndex, Last: pendingTrunc.compactedIndex(),
+	})
 	if err != nil {
 		// Log a loud error since we need to continue enqueuing the truncation.
 		log.Errorf(ctx, "while computing size of sideloaded files to truncate: %+v", err)
@@ -334,7 +324,7 @@ func (t *raftLogTruncator) addPendingTruncation(
 		// No need to acquire pendingTruncs.mu for read in this case.
 		pendingTrunc.isDeltaTrusted = pendingTrunc.isDeltaTrusted &&
 			pendingTruncs.mu.truncs[pos].isDeltaTrusted
-		if pendingTruncs.mu.truncs[pos].firstIndexAfterTrunc() != pendingTrunc.expectedFirstIndex {
+		if pendingTruncs.mu.truncs[pos].compactedIndex()+1 != pendingTrunc.expectedFirstIndex {
 			pendingTrunc.isDeltaTrusted = false
 		}
 		pendingTrunc.logDeltaBytes += pendingTruncs.mu.truncs[pos].logDeltaBytes
@@ -584,13 +574,7 @@ func (t *raftLogTruncator) tryEnactTruncations(
 		if index > enactIndex {
 			return
 		}
-		isDeltaTrusted := true
-		expectedFirstIndexWasAccurate := r.setTruncatedStateAndSideEffects(
-			ctx, &trunc.RaftTruncatedState, trunc.expectedFirstIndex)
-		if !expectedFirstIndexWasAccurate || !trunc.isDeltaTrusted {
-			isDeltaTrusted = false
-		}
-		r.setTruncationDeltaAndTrusted(trunc.logDeltaBytes, isDeltaTrusted)
+		r.handleTruncationResult(ctx, trunc)
 	})
 	// Now remove the enacted truncations. It is the same iteration as the
 	// previous one, but we do it while holding pendingTruncs.mu. Note that

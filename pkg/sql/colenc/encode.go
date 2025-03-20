@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc/valueside"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -427,10 +428,15 @@ func (b *BatchEncoder) encodeSecondaryIndex(ctx context.Context, ind catalog.Ind
 
 	// Store nulls we encounter so we can properly make the key unique below.
 	var nulls coldata.Nulls
-	if ind.GetType() == descpb.IndexDescriptor_INVERTED {
+	if ind.GetType() == idxtype.INVERTED {
 		// Since the inverted indexes generate multiple keys per row just handle them
 		// separately.
 		return b.encodeInvertedSecondaryIndex(ctx, ind, kys, b.extraKeys)
+	} else if ind.GetType() == idxtype.VECTOR {
+		// TODO(mw5h, drewk): Implement encoding for vector indexes. This is complicated
+		// by vector indexes needing output from the mutation search operator, which will
+		// need to be plumbed through to the encoder.
+		return errors.AssertionFailedf("vector indexes not supported")
 	} else {
 		keyAndSuffixCols := b.rh.TableDesc.IndexFetchSpecKeyAndSuffixColumns(ind)
 		keyCols := keyAndSuffixCols[:ind.NumKeyColumns()]
@@ -494,7 +500,7 @@ func (b *BatchEncoder) encodeSecondaryIndexNoFamilies(ind catalog.Index, kys []r
 	if err := b.writeColumnValues(kys, values, ind, cols); err != nil {
 		return err
 	}
-	b.p.InitPutBytes(kys, values)
+	b.p.CPutBytesEmpty(kys, values)
 	return nil
 }
 
@@ -556,9 +562,9 @@ func (b *BatchEncoder) encodeSecondaryIndexWithFamilies(
 		// include encoded primary key columns. For other families,
 		// use the tuple encoding for the value.
 		if familyID == 0 {
-			b.p.InitPutBytes(kys, values)
+			b.p.CPutBytesEmpty(kys, values)
 		} else {
-			b.p.InitPutTuples(kys, values)
+			b.p.CPutTuplesEmpty(kys, values)
 		}
 		if err := b.checkMemory(); err != nil {
 			return err

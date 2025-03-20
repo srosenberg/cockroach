@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/raft"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
@@ -132,7 +133,7 @@ type rangeControllerInitState struct {
 // RangeControllerFactory abstracts RangeController creation for testing.
 type RangeControllerFactory interface {
 	// New creates a new RangeController.
-	New(ctx context.Context, state rangeControllerInitState) rac2.RangeController
+	New(context.Context, rangeControllerInitState) rac2.RangeController
 }
 
 // ProcessorOptions are specified when creating a new Processor.
@@ -207,6 +208,52 @@ type SideChannelInfoUsingRaftMessageRequest struct {
 // exceptions to this, due to difficulty in changing the calling code:
 // InitRaftLocked, OnDescChangedLocked, ForceFlushIndexChangedLocked,
 // HoldsSendTokensLocked.
+//
+// Liveness and Ready processing:
+//
+// Processor.HandleRaftReadyRaftMuLocked is unconditionally called from
+// Replica.handleRaftReadyRaftMuLocked, and is critical for maintaining
+// liveness of RACv2 processing. Without such liveness, throughput and latency
+// of this range and other ranges can suffer (since many ranges share the same
+// token pool). These calls must not be conditional on the presence of a
+// Ready, for the following cases:
+//
+//   - Leadership change: Transitions into and out of leadership for this
+//     replica, and more broadly any change in the leader (the old and new
+//     leader can both be some other replica). This has been elaborated on in
+//     the paragraph above.
+//
+//   - At the leader, any transitions into and out of StateReplicate for any
+//     replica.
+//
+//   - Leaseholder change: This currently happens via code in
+//     Replica.handleRaftReadyRaftMuLocked, which also does all state machine
+//     application, noticing that state machine application has changed the
+//     leaseholder, and calling EnqueueRaftReady on the raftScheduler.
+//
+//   - RangeDescriptor change: RACv2 is only interested in the set of
+//     ReplicaDescriptors. Processor.OnDescChangedLocked calls EnqueueRaftReady
+//     on the raftScheduler.
+//
+//   - AdmittedLogEntry advancing what has been admitted: It explicitly
+//     schedules Ready processing by calling EnqueueRaftReady on the
+//     raftScheduler.
+//
+//   - ForceFlushIndexChangedLocked advancing what needs to be force-flushed:
+//     It explicitly schedules Ready processing by calling EnqueueRaftReady on
+//     the raftScheduler.
+//
+//   - ProbeToCloseTimerScheduler closing replicaSendStreams: It explicitly
+//     schedules Ready processing by calling EnqueueRaftReady on the
+//     raftScheduler.
+//
+// Liveness and Ticking (and quiescing):
+//
+// Processor.HoldsSendTokensLocked is used to prevent range quiescing at the
+// leader. While not quiesced, Processor.MaybeSendPingsRaftMuLocked, is used
+// to send pings to followers that are holding tokens when ticking the Raft
+// group. This ticking needs to happen even if there is no Ready to process at
+// the leader.
 type Processor interface {
 	// InitRaftLocked is called when raft.RawNode is initialized for the
 	// Replica. NB: can be called twice before the Replica is fully initialized.
@@ -362,7 +409,15 @@ type Processor interface {
 	// InspectRaftMuLocked returns a handle to inspect the state of the
 	// underlying range controller. It is used to power /inspectz-style debugging
 	// pages.
+	//
+	// raftMu is held.
 	InspectRaftMuLocked(ctx context.Context) (kvflowinspectpb.Handle, bool)
+	// StatusRaftMuLocked returns basic information about the underlying range
+	// controller and its send streams.
+	//
+	// raftMu is held.
+	StatusRaftMuLocked() serverpb.RACStatus
+
 	// SendStreamStats sets the stats for the replica send streams that belong to
 	// the range controller. It is only populated on the leader. The stats struct
 	// is provided by the caller and should be empty, it is then populated before
@@ -1185,6 +1240,15 @@ func (p *processorImpl) InspectRaftMuLocked(ctx context.Context) (kvflowinspectp
 		return kvflowinspectpb.Handle{}, false
 	}
 	return p.leader.rc.InspectRaftMuLocked(ctx), true
+}
+
+// StatusRaftMuLocked implements Processor.
+func (p *processorImpl) StatusRaftMuLocked() serverpb.RACStatus {
+	p.opts.ReplicaMutexAsserter.RaftMuAssertHeld()
+	if p.leader.rc == nil {
+		return serverpb.RACStatus{}
+	}
+	return p.leader.rc.StatusRaftMuLocked()
 }
 
 // SendStreamStats implements Processor.

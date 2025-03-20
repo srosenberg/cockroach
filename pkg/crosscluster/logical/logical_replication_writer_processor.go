@@ -9,8 +9,10 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"regexp"
 	"runtime/pprof"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdcevent"
@@ -27,11 +29,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowexec"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/stats"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/util/bulk"
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
@@ -123,6 +127,9 @@ type logicalReplicationWriterProcessor struct {
 	checkpointCh chan []jobspb.ResolvedSpan
 
 	rangeStatsCh chan *streampb.StreamEvent_RangeStats
+
+	agg      *tracing.TracingAggregator
+	aggTimer timeutil.Timer
 
 	// metrics are monitoring all running ingestion jobs.
 	metrics *Metrics
@@ -260,6 +267,11 @@ func newLogicalReplicationWriterProcessor(
 			InputsToDrain: []execinfra.RowSource{},
 			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
 				lrw.close()
+				if lrw.agg != nil {
+					meta := bulk.ConstructTracingAggregatorProducerMeta(ctx,
+						lrw.FlowCtx.NodeID.SQLInstanceID(), lrw.FlowCtx.ID, lrw.agg)
+					return []execinfrapb.ProducerMetadata{*meta}
+				}
 				return nil
 			},
 		},
@@ -286,9 +298,15 @@ func (lrw *logicalReplicationWriterProcessor) Start(ctx context.Context) {
 	ctx = logtags.AddTag(ctx, "job", lrw.spec.JobID)
 	ctx = logtags.AddTag(ctx, "src-node", lrw.spec.PartitionSpec.PartitionID)
 	ctx = logtags.AddTag(ctx, "proc", lrw.ProcessorID)
+	lrw.agg = tracing.TracingAggregatorForContext(ctx)
+	var listeners []tracing.EventListener
+	if lrw.agg != nil {
+		lrw.aggTimer.Reset(time.Second)
+		listeners = []tracing.EventListener{lrw.agg}
+	}
 	streampb.RegisterActiveLogicalConsumerStatus(&lrw.debug)
 
-	ctx = lrw.StartInternal(ctx, logicalReplicationWriterProcessorName)
+	ctx = lrw.StartInternal(ctx, logicalReplicationWriterProcessorName, listeners...)
 
 	lrw.metrics = lrw.FlowCtx.Cfg.JobRegistry.MetricsStruct().JobSpecificMetrics[jobspb.TypeLogicalReplication].(*Metrics)
 
@@ -299,25 +317,24 @@ func (lrw *logicalReplicationWriterProcessor) Start(ctx context.Context) {
 	// Start the subscription for our partition.
 	partitionSpec := lrw.spec.PartitionSpec
 	token := streamclient.SubscriptionToken(partitionSpec.SubscriptionToken)
-	addr := partitionSpec.Address
-	redactedAddr, redactedErr := streamclient.RedactSourceURI(addr)
-	if redactedErr != nil {
-		log.Warning(lrw.Ctx(), "could not redact stream address")
+	uri, err := streamclient.ParseClusterUri(partitionSpec.PartitionConnUri)
+	if err != nil {
+		lrw.MoveToDrainingAndLogError(errors.Wrap(err, "parsing partition uri uri"))
 	}
-	streamClient, err := streamclient.NewStreamClient(ctx, crosscluster.StreamAddress(addr), db,
+	streamClient, err := streamclient.NewStreamClient(ctx, uri, db,
 		streamclient.WithStreamID(streampb.StreamID(lrw.spec.StreamID)),
 		streamclient.WithCompression(true),
 		streamclient.WithLogical(),
 	)
 	if err != nil {
-		lrw.MoveToDrainingAndLogError(errors.Wrapf(err, "creating client for partition spec %q from %q", token, redactedAddr))
+		lrw.MoveToDrainingAndLogError(errors.Wrapf(err, "creating client for partition spec %q from %q", token, uri.Redacted()))
 		return
 	}
 	lrw.streamPartitionClient = streamClient
 
 	if streamingKnobs, ok := lrw.FlowCtx.TestingKnobs().StreamingTestingKnobs.(*sql.StreamingTestingKnobs); ok {
 		if streamingKnobs != nil && streamingKnobs.BeforeClientSubscribe != nil {
-			streamingKnobs.BeforeClientSubscribe(addr, string(token), lrw.frontier, lrw.spec.Discard == jobspb.LogicalReplicationDetails_DiscardCDCIgnoredTTLDeletes)
+			streamingKnobs.BeforeClientSubscribe(uri.Serialize(), string(token), lrw.frontier, lrw.spec.Discard == jobspb.LogicalReplicationDetails_DiscardCDCIgnoredTTLDeletes)
 		}
 	}
 	sub, err := streamClient.Subscribe(ctx,
@@ -332,7 +349,7 @@ func (lrw *logicalReplicationWriterProcessor) Start(ctx context.Context) {
 		streamclient.WithBatchSize(batchSizeSetting.Get(&lrw.FlowCtx.Cfg.Settings.SV)),
 	)
 	if err != nil {
-		lrw.MoveToDrainingAndLogError(errors.Wrapf(err, "subscribing to partition from %s", redactedAddr))
+		lrw.MoveToDrainingAndLogError(errors.Wrapf(err, "subscribing to partition from %s", uri.Redacted()))
 		return
 	}
 
@@ -395,6 +412,12 @@ func (lrw *logicalReplicationWriterProcessor) Next() (
 				return nil, lrw.DrainHelper()
 			}
 		}
+	case <-lrw.aggTimer.C:
+		lrw.aggTimer.Read = true
+		lrw.aggTimer.Reset(15 * time.Second)
+		return nil, bulk.ConstructTracingAggregatorProducerMeta(lrw.Ctx(),
+			lrw.FlowCtx.NodeID.SQLInstanceID(), lrw.FlowCtx.ID, lrw.agg)
+
 	case stats := <-lrw.rangeStatsCh:
 		meta, err := lrw.newRangeStatsProgressMeta(stats)
 		if err != nil {
@@ -993,7 +1016,7 @@ func (lrw *logicalReplicationWriterProcessor) flushChunk(
 			// If it already failed while applying on its own, handle the failure.
 			if len(batch) == 1 {
 				if eligibility := lrw.shouldRetryLater(err, canRetry); eligibility != retryAllowed {
-					if err := lrw.dlq(ctx, batch[0], bh.GetLastRow(), err, eligibility); err != nil {
+					if err := lrw.maybeDLQ(ctx, batch[0], bh.GetLastRow(), err, eligibility); err != nil {
 						return flushStats{}, err
 					}
 					stats.processed.dlq++
@@ -1010,7 +1033,7 @@ func (lrw *logicalReplicationWriterProcessor) flushChunk(
 							return flushStats{}, ctxErr
 						}
 						if eligibility := lrw.shouldRetryLater(err, canRetry); eligibility != retryAllowed {
-							if err := lrw.dlq(ctx, batch[i], bh.GetLastRow(), err, eligibility); err != nil {
+							if err := lrw.maybeDLQ(ctx, batch[i], bh.GetLastRow(), err, eligibility); err != nil {
 								return flushStats{}, err
 							}
 							stats.processed.dlq++
@@ -1038,7 +1061,11 @@ func (lrw *logicalReplicationWriterProcessor) flushChunk(
 
 		batchTime := timeutil.Since(preBatchTime)
 		lrw.debug.RecordBatchApplied(batchTime, int64(len(batch)))
-		lrw.metrics.ApplyBatchNanosHist.RecordValue(batchTime.Nanoseconds())
+		nanosPerRow := batchTime.Nanoseconds()
+		if len(batch) > 0 {
+			nanosPerRow /= int64(len(batch))
+		}
+		lrw.metrics.ApplyBatchNanosHist.RecordValue(nanosPerRow)
 	}
 	return stats, nil
 }
@@ -1068,16 +1095,16 @@ const logAllDLQs = true
 // or returns an error if it cannot. The decoded row should be passed to it if
 // it is available, and dlq may persist it in addition to the event if
 // row.IsInitialized() is true.
-//
-// TODO(dt): implement something here.
-// TODO(dt): plumb the cdcevent.Row to this.
-func (lrw *logicalReplicationWriterProcessor) dlq(
+func (lrw *logicalReplicationWriterProcessor) maybeDLQ(
 	ctx context.Context,
 	event streampb.StreamEvent_KV,
 	row cdcevent.Row,
 	applyErr error,
 	eligibility retryEligibility,
 ) error {
+	if err := canDlqError(applyErr); err != nil {
+		return errors.Wrapf(err, "dlq eligibility %s", eligibility)
+	}
 	if log.V(1) || logAllDLQs {
 		if row.IsInitialized() {
 			log.Infof(ctx, "DLQ'ing row update due to %s (%s): %s", applyErr, eligibility, row.DebugString())
@@ -1098,6 +1125,42 @@ func (lrw *logicalReplicationWriterProcessor) dlq(
 		lrw.metrics.DLQedDueToErrType.Inc(1)
 	}
 	return lrw.dlqClient.Log(ctx, lrw.spec.JobID, event, row, applyErr, eligibility)
+}
+
+var internalPgErrors = func() *regexp.Regexp {
+	codePrefixes := []string{
+		// Section: Class 57 - Operator Intervention
+		"57",
+		// Section: Class 58 - System Error
+		"58",
+		// Section: Class 25 - Invalid Transaction State
+		"25",
+		// Section: Class 2D - Invalid Transaction Termination
+		"2D",
+		// Section: Class 40 - Transaction Rollback
+		"40",
+		// Section: Class XX - Internal Error
+		"XX",
+		// Section: Class 58C - System errors related to CockroachDB node problems.
+		"58C",
+	}
+	return regexp.MustCompile(fmt.Sprintf("^(%s)", strings.Join(codePrefixes, "|")))
+}()
+
+// canDlqError returns true if the error should send a row to the DLQ. We don't
+// want to DLQ rows that failed to apply because of some internal problem like
+// an unavailable range. The idea is it is better to fail the processor so the
+// job backs off until the system is healthy.
+func canDlqError(err error) error {
+	// If the error is not from the SQL layer, then we don't want to DQL it.
+	if !pgerror.HasCandidateCode(err) {
+		return errors.Wrap(err, "can only DLQ errors with pg codes")
+	}
+	code := pgerror.GetPGCode(err)
+	if internalPgErrors.MatchString(code.String()) {
+		return errors.Wrap(err, "unable to DLQ pgcode that indicates an internal or retryable error")
+	}
+	return nil
 }
 
 type batchStats struct {

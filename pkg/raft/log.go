@@ -36,12 +36,12 @@ import (
 // This gives the application direct control on resource allocation, and
 // flexibility to do raft log IO without blocking RawNode operation.
 type LogSnapshot struct {
-	// first is the first available log index.
-	first uint64
+	// compacted is the compacted log index.
+	compacted uint64
 	// storage contains the stable log entries.
 	storage LogStorage
 	// unstable contains the unstable log entries.
-	unstable LogSlice
+	unstable LeadSlice
 	// logger gives access to logging errors.
 	logger raftlogger.Logger
 }
@@ -99,7 +99,7 @@ func newLog(storage Storage, logger raftlogger.Logger) *raftLog {
 func newLogWithSize(
 	storage Storage, logger raftlogger.Logger, maxApplyingEntsSize entryEncodingSize,
 ) *raftLog {
-	firstIndex, lastIndex := storage.FirstIndex(), storage.LastIndex()
+	compacted, lastIndex := storage.Compacted(), storage.LastIndex()
 	lastTerm, err := storage.Term(lastIndex)
 	if err != nil {
 		panic(err) // TODO(pav-kv): the storage should always cache the last term.
@@ -110,10 +110,15 @@ func newLogWithSize(
 		unstable:            newUnstable(last, logger),
 		maxApplyingEntsSize: maxApplyingEntsSize,
 
-		// Initialize our committed and applied pointers to the time of the last compaction.
-		committed: firstIndex - 1,
-		applying:  firstIndex - 1,
-		applied:   firstIndex - 1,
+		// Initialize our committed and applied pointers to the time of the last
+		// compaction.
+		//
+		// TODO(pav-kv): this is error-prone. The applied index gets corrected
+		// further, in newRaft initialization sequence. This should be done as a
+		// single step.
+		committed: compacted,
+		applying:  compacted,
+		applied:   compacted,
 
 		logger: logger,
 	}
@@ -155,14 +160,14 @@ func (l *raftLog) accTerm() uint64 {
 // the log (so this log slice is insufficient to make our log consistent with
 // the leader log), the slice is out of bounds (appending it would introduce a
 // gap), or a.term is outdated.
-func (l *raftLog) maybeAppend(a LogSlice) bool {
+func (l *raftLog) maybeAppend(a LeadSlice) bool {
 	match, ok := l.match(a)
 	if !ok {
 		return false
 	}
 	// Fast-forward the appended log slice to the last matching entry.
 	// NB: a.prev.index <= match <= a.lastIndex(), so the call is safe.
-	a = a.forward(match)
+	a.LogSlice = a.forward(match)
 
 	if len(a.entries) == 0 {
 		// TODO(pav-kv): remove this clause and handle it in unstable. The log slice
@@ -179,7 +184,7 @@ func (l *raftLog) maybeAppend(a LogSlice) bool {
 //
 // Returns false if the operation can not be done: entry a.prev does not match
 // the lastEntryID of this log, or a.term is outdated.
-func (l *raftLog) append(a LogSlice) bool {
+func (l *raftLog) append(a LeadSlice) bool {
 	return l.unstable.append(a)
 }
 
@@ -191,8 +196,8 @@ func (l *raftLog) append(a LogSlice) bool {
 //
 // All the entries up to the returned index are already present in the log, and
 // do not need to be rewritten. The caller can safely fast-forward the appended
-// LogSlice to this index.
-func (l *raftLog) match(s LogSlice) (uint64, bool) {
+// LeadSlice to this index.
+func (l *raftLog) match(s LeadSlice) (uint64, bool) {
 	if !l.matchTerm(s.prev) {
 		return 0, false
 	}
@@ -348,11 +353,11 @@ func (l *raftLog) snapshot() (pb.Snapshot, error) {
 	return l.storage.Snapshot()
 }
 
-func (l *raftLog) firstIndex() uint64 {
-	if i, ok := l.unstable.maybeFirstIndex(); ok {
-		return i
+func (l *raftLog) compacted() uint64 {
+	if index, ok := l.unstable.maybeCompacted(); ok {
+		return index
 	}
-	return l.storage.FirstIndex()
+	return l.storage.Compacted()
 }
 
 func (l *raftLog) lastIndex() uint64 {
@@ -424,12 +429,7 @@ func (l *raftLog) acceptUnstable() { l.unstable.acceptInProgress() }
 
 // lastEntryID returns the ID of the last entry in the log.
 func (l *raftLog) lastEntryID() entryID {
-	index := l.lastIndex()
-	t, err := l.term(index)
-	if err != nil {
-		l.logger.Panicf("unexpected error when getting the last term at %d: %v", index, err)
-	}
-	return entryID{term: t, index: index}
+	return l.unstable.lastEntryID()
 }
 
 func (l *raftLog) term(i uint64) (uint64, error) {
@@ -445,14 +445,22 @@ func (l LogSnapshot) term(index uint64) (uint64, error) {
 		return 0, ErrUnavailable
 	} else if index >= l.unstable.prev.index {
 		return l.unstable.termAt(index), nil
-	} else if index+1 < l.first {
+	} else if index < l.compacted {
 		return 0, ErrCompacted
 	}
 
 	term, err := l.storage.Term(index)
 	if err == nil {
 		return term, nil
-	} else if err == ErrCompacted || err == ErrUnavailable {
+	} else if err == ErrCompacted {
+		return 0, err
+	} else if err == ErrUnavailable {
+		// Invariant: the log is contiguous in [l.first-1, lastIndex]. Except in
+		// rare cases when there is a concurrent log truncation, and ErrCompacted is
+		// returned. The ErrUnavailable here means the supposedly contiguous part of
+		// this interval (note that we verified the boundaries above) in storage has
+		// a missing entry, and not because of being compacted. So there is a gap.
+		l.logger.Panicf("gap in the log at index %d", index)
 		return 0, err
 	}
 	panic(err) // TODO(pav-kv): return the error and handle it up the stack.
@@ -471,7 +479,7 @@ func (l *raftLog) entries(after uint64, maxSize entryEncodingSize) ([]pb.Entry, 
 
 // allEntries returns all entries in the log. For testing only.
 func (l *raftLog) allEntries() []pb.Entry {
-	ents, err := l.entries(l.firstIndex()-1, noLimit)
+	ents, err := l.entries(l.compacted(), noLimit)
 	if err == nil {
 		return ents
 	}
@@ -548,29 +556,32 @@ func (l *raftLog) slice(lo, hi uint64, maxSize entryEncodingSize) ([]pb.Entry, e
 	return l.snap(l.storage).slice(lo, hi, maxSize)
 }
 
-// LogSlice returns a valid log slice for a prefix of the (lo, hi] log index
+// LeadSlice returns a valid log slice for a prefix of the (lo, hi] log index
 // interval, with the total entries size not exceeding maxSize.
 //
 // Returns at least one entry if the interval contains any. The maxSize can only
 // be exceeded if the first entry (lo+1) is larger.
-func (l LogSnapshot) LogSlice(lo, hi uint64, maxSize uint64) (LogSlice, error) {
+func (l LogSnapshot) LeadSlice(lo, hi uint64, maxSize uint64) (LeadSlice, error) {
 	prevTerm, err := l.term(lo)
 	if err != nil {
 		// The log is probably compacted at index > lo (err == ErrCompacted), or it
 		// can be a custom storage error.
-		return LogSlice{}, err
+		return LeadSlice{}, err
 	}
 	ents, err := l.slice(lo, hi, entryEncodingSize(maxSize))
 	if err != nil {
-		return LogSlice{}, err
+		return LeadSlice{}, err
 	}
-	return LogSlice{
-		term:    l.unstable.term,
-		prev:    entryID{term: prevTerm, index: lo},
-		entries: ents,
+	return LeadSlice{
+		term: l.unstable.term,
+		LogSlice: LogSlice{
+			prev:    entryID{term: prevTerm, index: lo},
+			entries: ents,
+		},
 	}, nil
 }
 
+// TODO(pav-kv): return LogSlice.
 func (l LogSnapshot) slice(lo, hi uint64, maxSize entryEncodingSize) ([]pb.Entry, error) {
 	if err := l.mustCheckOutOfBounds(lo, hi); err != nil {
 		return nil, err
@@ -629,15 +640,15 @@ func (l LogSnapshot) slice(lo, hi uint64, maxSize entryEncodingSize) ([]pb.Entry
 }
 
 // mustCheckOutOfBounds checks that the (lo, hi] interval is within the bounds
-// of this raft log: l.firstIndex()-1 <= lo <= hi <= l.lastIndex().
+// of this raft log: l.compacted() <= lo <= hi <= l.lastIndex().
 func (l LogSnapshot) mustCheckOutOfBounds(lo, hi uint64) error {
 	if lo > hi {
 		l.logger.Panicf("invalid slice %d > %d", lo, hi)
 	}
-	if fi := l.first; lo+1 < fi {
+	if ci := l.compacted; lo < ci {
 		return ErrCompacted
 	} else if li := l.unstable.lastIndex(); hi > li {
-		l.logger.Panicf("slice(%d,%d] out of bound [%d,%d]", lo, hi, fi, li)
+		l.logger.Panicf("slice(%d,%d] out of bound (%d,%d]", lo, hi, ci, li)
 	}
 	return nil
 }
@@ -657,9 +668,9 @@ func (l *raftLog) zeroTermOnOutOfBounds(t uint64, err error) uint64 {
 // read from while the underlying storage is not mutated.
 func (l *raftLog) snap(storage LogStorage) LogSnapshot {
 	return LogSnapshot{
-		first:    l.firstIndex(),
-		storage:  storage,
-		unstable: l.unstable.LogSlice,
-		logger:   l.logger,
+		compacted: l.compacted(),
+		storage:   storage,
+		unstable:  l.unstable.LeadSlice,
+		logger:    l.logger,
 	}
 }

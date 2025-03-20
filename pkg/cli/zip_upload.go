@@ -6,7 +6,6 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -20,8 +19,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -29,11 +28,10 @@ import (
 
 	"cloud.google.com/go/storage"
 	"github.com/cockroachdb/cockroach/pkg/base"
-	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
+	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logpb"
-	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/system"
@@ -70,8 +68,9 @@ const (
 	datadogAppKeyHeader = "DD-APPLICATION-KEY"
 
 	// the path pattern to search for specific artifacts in the debug zip directory
-	zippedProfilePattern = "nodes/*/*.pprof"
-	zippedLogsPattern    = "nodes/*/logs/*"
+	zippedProfilePattern        = "nodes/*/*.pprof"
+	zippedLogsPattern           = "nodes/*/logs/*"
+	zippedNodeTableDumpsPattern = "nodes/*/*.txt"
 
 	// this is not the pprof version, but the version of the profile
 	// upload format supported by datadog
@@ -86,7 +85,7 @@ const (
 	tableTag    = "table"
 
 	// datadog endpoint URLs
-	datadogProfileUploadURLTmpl = "https://intake.profile.%s/v1/input"
+	datadogProfileUploadURLTmpl = "https://intake.profile.%s/api/v2/profile"
 	datadogCreateArchiveURLTmpl = "https://api.%s/api/v2/logs/config/archives"
 	datadogLogIntakeURLTmpl     = "https://http-intake.logs.%s/api/v2/logs"
 
@@ -131,10 +130,7 @@ var debugZipUploadOpts = struct {
 
 // This is the list of all supported artifact types. The "possible values" part
 // in the help text is generated from this list. So, make sure to keep this updated
-// var zipArtifactTypes = []string{"profiles", "logs"}
-// TODO(arjunmahishi): Removing the profiles upload for now. It has started
-// failing for some reason. Will fix this later
-var zipArtifactTypes = []string{"logs"}
+var zipArtifactTypes = []string{"logs", "tables", "misc", "profiles"}
 
 // uploadZipArtifactFuncs is a registry of handler functions for each artifact type.
 // While adding/removing functions from here, make sure to update
@@ -143,6 +139,61 @@ var uploadZipArtifactFuncs = map[string]uploadZipArtifactFunc{
 	"profiles": uploadZipProfiles,
 	"logs":     uploadZipLogs,
 	"tables":   uploadZipTables,
+	"misc":     uploadMiscFiles,
+}
+
+func uploadMiscFiles(ctx context.Context, uuid string, dirPath string) error {
+	files := []struct {
+		fileName string
+		message  any
+	}{
+		{settingsFile, &serverpb.SettingsResponse{}},
+		{eventsFile, &serverpb.EventsResponse{}},
+		{rangeLogFile, &serverpb.RangeLogResponse{}},
+		{path.Join("reports", problemRangesFile), &serverpb.ProblemRangesResponse{}},
+	}
+
+	for _, file := range files {
+		if err := parseJSONFile(dirPath, file.fileName, file.message); err != nil {
+			fmt.Fprintf(os.Stderr, "parsing failed for file: %s with error: %s\n", file.fileName, err)
+			continue
+		}
+
+		if err := uploadJSONFile(file.fileName, file.message, uuid); err != nil {
+			fmt.Fprintf(os.Stderr, "upload failed for file: %s with error: %s\n", file.fileName, err)
+		} else {
+			fmt.Fprintf(os.Stderr, "uploaded %s\n", file.fileName)
+		}
+	}
+	return nil
+}
+
+func uploadJSONFile(fileName string, message any, uuid string) error {
+
+	body, err := json.Marshal(struct {
+		Message any    `json:"message"`
+		DDTags  string `json:"ddtags"`
+	}{
+		Message: message,
+		DDTags: strings.Join(appendUserTags(
+			append([]string{}, makeDDTag(uploadIDTag, uuid),
+				makeDDTag(clusterTag, debugZipUploadOpts.clusterName),
+				makeDDTag("file_name", fileName),
+			), // system generated tags
+			debugZipUploadOpts.tags..., // user provided tags
+		), ","),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = uploadLogsToDatadog(
+		body, debugZipUploadOpts.ddAPIKey, debugZipUploadOpts.ddSite,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // default datadog tags. Source has to be "cockroachdb" for the logs to be
@@ -151,6 +202,8 @@ var uploadZipArtifactFuncs = map[string]uploadZipArtifactFunc{
 var defaultDDTags = []string{"service:CRDB-SH", "env:debug", "source:cockroachdb"}
 
 func runDebugZipUpload(cmd *cobra.Command, args []string) error {
+	runtime.GOMAXPROCS(system.NumCPU())
+
 	if err := validateZipUploadReadiness(); err != nil {
 		return err
 	}
@@ -167,6 +220,8 @@ func runDebugZipUpload(cmd *cobra.Command, args []string) error {
 	// run the upload functions for each artifact type. This can run sequentially.
 	// All the concurrency is contained within the upload functions.
 	for _, artType := range artifactsToUpload {
+		fmt.Printf("\n=== uploading %s\n\n", artType)
+
 		if err := uploadZipArtifactFuncs[artType](cmd.Context(), uploadID, args[0]); err != nil {
 			// Log the error and continue with the next artifact
 			fmt.Printf("Failed to upload %s: %s\n", artType, err)
@@ -277,7 +332,9 @@ func uploadZipProfiles(ctx context.Context, uploadID string, debugDirPath string
 
 		fmt.Fprintf(os.Stderr, "Uploaded profiles of node %s to datadog (%s)\n", nodeID, strings.Join(paths, ", "))
 		fmt.Fprintf(os.Stderr, "Explore the profiles on datadog: "+
-			"https://{{ datadog domain }}/profiling/explorer?query=%s:%s\n", uploadIDTag, uploadID)
+			"https://%s/profiling/explorer?query=%s:%s\n", ddSiteToHostMap[debugZipUploadOpts.ddSite],
+			uploadIDTag, uploadID,
+		)
 	}
 
 	return nil
@@ -610,177 +667,85 @@ func uploadZipLogs(ctx context.Context, uploadID string, debugDirPath string) er
 	return nil
 }
 
-type tsvColumnParserFn func(string) (any, error)
-
-type columnParserMap map[string]tsvColumnParserFn
-
-// makeProtoColumnParser returns a generic function that can parse a column
-// using the given proto type. This function is implemented this way because it
-// allows us to effortlessly extend support to new tables without having to
-// write a lot of boilerplate code for unmarshalling each column.
-func makeProtoColumnParser[T protoutil.Message]() tsvColumnParserFn {
-	return func(s string) (any, error) {
-		interpretedBytes, ok := interpretString(s)
-		if !ok {
-			return nil, fmt.Errorf("failed to interpret progress column: %s", s)
-		}
-
-		var zeroValue T // dummy var to infer the type of T
-		obj := reflect.New(reflect.TypeOf(zeroValue).Elem()).Interface().(T)
-		if err := protoutil.Unmarshal(interpretedBytes, obj); err != nil {
-			return nil, err
-		}
-
-		return obj, nil
-	}
-}
-
-// clusterWideTableDumps is a map of table dumps and their column parsers.
-// Column parsers are required for columns that require special interpretation.
-// For example, columns that are protobufs. If the parser is not present for a
-// column, it is assumed to be plain text.
-var clusterWideTableDumps = map[string]columnParserMap{
-	// table dumps with only plain text columns
-	"system.namespace.txt": {},
-
-	// table dumps with columns that need to be interpreted as protos
-	"crdb_internal.system_jobs.txt": {
-		"progress": makeProtoColumnParser[*jobspb.Progress](),
-	},
-}
-
 // uploadZipTables uploads the table dumps to datadog. The concurrency model
 // here is much simpler than the logs upload. We just fan-out work to a limited
 // set of workers and fan-in the errors if any. The workers read the file,
 // parse the columns and uploads the data to datadog.
 func uploadZipTables(ctx context.Context, uploadID string, debugDirPath string) error {
-	var (
-		noOfWorkers = min(debugZipUploadOpts.maxConcurrentUploads, len(clusterWideTableDumps))
-		workChan    = make(chan string, noOfWorkers*2)
-		errChan     = make(chan error, noOfWorkers*2)
+	nodeTableDumps, err := getNodeSpecificTableDumps(debugDirPath)
+	if err != nil {
+		return err
+	}
 
-		errTables []string
+	var (
+		totalJobs   = len(clusterWideTableDumps) + len(nodeTableDumps)
+		noOfWorkers = min(debugZipUploadOpts.maxConcurrentUploads, totalJobs)
+		readChan    = make(chan string, totalJobs)              // exact required size
+		uploadChan  = make(chan *tableDumpChunk, noOfWorkers*2) // 2x the number of workers to keep them busy
+		readWG      = sync.WaitGroup{}
+		uploadWG    = sync.WaitGroup{}
 	)
 
+	// function to queue work to the upload pool. This function is called by the
+	// read pool workers
+	uploadTableChunk := func(chunk *tableDumpChunk) {
+		uploadWG.Add(1)
+		uploadChan <- chunk
+	}
+
+	// start the read pool
 	for i := 0; i < noOfWorkers; i++ {
 		go func() {
-			for fileName := range workChan {
+			for fileName := range readChan {
 				func() {
-					var wrappedErr error
-					if err := processTableDump(
-						ctx, debugDirPath, fileName, uploadID, clusterWideTableDumps[fileName],
-					); err != nil {
-						wrappedErr = fmt.Errorf("%s: %w", fileName, err)
-					}
+					defer readWG.Done()
 
-					errChan <- wrappedErr
+					if err := processTableDump(
+						ctx, debugDirPath, fileName, uploadID, clusterWideTableDumps[fileName], uploadTableChunk,
+					); err != nil {
+						fmt.Fprintf(os.Stderr, "failed to read %s: %s\n", fileName, err)
+					}
 				}()
 			}
 		}()
 	}
 
+	// start the upload pool
+	for i := 0; i < noOfWorkers*100; i++ {
+		go func() {
+			for chunk := range uploadChan {
+				func() {
+					defer uploadWG.Done()
+
+					if _, err := uploadLogsToDatadog(
+						chunk.payload, debugZipUploadOpts.ddAPIKey, debugZipUploadOpts.ddSite,
+					); err != nil {
+						fmt.Fprintf(os.Stderr, "failed to upload a part of %s: %s\n", chunk.tableName, err)
+					}
+				}()
+			}
+		}()
+	}
+
+	// queue work to the read pool
+	readWG.Add(len(clusterWideTableDumps))
 	for fileName := range clusterWideTableDumps {
-		workChan <- fileName
+		readChan <- fileName
+	}
+	readWG.Add(len(nodeTableDumps))
+	for _, fileName := range nodeTableDumps {
+		readChan <- fileName
 	}
 
-	for range clusterWideTableDumps {
-		if err := <-errChan; err != nil {
-			errTables = append(errTables, err.Error())
-		}
-	}
+	readWG.Wait()
+	close(readChan)
 
-	if len(errTables) > 0 {
-		fmt.Println("Failed to upload the following table dumps:")
-		for _, err := range errTables {
-			fmt.Printf("\t- %s\n", err)
-		}
-		fmt.Println()
-	}
+	uploadWG.Wait()
+	close(uploadChan)
 
-	close(workChan)
-	close(errChan)
+	fmt.Printf("\nView as tables here: https://us5.datadoghq.com/dashboard/ipq-44t-ez8/table-dumps-from-debug-zip?tpl_var_upload_id%%5B0%%5D=%s\n", uploadID)
+	fmt.Printf("View as logs here: https://us5.datadoghq.com/logs?query=source:debug-zip&upload_id:%s\n", uploadID)
 	return nil
-}
-
-func processTableDump(
-	ctx context.Context, dir, fileName, uploadID string, parsers columnParserMap,
-) error {
-	f, err := os.Open(path.Join(dir, fileName))
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	defaultTags := []string{"env:debug", "source:debug-zip"}
-	tableName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-	lines := [][]byte{}
-	header, iter := makeTableIterator(f)
-	if err := iter(func(row string) error {
-		cols := strings.Split(row, "\t")
-		if len(header) != len(cols) {
-			return errors.Newf("the number of headers is not matching the number of columns in the row")
-		}
-
-		headerColumnMapping := map[string]any{
-			ddTagsTag: strings.Join(append(
-				defaultTags, makeDDTag(uploadIDTag, uploadID), makeDDTag(clusterTag, debugZipUploadOpts.clusterName),
-				makeDDTag(tableTag, tableName),
-			), ","),
-		}
-		for i, h := range header {
-			if parser, ok := parsers[h]; ok {
-				colBytes, err := parser(cols[i])
-				if err != nil {
-					return err
-				}
-
-				headerColumnMapping[h] = colBytes
-				continue
-			}
-
-			headerColumnMapping[h] = cols[i]
-		}
-
-		jsonRow, err := json.Marshal(headerColumnMapping)
-		if err != nil {
-			return err
-		}
-
-		lines = append(lines, jsonRow)
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	// datadog's logs API only allows 1000 lines of logs per request. So, split
-	// the lines into batches of 1000.
-	for i := 0; i < len(lines); i += datadogMaxLogLinesPerReq {
-		end := min(i+datadogMaxLogLinesPerReq, len(lines))
-		if _, err := uploadLogsToDatadog(
-			makeDDMultiLineLogPayload(lines[i:end]), debugZipUploadOpts.ddAPIKey, debugZipUploadOpts.ddSite,
-		); err != nil {
-			return err
-		}
-	}
-
-	fmt.Printf("uploaded %s\n", fileName)
-	return nil
-}
-
-// makeTableIterator returns the headers slice and an iterator
-func makeTableIterator(f io.Reader) ([]string, func(func(string) error) error) {
-	scanner := bufio.NewScanner(f)
-	scanner.Scan() // scan the first line to get the headers
-
-	return strings.Split(scanner.Text(), "\t"), func(fn func(string) error) error {
-		for scanner.Scan() {
-			if err := fn(scanner.Text()); err != nil {
-				return err
-			}
-		}
-
-		return scanner.Err()
-	}
 }
 
 type ddArchivePayload struct {

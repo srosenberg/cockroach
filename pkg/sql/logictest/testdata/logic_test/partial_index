@@ -567,21 +567,29 @@ SELECT * FROM h@a_b_foo_idx WHERE b = 'foo'
 # in the same transaction. Use a high priority to make it less likely for the
 # transaction to be aborted.
 
+# Skip 3node-tenant config since it's prone to hitting a txn retry error
+# (#126763).
+skipif config 3node-tenant
 statement ok
 BEGIN PRIORITY HIGH
 
+skipif config 3node-tenant
 statement ok
 CREATE TABLE i (a INT, b enum)
 
+skipif config 3node-tenant
 statement ok
 INSERT INTO i VALUES (1, 'foo'), (2, 'bar')
 
+skipif config 3node-tenant
 statement ok
 CREATE INDEX a_b_foo_idx ON i (a) WHERE b = 'foo'
 
+skipif config 3node-tenant
 statement ok
 COMMIT
 
+skipif config 3node-tenant
 query IT rowsort
 SELECT * FROM i@a_b_foo_idx WHERE b = 'foo'
 ----
@@ -1352,6 +1360,41 @@ SELECT * FROM prune@idx WHERE c > 0
 ----
 1  2  3  7
 
+# Vector partial indexes.
+# TODO(andyk): Need more tests once insertion is possible.
+subtest vector
+
+statement ok
+CREATE TABLE vec (id INT PRIMARY KEY, v VECTOR(3), VECTOR INDEX (id, v) WHERE id > 0);
+DROP TABLE vec;
+
+statement ok
+CREATE TABLE vec (
+  id INT PRIMARY KEY,
+  v VECTOR(3),
+  VECTOR INDEX (id, v) WHERE v <-> '[3,1,2]' < 1,
+  FAMILY (id, v)
+);
+
+query TT
+SHOW CREATE TABLE vec
+----
+vec  CREATE TABLE public.vec (
+       id INT8 NOT NULL,
+       v VECTOR(3) NULL,
+       CONSTRAINT vec_pkey PRIMARY KEY (id ASC),
+       VECTOR INDEX vec_id_v_idx (id ASC, v) WHERE (v <-> '[3,1,2]':::VECTOR) < 1.0:::FLOAT8,
+       FAMILY fam_0_id_v (id, v)
+     )
+
+statement ok
+DROP TABLE vec;
+
+statement ok
+CREATE TABLE vec (id INT PRIMARY KEY, s STRING, v VECTOR(3));
+CREATE VECTOR INDEX ON vec (v) WHERE s IN ('foo', 'bar');
+DROP TABLE vec;
+
 # Tests for partial indexes with predicates that reference virtual computed
 # columns.
 subtest virtual
@@ -1867,6 +1910,9 @@ SELECT k, (j->'b' = '1') IS NULL FROM t75907@t75907_partial_idx WHERE (j->'b' = 
 subtest column_added_in_same_transaction
 
 statement ok
+SET autocommit_before_ddl = false
+
+statement ok
 CREATE TABLE t79613 (i INT PRIMARY KEY);
 
 statement error pgcode 0A000 cannot create partial index on column "k" \(2\) which is not public
@@ -1943,6 +1989,9 @@ SELECT * FROM t79613;
 
 statement ok
 DROP TABLE t79613;
+
+statement ok
+RESET autocommit_before_ddl
 
 # Regression test for #96924 to disallow dropping a column that is referenced in
 # a partial index predicate.

@@ -385,7 +385,7 @@ func TestReplicaRangefeed(t *testing.T) {
 	expSSTSpan := roachpb.Span{Key: roachpb.Key("b"), EndKey: roachpb.Key("r")}
 
 	_, _, _, pErr = store1.DB().AddSSTableAtBatchTimestamp(ctx, roachpb.Key("b"), roachpb.Key("r"), sstFile.Data(),
-		false /* disallowConflicts */, false /* disallowShadowing */, hlc.Timestamp{}, nil, /* stats */
+		false /* disallowConflicts */, hlc.Timestamp{}, nil, /* stats */
 		false /* ingestAsWrites */, ts6)
 	require.Nil(t, pErr)
 
@@ -412,7 +412,7 @@ func TestReplicaRangefeed(t *testing.T) {
 	require.NoError(t, sstWriter.Finish())
 
 	_, _, _, pErr = store1.DB().AddSSTableAtBatchTimestamp(ctx, roachpb.Key("b"), roachpb.Key("r"), sstFile.Data(),
-		false /* disallowConflicts */, false /* disallowShadowing */, hlc.Timestamp{}, nil, /* stats */
+		false /* disallowConflicts */, hlc.Timestamp{}, nil, /* stats */
 		true /* ingestAsWrites */, ts7)
 	require.Nil(t, pErr)
 
@@ -1054,7 +1054,7 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			waitForTruncationForTesting(t, repl, index+1)
+			waitForTruncationForTesting(t, repl, index)
 		}
 
 		// Remove the partition. Snapshot should follow.
@@ -1631,8 +1631,12 @@ func TestRangefeedCheckpointsRecoverFromLeaseExpiration(t *testing.T) {
 	log.Infof(ctx, "test waiting for another checkpoint")
 	ts2 := n1.Clock().Now()
 	waitForCheckpoint(ts2)
-	nudged := atomic.LoadInt64(&nudgeSeen)
-	require.Equal(t, int64(1), nudged)
+	testutils.SucceedsSoon(t, func() error {
+		if atomic.LoadInt64(&nudgeSeen) != int64(1) {
+			return errors.Errorf("nudge not seen yet")
+		}
+		return nil
+	})
 
 	// Check that n2 renewed its lease, like the test intended.
 	// Unfortunately this is flaky and it's not so clear how to fix it.

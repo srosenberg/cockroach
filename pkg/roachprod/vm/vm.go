@@ -42,22 +42,6 @@ const (
 	ArchAMD64   = CPUArch("amd64")
 	ArchFIPS    = CPUArch("fips")
 	ArchUnknown = CPUArch("unknown")
-
-	// InitializedFile is the base name of the initialization paths defined below.
-	InitializedFile = ".roachprod-initialized"
-	// OSInitializedFile is a marker file that is created on a VM to indicate
-	// that it has been initialized at least once by the VM start-up script. This
-	// is used to avoid re-initializing a VM that has been stopped and restarted.
-	OSInitializedFile = "/" + InitializedFile
-	// DisksInitializedFile is a marker file that is created on a VM to indicate
-	// that the disks have been initialized by the VM start-up script. This is
-	// separate from OSInitializedFile, because the disks may be ephemeral and
-	// need to be re-initialized on every start. The presence of this file
-	// automatically implies the presence of OSInitializedFile.
-	DisksInitializedFile = "/mnt/data1/" + InitializedFile
-	// StartupLogs is a log file that is created on a VM to redirect startup script
-	// output logs.
-	StartupLogs = "/var/log/roachprod_startup.log"
 )
 
 // UnimplementedError is returned when a method is not implemented by a
@@ -132,8 +116,11 @@ type VM struct {
 	// The provider-specific id for the instance.  This may or may not be the same as Name, depending
 	// on whether or not the cloud provider automatically assigns VM identifiers.
 	ProviderID string `json:"provider_id"`
-	PrivateIP  string `json:"private_ip"`
-	PublicIP   string `json:"public_ip"`
+	// The provider-specific account id for the instance. E.g., in GCE this is project name, in AWS this is IAM id,
+	// in Azure it's a subscription id, etc.
+	ProviderAccountID string `json:"provider_account_id"`
+	PrivateIP         string `json:"private_ip"`
+	PublicIP          string `json:"public_ip"`
 	// The username that should be used to connect to the VM.
 	RemoteUser string `json:"remote_user"`
 	// The VPC value defines an equivalency set for VMs that can route
@@ -180,10 +167,11 @@ func Name(cluster string, idx int) string {
 
 // Error values for VM.Error
 var (
-	ErrBadNetwork    = errors.New("could not determine network information")
-	ErrBadScheduling = errors.New("could not determine scheduling information")
-	ErrInvalidName   = errors.New("invalid VM name")
-	ErrNoExpiration  = errors.New("could not determine expiration")
+	ErrBadNetwork         = errors.New("could not determine network information")
+	ErrBadScheduling      = errors.New("could not determine scheduling information")
+	ErrInvalidUserName    = errors.New("invalid user name")
+	ErrInvalidClusterName = errors.New("invalid cluster name")
+	ErrNoExpiration       = errors.New("could not determine expiration")
 )
 
 var regionRE = regexp.MustCompile(`(.*[^-])-?[a-z]$`)
@@ -353,13 +341,6 @@ type ProviderOpts interface {
 	// ConfigureCreateFlags configures a FlagSet with any options relevant to the
 	// `create` command.
 	ConfigureCreateFlags(*pflag.FlagSet)
-	// ConfigureClusterFlags configures a FlagSet with any options relevant to
-	// cluster manipulation commands (`create`, `destroy`, `list`, `sync` and
-	// `gc`).
-	ConfigureClusterFlags(*pflag.FlagSet, MultipleProjectsOption)
-	// ConfigureClusterCleanupFlags configures a FlagSet with any options relevant to
-	// commands (`gc`)
-	ConfigureClusterCleanupFlags(*pflag.FlagSet)
 }
 
 // VolumeSnapshot is an abstract representation of a specific volume snapshot.
@@ -468,14 +449,22 @@ type ServiceAddress struct {
 
 // A Provider is a source of virtual machines running on some hosting platform.
 type Provider interface {
+	// ConfigureProviderFlags is used to specify flags that apply to the provider
+	// instance and should be used for all clusters managed by the provider.
+	ConfigureProviderFlags(*pflag.FlagSet, MultipleProjectsOption)
+
+	// ConfigureClusterCleanupFlags configures a FlagSet with any options
+	// relevant to commands (`gc`)
+	ConfigureClusterCleanupFlags(*pflag.FlagSet)
+
 	CreateProviderOpts() ProviderOpts
 	CleanSSH(l *logger.Logger) error
 
 	// ConfigSSH takes a list of zones and configures SSH for machines in those
 	// zones for the given provider.
 	ConfigSSH(l *logger.Logger, zones []string) error
-	Create(l *logger.Logger, names []string, opts CreateOpts, providerOpts ProviderOpts) error
-	Grow(l *logger.Logger, vms List, clusterName string, names []string) error
+	Create(l *logger.Logger, names []string, opts CreateOpts, providerOpts ProviderOpts) (List, error)
+	Grow(l *logger.Logger, vms List, clusterName string, names []string) (List, error)
 	Shrink(l *logger.Logger, vmsToRemove List, clusterName string) error
 	Reset(l *logger.Logger, vms List) error
 	Delete(l *logger.Logger, vms List) error
@@ -621,7 +610,9 @@ func FindActiveAccounts(l *logger.Logger) (map[string]string, error) {
 		err := ProvidersSequential(AllProviderNames(), func(p Provider) error {
 			account, err := p.FindActiveAccount(l)
 			if err != nil {
-				return err
+				l.Printf("WARN: provider=%q has no active account", p.Name())
+				//nolint:returnerrcheck
+				return nil
 			}
 			if len(account) > 0 {
 				source[p.Name()] = account

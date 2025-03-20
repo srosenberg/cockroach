@@ -44,7 +44,7 @@ func TestPendingLogTruncations(t *testing.T) {
 	require.Equal(t, 2, truncs.capacity())
 	require.True(t, truncs.isEmptyLocked())
 	require.EqualValues(t, 55, truncs.computePostTruncLogSize(55))
-	require.EqualValues(t, 5, truncs.computePostTruncFirstIndex(5))
+	require.EqualValues(t, 4, truncs.nextCompactedIndex(4))
 
 	// One pending truncation.
 	truncs.mu.truncs[0].logDeltaBytes = -50
@@ -60,11 +60,11 @@ func TestPendingLogTruncations(t *testing.T) {
 	// Added -50 and bumped up to 0.
 	require.EqualValues(t, 0, truncs.computePostTruncLogSize(45))
 	// Advances to Index+1.
-	require.EqualValues(t, 21, truncs.computePostTruncFirstIndex(5))
-	require.EqualValues(t, 21, truncs.computePostTruncFirstIndex(20))
+	require.EqualValues(t, 20, truncs.nextCompactedIndex(4))
+	require.EqualValues(t, 20, truncs.nextCompactedIndex(19))
 	// Does not advance.
-	require.EqualValues(t, 21, truncs.computePostTruncFirstIndex(21))
-	require.EqualValues(t, 30, truncs.computePostTruncFirstIndex(30))
+	require.EqualValues(t, 20, truncs.nextCompactedIndex(20))
+	require.EqualValues(t, 29, truncs.nextCompactedIndex(29))
 
 	// Two pending truncations.
 	truncs.mu.truncs[1].logDeltaBytes = -70
@@ -83,11 +83,11 @@ func TestPendingLogTruncations(t *testing.T) {
 	// Added -120 and bumped up to 0.
 	require.EqualValues(t, 0, truncs.computePostTruncLogSize(115))
 	// Advances to Index+1 of second entry.
-	require.EqualValues(t, 31, truncs.computePostTruncFirstIndex(5))
-	require.EqualValues(t, 31, truncs.computePostTruncFirstIndex(30))
+	require.EqualValues(t, 30, truncs.nextCompactedIndex(4))
+	require.EqualValues(t, 30, truncs.nextCompactedIndex(29))
 	// Does not advance.
-	require.EqualValues(t, 31, truncs.computePostTruncFirstIndex(31))
-	require.EqualValues(t, 40, truncs.computePostTruncFirstIndex(40))
+	require.EqualValues(t, 30, truncs.nextCompactedIndex(30))
+	require.EqualValues(t, 39, truncs.nextCompactedIndex(39))
 
 	// Pop first.
 	last := truncs.mu.truncs[1]
@@ -140,15 +140,11 @@ func (r *replicaTruncatorTest) getPendingTruncs() *pendingLogTruncations {
 	return &r.pendingTruncs
 }
 
-func (r *replicaTruncatorTest) setTruncationDeltaAndTrusted(deltaBytes int64, isDeltaTrusted bool) {
-	fmt.Fprintf(r.buf, "r%d.setTruncationDeltaAndTrusted(delta:%d, trusted:%t)\n",
-		r.rangeID, deltaBytes, isDeltaTrusted)
-}
-
 func (r *replicaTruncatorTest) sideloadedBytesIfTruncatedFromTo(
-	_ context.Context, from, to kvpb.RaftIndex,
+	_ context.Context, span kvpb.RaftSpan,
 ) (freed int64, _ error) {
-	fmt.Fprintf(r.buf, "r%d.sideloadedBytesIfTruncatedFromTo(%d, %d)\n", r.rangeID, from, to)
+	fmt.Fprintf(r.buf, "r%d.sideloadedBytesIfTruncatedFromTo(%d, %d)\n",
+		r.rangeID, span.After, span.Last)
 	return r.sideloadedFreed, r.sideloadedErr
 }
 
@@ -157,17 +153,16 @@ func (r *replicaTruncatorTest) getStateLoader() stateloader.StateLoader {
 	return r.stateLoader
 }
 
-func (r *replicaTruncatorTest) setTruncatedStateAndSideEffects(
-	_ context.Context,
-	truncState *kvserverpb.RaftTruncatedState,
-	expectedFirstIndexPreTruncation kvpb.RaftIndex,
-) (expectedFirstIndexWasAccurate bool) {
-	expectedFirstIndexWasAccurate = r.truncState.Index+1 == expectedFirstIndexPreTruncation
-	r.truncState = *truncState
+func (r *replicaTruncatorTest) handleTruncationResult(_ context.Context, pt pendingTruncation) {
+	expectedFirstIndexWasAccurate := r.truncState.Index+1 == pt.expectedFirstIndex
+	r.truncState = pt.RaftTruncatedState
+	// TODO(pav-kv): this is printing the legacy func names. Fix.
 	fmt.Fprintf(r.buf,
 		"r%d.setTruncatedStateAndSideEffects(..., expectedFirstIndex:%d) => trusted:%t\n",
-		r.rangeID, expectedFirstIndexPreTruncation, expectedFirstIndexWasAccurate)
-	return expectedFirstIndexWasAccurate
+		r.rangeID, pt.expectedFirstIndex, expectedFirstIndexWasAccurate)
+	deltaTrusted := pt.isDeltaTrusted && expectedFirstIndexWasAccurate
+	fmt.Fprintf(r.buf, "r%d.setTruncationDeltaAndTrusted(delta:%d, trusted:%t)\n",
+		r.rangeID, pt.logDeltaBytes, deltaTrusted)
 }
 
 func (r *replicaTruncatorTest) writeRaftStateToEngine(

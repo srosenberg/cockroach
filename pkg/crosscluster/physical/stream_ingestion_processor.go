@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
@@ -282,7 +283,7 @@ type streamIngestionProcessor struct {
 
 	// Aggregator that aggregates StructuredEvents emitted in the
 	// backupDataProcessors' trace recording.
-	agg      *bulkutil.TracingAggregator
+	agg      *tracing.TracingAggregator
 	aggTimer timeutil.Timer
 }
 
@@ -388,12 +389,14 @@ func (sip *streamIngestionProcessor) Start(ctx context.Context) {
 	ctx = logtags.AddTag(ctx, "job", sip.spec.JobID)
 	ctx = logtags.AddTag(ctx, "proc", sip.ProcessorID)
 	log.Infof(ctx, "starting ingest proc")
-	sip.agg = bulkutil.TracingAggregatorForContext(ctx)
+	sip.agg = tracing.TracingAggregatorForContext(ctx)
 
 	// If the aggregator is nil, we do not want the timer to fire.
 	if sip.agg != nil {
 		sip.aggTimer.Reset(15 * time.Second)
 	}
+
+	defer sip.FlowCtx.Cfg.JobRegistry.MarkAsIngesting(catpb.JobID(sip.spec.JobID))()
 
 	ctx = sip.StartInternal(ctx, streamIngestionProcessorName, sip.agg)
 
@@ -427,22 +430,22 @@ func (sip *streamIngestionProcessor) Start(ctx context.Context) {
 	for _, partitionSpec := range sip.spec.PartitionSpecs {
 		id := partitionSpec.PartitionID
 		token := streamclient.SubscriptionToken(partitionSpec.SubscriptionToken)
-		addr := partitionSpec.Address
-		redactedAddr, redactedErr := streamclient.RedactSourceURI(addr)
-		if redactedErr != nil {
-			log.Warning(sip.Ctx(), "could not redact stream address")
+		uri, err := streamclient.ParseClusterUri(partitionSpec.PartitionConnUri)
+		if err != nil {
+			sip.MoveToDrainingAndLogError(errors.Wrap(err, "parsing partition uri"))
+			return
 		}
 		var streamClient streamclient.Client
 		if sip.forceClientForTests != nil {
 			streamClient = sip.forceClientForTests
 			log.Infof(ctx, "using testing client")
 		} else {
-			streamClient, err = streamclient.NewStreamClient(ctx, crosscluster.StreamAddress(addr), db,
+			streamClient, err = streamclient.NewStreamClient(ctx, uri, db,
 				streamclient.WithStreamID(streampb.StreamID(sip.spec.StreamID)),
 				streamclient.WithCompression(compress.Get(&st.SV)))
 			if err != nil {
 
-				sip.MoveToDrainingAndLogError(errors.Wrapf(err, "creating client for partition spec %q from %q", token, redactedAddr))
+				sip.MoveToDrainingAndLogError(errors.Wrapf(err, "creating client for partition spec %q from %q", token, uri.Redacted()))
 				return
 			}
 			sip.streamPartitionClients = append(sip.streamPartitionClients, streamClient)
@@ -450,7 +453,7 @@ func (sip *streamIngestionProcessor) Start(ctx context.Context) {
 
 		if streamingKnobs, ok := sip.FlowCtx.TestingKnobs().StreamingTestingKnobs.(*sql.StreamingTestingKnobs); ok {
 			if streamingKnobs != nil && streamingKnobs.BeforeClientSubscribe != nil {
-				streamingKnobs.BeforeClientSubscribe(addr, string(token), sip.frontier, false)
+				streamingKnobs.BeforeClientSubscribe(uri.Serialize(), string(token), sip.frontier, false)
 			}
 		}
 
@@ -460,7 +463,7 @@ func (sip *streamIngestionProcessor) Start(ctx context.Context) {
 			sip.spec.InitialScanTimestamp, sip.frontier)
 
 		if err != nil {
-			sip.MoveToDrainingAndLogError(errors.Wrapf(err, "consuming partition %v", redactedAddr))
+			sip.MoveToDrainingAndLogError(errors.Wrapf(err, "consuming partition %v", uri.Redacted()))
 			return
 		}
 		subscriptions[id] = sub
@@ -1023,7 +1026,7 @@ func (r *rangeKeyBatcher) flush(ctx context.Context, toFlush mvccRangeKeyValues)
 
 		log.Infof(ctx, "sending SSTable [%s, %s) of size %d (as write: %v)", start, end, len(data), ingestAsWrites)
 		_, _, err := r.db.AddSSTable(ctx, start, end, data,
-			false /* disallowConflicts */, false, /* disallowShadowing */
+			false, /* disallowConflicts */
 			hlc.Timestamp{}, nil /* stats */, ingestAsWrites,
 			r.db.Clock().Now())
 		if err != nil {
@@ -1246,12 +1249,11 @@ func (sip *streamIngestionProcessor) flush() error {
 	sip.buffer = getBuffer()
 
 	checkpoint := &jobspb.ResolvedSpans{ResolvedSpans: make([]jobspb.ResolvedSpan, 0, sip.frontier.Len())}
-	sip.frontier.Entries(func(sp roachpb.Span, ts hlc.Timestamp) span.OpResult {
+	for sp, ts := range sip.frontier.Entries() {
 		if !ts.IsEmpty() {
 			checkpoint.ResolvedSpans = append(checkpoint.ResolvedSpans, jobspb.ResolvedSpan{Span: sp, Timestamp: ts})
 		}
-		return span.ContinueMatch
-	})
+	}
 
 	select {
 	case sip.flushCh <- flushableBuffer{

@@ -15,12 +15,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/roachprod/config"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/roachprodutil"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/aws"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/azure"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
 	"github.com/cockroachdb/errors"
@@ -32,16 +33,57 @@ import (
 const (
 	resourceName    = "instance-configs"
 	resourceVersion = "v1"
+
+	// ErrorMessage is the generic error message used to return an error
+	// when a requests to the prometheus helper service yields a non 200 status.
+	ErrorMessage       = ErrorMessagePrefix + ` on url %s and error %s`
+	ErrorMessagePrefix = "request failed with status %d"
 )
 
-// SupportedPromProjects are the projects supported for prometheus target
-var SupportedPromProjects = map[string]struct{}{gce.DefaultProject(): {}}
+// CloudEnvironment is the environment of Cloud provider.
+// In GCE, this would be the project, in AWS, this would be the account ID,
+// and in Azure, this would be the subscription ID.
+type CloudEnvironment string
 
-// The URL for the Prometheus registration service. An empty string means that the
-// Prometheus integration is disabled. Should be accessed through
-// getPrometheusRegistrationUrl().
-var promRegistrationUrl = config.EnvOrDefaultString("ROACHPROD_PROM_HOST_URL",
-	"https://grafana.testeng.crdb.io/promhelpers")
+const (
+	Default CloudEnvironment = "default"
+)
+
+// Reachability is the reachability of the node provider.
+type Reachability int
+
+const (
+	// None indicates that the node is unreachable with this provider.
+	None Reachability = iota
+	// Private indicates that the node is reachable via private network.
+	Private
+	// Public indicates that the node is only reachable via public network.
+	Public
+)
+
+var (
+	// The URL for the Prometheus registration service. An empty string means
+	// that the Prometheus integration is disabled. Should be accessed through
+	// getPrometheusRegistrationUrl().
+	promRegistrationUrl = config.EnvOrDefaultString(
+		"ROACHPROD_PROM_HOST_URL",
+		"https://grafana.testeng.crdb.io/promhelpers",
+	)
+	// supportedPromProviders are the providers supported for prometheus target
+	// and their reachability.
+	supportedPromProviders = map[string]map[CloudEnvironment]Reachability{
+		gce.ProviderName: {
+			Default:               Public,
+			"cockroach-ephemeral": Private,
+		},
+		aws.ProviderName: {
+			Default: Public,
+		},
+		azure.ProviderName: {
+			Default: Public,
+		},
+	}
+)
 
 // PromClient is used to communicate with the prometheus helper service
 // keeping the functions as a variable enables us to override the value for unit testing
@@ -61,9 +103,10 @@ type PromClient struct {
 		oauth2.TokenSource, error)
 }
 
-// DefaultPromClient is the default instance of PromClient. This instance should
-// be used unless custom configuration is needed.
-var DefaultPromClient = NewPromClient()
+// IsNotFoundError returns true if the error is a 404 error.
+func IsNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), fmt.Sprintf(ErrorMessagePrefix, http.StatusNotFound))
+}
 
 // NewPromClient returns a new instance of PromClient
 func NewPromClient() *PromClient {
@@ -93,7 +136,7 @@ func (c *PromClient) UpdatePrometheusTargets(
 	ctx context.Context,
 	clusterName string,
 	forceFetchCreds bool,
-	nodes map[int]*NodeInfo,
+	nodes map[int][]*NodeInfo,
 	insecure bool,
 	l *logger.Logger,
 ) error {
@@ -130,8 +173,7 @@ func (c *PromClient) UpdatePrometheusTargets(
 		if err != nil {
 			return err
 		}
-		return errors.Newf("request failed with status %d and error %s", response.StatusCode,
-			string(body))
+		return errors.Newf(ErrorMessage, response.StatusCode, url, string(body))
 	}
 	return nil
 }
@@ -167,14 +209,32 @@ func (c *PromClient) DeleteClusterConfig(
 		if err != nil {
 			return err
 		}
-		return errors.Newf("request failed with url %s status %d and error %s", url, response.StatusCode,
-			string(body))
+		return errors.Newf(ErrorMessage, response.StatusCode, url, string(body))
 	}
 	return nil
 }
 
 func getUrl(promUrl, clusterName string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", promUrl, resourceVersion, resourceName, clusterName)
+}
+
+// ProviderReachability returns the reachability of the provider
+func ProviderReachability(provider string, cloudEnvironment CloudEnvironment) Reachability {
+
+	// If the provider is not supported, return None.
+	providerReachability, ok := supportedPromProviders[provider]
+	if !ok {
+		return None
+	}
+
+	// If the cloudEnvironment is supported and has a specific reachability
+	// defined for the specified CloudEnvironment, return this reachability.
+	if reachability, ok := providerReachability[cloudEnvironment]; ok {
+		return reachability
+	}
+
+	// Return the default reachability for the provider.
+	return providerReachability[Default]
 }
 
 // CCParams are the params for the cluster configs
@@ -190,18 +250,20 @@ type NodeInfo struct {
 }
 
 // createClusterConfigFile creates the cluster config file per node
-func buildCreateRequest(nodes map[int]*NodeInfo, insecure bool) (io.Reader, error) {
+func buildCreateRequest(nodes map[int][]*NodeInfo, insecure bool) (io.Reader, error) {
 	configs := make([]*CCParams, 0)
-	for i, n := range nodes {
-		params := &CCParams{
-			Targets: []string{n.Target},
-			Labels:  map[string]string{"node": strconv.Itoa(i)},
+	for _, n := range nodes {
+		for _, node := range n {
+			params := &CCParams{
+				Targets: []string{node.Target},
+				Labels:  map[string]string{},
+			}
+			// custom labels - this can override the default labels if needed
+			for n, v := range node.CustomLabels {
+				params.Labels[n] = v
+			}
+			configs = append(configs, params)
 		}
-		// custom labels - this can override the default labels if needed
-		for n, v := range n.CustomLabels {
-			params.Labels[n] = v
-		}
-		configs = append(configs, params)
 	}
 	cb, err := yaml.Marshal(&configs)
 	if err != nil {

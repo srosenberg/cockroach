@@ -42,6 +42,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
 	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilities"
+	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilitiespb"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
@@ -63,6 +64,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/datapathutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/floatcmp"
+	"github.com/cockroachdb/cockroach/pkg/testutils/pgurlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/physicalplanutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/release"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
@@ -249,19 +251,6 @@ import (
 //    Completes a pending statement with the provided name, validating its
 //    results as expected per the given options to "statement async <name>...".
 //
-//  - copy,copy-error
-//    Runs a COPY FROM STDIN statement, because of the separate data chunk it requires
-//    special logictest support. Format is:
-//      copy
-//      COPY <table> FROM STDIN;
-//      <blankline>
-//      COPY DATA
-//      ----
-//      <NUMROWS>
-//
-//    copy-error is just like copy but an error is expected and results should be error
-//    string.
-//
 //  - query <typestring> <options> <label>
 //    Runs the query that follows and verifies the results (specified after the
 //    query and a ---- separator). Example:
@@ -317,16 +306,17 @@ import (
 //            asynchronously, subsequent queries that depend on the state of
 //            the query should be run with the "retry" option to ensure
 //            deterministic test results.
-//      - kvtrace: runs the query and compares against the results of the
-//            kv operations trace of the query. kvtrace optionally accepts
-//            arguments of the form kvtrace(op,op,...). Op is one of
-//            the accepted k/v arguments such as 'CPut', 'Scan' etc. It
-//            also accepts arguments of the form 'prefix=...'. For example,
-//            if kvtrace(CPut,Del,prefix=/Table/54,prefix=/Table/55), the
-//            results will be filtered to contain messages starting with
-//            CPut /Table/54, CPut /Table/55, Del /Table/54, Del /Table/55.
-//            Tenant IDs do not need to be included in prefixes and will be
-//            removed from results. Cannot be combined with noticetrace.
+//      - kvtrace: runs the query and compares against the results of the kv
+//            operations trace of the query. kvtrace optionally accepts arguments of the
+//            form kvtrace(op,op,...). Op is one of the accepted k/v arguments such as
+//            'CPut', 'Scan' etc. It also accepts arguments of the form 'prefix=...'. For
+//            example, if kvtrace(CPut,Del,prefix=/Table/54,prefix=/Table/55), the results
+//            will be filtered to contain messages starting with CPut /Table/54, CPut
+//            /Table/55, Del /Table/54, Del /Table/55. The 'redactbytes' will redact the
+//            contents of /BYTES/ values to prevent test flakiness in the presence of
+//            nondeterminism and/or processor architecture differences. Tenant IDs do not
+//            need to be included in prefixes and will be removed from results. Cannot be
+//            combined with noticetrace.
 //      - noticetrace: runs the query and compares only the notices that
 //						appear. Cannot be combined with kvtrace.
 //      - nodeidx=N: runs the query on node N of the cluster.
@@ -942,6 +932,10 @@ type logicQuery struct {
 	// the particular operation types to filter on, such as CPut or Del.
 	kvOpTypes        []string
 	keyPrefixFilters []string
+	// kvtraceRedactBytes can only be used when kvtrace is true. When active, BYTES
+	// values in keys are expunged from output (to prevent test failures where the
+	// BYTES value is nondeterministic or architecture dependent).
+	kvtraceRedactBytes bool
 
 	// nodeIdx determines which node on the cluster to execute a query on for the given query.
 	nodeIdx int
@@ -1248,7 +1242,7 @@ func (t *logicTest) getOrOpenClient(user string, nodeIdx int, newSession bool) *
 			addr = t.tenantAddrs[nodeIdx]
 		}
 		var cleanupFunc func()
-		pgURL, cleanupFunc = sqlutils.PGUrl(t.rootT, addr, "TestLogic", url.User(pgUser))
+		pgURL, cleanupFunc = pgurlutils.PGUrl(t.rootT, addr, "TestLogic", url.User(pgUser))
 		t.clusterCleanupFuncs = append(t.clusterCleanupFuncs, cleanupFunc)
 	}
 	pgURL.Path = "test"
@@ -1502,7 +1496,6 @@ func (t *logicTest) newCluster(
 	// when run with fakedist-disk config, so we'll use a larger limit here.
 	// There isn't really a downside to doing so.
 	tempStorageDiskLimit := int64(512 << 20) /* 512 MiB */
-	// MVCC range tombstones are only available in 22.2 or newer.
 	shouldUseMVCCRangeTombstonesForPointDeletes := useMVCCRangeTombstonesForPointDeletes && !serverArgs.DisableUseMVCCRangeTombstonesForPointDeletes
 	ignoreMVCCRangeTombstoneErrors := globalMVCCRangeTombstone || shouldUseMVCCRangeTombstonesForPointDeletes
 
@@ -1709,17 +1702,26 @@ func (t *logicTest) newCluster(
 					t.Fatal(err)
 				}
 			}
+			if _, err := conn.Exec(
+				"RESET CLUSTER SETTING kv.closed_timestamp.target_duration",
+			); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.Exec(
+				"RESET CLUSTER SETTING kv.closed_timestamp.side_transport_interval",
+			); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.Exec(
+				"RESET CLUSTER SETTING kv.rangefeed.closed_timestamp_refresh_interval",
+			); err != nil {
+				t.Fatal(err)
+			}
 		}
 
 		capabilities := toa.capabilities
 		if len(capabilities) > 0 {
-			for name, value := range capabilities {
-				query := fmt.Sprintf("ALTER TENANT [$1] GRANT CAPABILITY %s = $2", name)
-				if _, err := conn.Exec(query, tenantID.ToUint64(), value); err != nil {
-					t.Fatal(err)
-				}
-			}
-			capabilityMap := make(map[tenantcapabilities.ID]string, len(capabilities))
+			capabilityMap := make(map[tenantcapabilitiespb.ID]string, len(capabilities))
 			for k, v := range capabilities {
 				capability, ok := tenantcapabilities.FromName(k)
 				if !ok {
@@ -1727,7 +1729,7 @@ func (t *logicTest) newCluster(
 				}
 				capabilityMap[capability.ID()] = v
 			}
-			t.cluster.WaitForTenantCapabilities(t.t(), tenantID, capabilityMap)
+			t.cluster.GrantTenantCapabilities(context.Background(), t.t(), tenantID, capabilityMap)
 		}
 	}
 
@@ -2651,16 +2653,10 @@ func (t *logicTest) processSubtest(
 				pos:         fmt.Sprintf("\n%s:%d", path, s.Line+subtest.lineLineIndexIntoFile),
 				expectCount: -1,
 			}
-			// Parse "statement (notice|error) <regexp>"
-			if m := noticeRE.FindStringSubmatch(s.Text()); m != nil {
-				stmt.expectNotice = m[1]
-			} else if m := errorRE.FindStringSubmatch(s.Text()); m != nil {
-				stmt.expectErrCode = m[1]
-				stmt.expectErr = m[2]
-			}
 			if len(fields) >= 3 && fields[1] == "async" {
 				stmt.expectAsync = true
 				stmt.statementName = fields[2]
+				// Consume 'async <name>'.
 				copy(fields[1:], fields[3:])
 				fields = fields[:len(fields)-2]
 			}
@@ -2670,6 +2666,25 @@ func (t *logicTest) processSubtest(
 					return err
 				}
 				stmt.expectCount = n
+				// Consume 'count <count>'.
+				copy(fields[1:], fields[3:])
+				fields = fields[:len(fields)-2]
+			}
+			fullyConsumed := len(fields) == 1
+			// Parse "statement (notice|error) <regexp>"
+			if m := noticeRE.FindStringSubmatch(s.Text()); m != nil {
+				stmt.expectNotice = m[1]
+				fullyConsumed = true
+			} else if m := errorRE.FindStringSubmatch(s.Text()); m != nil {
+				stmt.expectErrCode = m[1]
+				stmt.expectErr = m[2]
+				fullyConsumed = true
+			} else if len(fields) == 2 && fields[1] == "ok" {
+				// Match 'ok' only if there are no options after it.
+				fullyConsumed = true
+			}
+			if !fullyConsumed {
+				return errors.Newf("unexpected options for 'statement' command: %s", line)
 			}
 			if _, err := stmt.readSQL(t, s, false /* allowSeparator */); err != nil {
 				return err
@@ -2735,8 +2750,8 @@ func (t *logicTest) processSubtest(
 			} else if len(fields) < 2 {
 				return errors.Errorf("%s: invalid test statement: %s", query.pos, s.Text())
 			} else {
-				// Parse "query empty"
-				if len(fields) == 2 && fields[1] == "empty" {
+				// Parse "query empty <options>"
+				if fields[1] == "empty" {
 					query.empty = true
 				} else {
 					// Parse "query <type-string> <options> <label>"
@@ -2812,6 +2827,8 @@ func (t *logicTest) processSubtest(
 										matched = "/Tenant/%" + matched
 									}
 									query.keyPrefixFilters = append(query.keyPrefixFilters, matched)
+								} else if c == "redactbytes" {
+									query.kvtraceRedactBytes = true
 								} else if isAllowedKVOp(c) {
 									query.kvOpTypes = append(query.kvOpTypes, c)
 								} else {
@@ -2849,6 +2866,7 @@ func (t *logicTest) processSubtest(
 							query.kvtrace = true
 							query.kvOpTypes = nil
 							query.keyPrefixFilters = nil
+							query.kvtraceRedactBytes = false
 
 						case "noticetrace":
 							query.noticetrace = true
@@ -2994,7 +3012,13 @@ func (t *logicTest) processSubtest(
 
 					projection := `message`
 					if len(t.tenantApps) != 0 || t.cluster.StartedDefaultTestTenant() {
-						projection = `regexp_replace(message, '/Tenant/\d+', '')`
+						projection = `regexp_replace(message, '/Tenant/\d+', '', 'g')`
+					}
+					if query.kvtraceRedactBytes {
+						projection = fmt.Sprintf(
+							`regexp_replace(%s, '/BYTES/0x[abcdef\d]+', '/BYTES/:redacted:', 'g')`,
+							projection,
+						)
 					}
 					queryPrefix := fmt.Sprintf(`SELECT %s FROM [SHOW KV TRACE FOR SESSION] `, projection)
 					buildQuery := func(ops []string, keyFilters []string) string {
@@ -3010,7 +3034,9 @@ func (t *logicTest) processSubtest(
 								} else {
 									sb.WriteString("OR ")
 								}
-								sb.WriteString(fmt.Sprintf("message like '%s %s%%' ", c, f))
+								// % wildcard between command and prefix is for
+								// optional '(locking)' substring.
+								sb.WriteString(fmt.Sprintf("message LIKE '%s %%%s%%' ", c, f))
 							}
 						}
 						return sb.String()
@@ -3078,22 +3104,27 @@ func (t *logicTest) processSubtest(
 			if _, err := stmt.readSQL(t, s, false /* allowSeparator */); err != nil {
 				return err
 			}
-			rows, err := t.db.Query(stmt.sql)
-			if err != nil {
-				return errors.Wrapf(err, "%s: error running query %s", stmt.pos, stmt.sql)
+
+			if s.Skip {
+				s.LogAndResetSkip(t.t())
+			} else {
+				rows, err := t.db.Query(stmt.sql)
+				if err != nil {
+					return errors.Wrapf(err, "%s: error running query %s", stmt.pos, stmt.sql)
+				}
+				if !rows.Next() {
+					return errors.Errorf("%s: no rows returned by query %s", stmt.pos, stmt.sql)
+				}
+				var val string
+				if err := rows.Scan(&val); err != nil {
+					return errors.Wrapf(err, "%s: error getting result from query %s", stmt.pos, stmt.sql)
+				}
+				if rows.Next() {
+					return errors.Errorf("%s: more than one row returned by query  %s", stmt.pos, stmt.sql)
+				}
+				t.t().Logf("let %s = %s\n", varName, val)
+				t.varMap[varName] = val
 			}
-			if !rows.Next() {
-				return errors.Errorf("%s: no rows returned by query %s", stmt.pos, stmt.sql)
-			}
-			var val string
-			if err := rows.Scan(&val); err != nil {
-				return errors.Wrapf(err, "%s: error getting result from query %s", stmt.pos, stmt.sql)
-			}
-			if rows.Next() {
-				return errors.Errorf("%s: more than one row returned by query  %s", stmt.pos, stmt.sql)
-			}
-			t.t().Logf("let %s = %s\n", varName, val)
-			t.varMap[varName] = val
 
 		case "halt", "hash-threshold":
 
@@ -3477,17 +3508,28 @@ func (t *logicTest) unexpectedError(sql string, pos string, err error) (bool, er
 	return false, fmt.Errorf("%s: %s\nexpected success, but found\n%s", pos, sql, formatErr(err))
 }
 
+var uniqueHashPattern = regexp.MustCompile(`UNIQUE.*USING\s+HASH`)
+
 func (t *logicTest) execStatement(stmt logicStatement) (bool, error) {
 	db := t.db
 	t.noticeBuffer = nil
 	if *showSQL {
 		t.outf("%s;", stmt.sql)
 	}
-	execSQL, changed := randgen.ApplyString(t.rng, stmt.sql, randgen.ColumnFamilyMutator)
-	if changed {
-		log.Infof(context.Background(), "Rewrote test statement:\n%s", execSQL)
-		if *showSQL {
-			t.outf("rewrote:\n%s\n", execSQL)
+	execSQL := stmt.sql
+	// TODO(#65929, #107398): Don't mutate column families for CREATE TABLE
+	// statements with unique, hash-sharded indexes. The altered AST will be
+	// reserialized with a UNIQUE constraint, not a UNIQUE INDEX, which may not
+	// be parsable because constraints do not support all the options that
+	// indexes do.
+	if !uniqueHashPattern.MatchString(stmt.sql) {
+		var changed bool
+		execSQL, changed = randgen.ApplyString(t.rng, execSQL, randgen.ColumnFamilyMutator)
+		if changed {
+			log.Infof(context.Background(), "Rewrote test statement:\n%s", execSQL)
+			if *showSQL {
+				t.outf("rewrote:\n%s\n", execSQL)
+			}
 		}
 	}
 
@@ -3516,8 +3558,6 @@ func (t *logicTest) execStatement(stmt logicStatement) (bool, error) {
 	res, err := db.Exec(execSQL)
 	return t.finishExecStatement(stmt, execSQL, res, err)
 }
-
-var uniqueHashPattern = regexp.MustCompile(`UNIQUE.*USING\s+HASH`)
 
 func (t *logicTest) finishExecStatement(
 	stmt logicStatement, execSQL string, res gosql.Result, err error,

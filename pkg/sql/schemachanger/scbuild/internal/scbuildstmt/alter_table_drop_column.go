@@ -17,7 +17,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
-	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -32,7 +31,7 @@ func alterTableDropColumn(
 	stmt tree.Statement,
 	n *tree.AlterTableDropColumn,
 ) {
-	fallBackIfRegionalByRowTable(b, n, tbl.TableID)
+	panicIfRegionChangeUnderwayOnRBRTable(b, "DROP COLUMN", tbl.TableID)
 	checkSafeUpdatesForDropColumn(b)
 	checkRegionalByRowColumnConflict(b, tbl, n)
 
@@ -87,9 +86,6 @@ func checkRegionalByRowColumnConflict(b BuildCtx, tbl *scpb.Table, n *tree.Alter
 			"You must change the table locality before dropping this table or alter the table to use a different column to use for the region.",
 		))
 	}
-	// TODO(ajwerner): Support dropping a column of a REGIONAL BY ROW table.
-	panic(scerrors.NotImplementedErrorf(n,
-		"regional by row partitioning is not supported"))
 }
 
 func resolveColumnForDropColumn(
@@ -246,6 +242,8 @@ func dropColumn(
 			// Otherwise, it is a dependency on the column used in the expiration
 			// expression.
 			panic(sqlerrors.NewAlterDependsOnExpirationExprError(op, objType, cn.Name, tn.Object(), string(e.ExpirationExpr)))
+		case *scpb.PolicyUsingExpr, *scpb.PolicyWithCheckExpr:
+			panic(sqlerrors.NewAlterDependsOnPolicyExprError(op, objType, cn.Name))
 		default:
 			b.Drop(e)
 		}
@@ -293,7 +291,7 @@ func walkColumnDependencies(
 				*scpb.ColumnDefaultExpression, *scpb.ColumnOnUpdateExpression,
 				*scpb.UniqueWithoutIndexConstraint, *scpb.CheckConstraint,
 				*scpb.UniqueWithoutIndexConstraintUnvalidated, *scpb.CheckConstraintUnvalidated,
-				*scpb.RowLevelTTL:
+				*scpb.RowLevelTTL, *scpb.PolicyUsingExpr, *scpb.PolicyWithCheckExpr:
 				fn(e, op, objType)
 			case *scpb.ColumnType:
 				if elt.ColumnID == col.ColumnID {

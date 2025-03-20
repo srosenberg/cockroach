@@ -285,14 +285,31 @@ type RangeStateListener interface {
 	// updated.
 	OnRangeDescUpdated(*roachpb.RangeDescriptor)
 
+	// OnRangeLeaseTransferEval informs the concurrency manager that the range is
+	// evaluating a lease transfer. It is called during evalutation of a lease
+	// transfer. The returned LockAcquisition structs represent held locks that we
+	// may want to flush to disk as replicated. Since lease transfers declare
+	// latches that conflict with all requests, the caller knows that nothing is
+	// going to modify the lock table as its evaluating.
+	OnRangeLeaseTransferEval() []*roachpb.LockAcquisition
+
+	// OnRangeSubsumeEval informs the concurrency manager that the range is
+	// evaluating a merge.
+	OnRangeSubsumeEval() []*roachpb.LockAcquisition
+
 	// OnRangeLeaseUpdated informs the concurrency manager that its range's
 	// lease has been updated. The argument indicates whether this manager's
 	// replica is the leaseholder going forward.
 	OnRangeLeaseUpdated(_ roachpb.LeaseSequence, isLeaseholder bool)
 
-	// OnRangeSplit informs the concurrency manager that its range has split off
-	// a new range to its RHS.
-	OnRangeSplit()
+	// OnRangeSplit informs the concurrency manager that its range
+	// has split off a new range to its RHS. The provided key
+	// should be the new RHS StartKey (LHS EndKey). Note that this
+	// is inclusives so all locks on keys greater or equal to this
+	// key will be cleared. The returned LockAcquistion structs
+	// represent locks that we may want to acquire on the RHS
+	// replica before it is serving requests.
+	OnRangeSplit(roachpb.Key) []roachpb.LockAcquisition
 
 	// OnRangeMerge informs the concurrency manager that its range has merged
 	// into its LHS neighbor. This is not called on the LHS range being merged
@@ -741,6 +758,14 @@ type lockTable interface {
 	// QueryLockTableState returns detailed metadata on locks managed by the lockTable.
 	QueryLockTableState(span roachpb.Span, opts QueryLockTableOptions) ([]roachpb.LockStateInfo, QueryLockTableResumeState)
 
+	// ExportUnreplicatedLocks runs exporter on each held, unreplicated lock
+	// in the given span.
+	//
+	// Note that the caller is responsible for acquiring latches across the span
+	// it is exporting if it needs to be sure that the exported locks won't be
+	// updated in the lock table while it is still referencing them.
+	ExportUnreplicatedLocks(span roachpb.Span, exporter func(*roachpb.LockAcquisition))
+
 	// Metrics returns information about the state of the lockTable.
 	Metrics() LockTableMetrics
 
@@ -1029,4 +1054,8 @@ type requestQueuer interface {
 	// Clear empties the queue(s) and causes all waiting requests to
 	// return. If disable is true, future requests must not be enqueued.
 	Clear(disable bool)
+
+	// ClearGE empties the queue(s) for any keys greater or equal
+	// to than the given key.
+	ClearGE(roachpb.Key) []roachpb.LockAcquisition
 }

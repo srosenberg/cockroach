@@ -14,7 +14,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/base/serverident"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/closedts/sidetransport"
@@ -32,6 +31,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	pebbletool "github.com/cockroachdb/pebble/tool"
 	"github.com/cockroachdb/pebble/vfs"
+	"github.com/felixge/fgprof"
 	metrics "github.com/rcrowley/go-metrics"
 	"github.com/rcrowley/go-metrics/exp"
 	"github.com/spf13/cobra"
@@ -133,6 +133,12 @@ func setupProcessWideRoutes(
 		_ = dump.HTML(w)
 	}))
 
+	// WARNING: The /debug/pprof/fgprof endpoint provides wall-clock profiling for
+	// both On-CPU and Off-CPU time. While it is safe to use in production, note
+	// that profiling can introduce performance overhead, especially in
+	// applications with a large number of goroutines (>10k). Use this endpoint
+	// judiciously and monitor its impact on system performance.
+	mux.HandleFunc("/debug/pprof/fgprof", authzFunc(fgprof.Handler().ServeHTTP))
 }
 
 // NewServer sets up a debug server.
@@ -193,7 +199,7 @@ func analyzeLSM(dir string, writer io.Writer) error {
 	}
 
 	t := pebbletool.New(
-		pebbletool.Comparers(storage.EngineComparer),
+		pebbletool.Comparers(&storage.EngineComparer),
 		pebbletool.KeySchema(storage.DefaultKeySchema),
 		pebbletool.KeySchemas(storage.KeySchemas...),
 	)
@@ -244,12 +250,7 @@ func FormatLSMStats(stats map[roachpb.StoreID]string) string {
 }
 
 // RegisterEngines setups up debug engine endpoints for the known storage engines.
-func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engine) error {
-	if len(specs) != len(engines) {
-		// TODO(yevgeniy): Consider adding accessors to storage.Engine to get their path.
-		return errors.New("number of store specs must match number of engines")
-	}
-
+func (ds *Server) RegisterEngines(engines []storage.Engine) error {
 	ds.mux.HandleFunc("/debug/lsm", func(w http.ResponseWriter, req *http.Request) {
 		stats, err := GetLSMStats(engines)
 		if err != nil {
@@ -258,18 +259,18 @@ func (ds *Server) RegisterEngines(specs []base.StoreSpec, engines []storage.Engi
 		fmt.Fprint(w, FormatLSMStats(stats))
 	})
 
-	for i := 0; i < len(specs); i++ {
-		if specs[i].InMemory {
+	for _, eng := range engines {
+		dir := eng.Env().Dir
+		if dir == "" {
 			// TODO(yevgeniy): Add plumbing to support LSM visualization for in memory engines.
 			continue
 		}
 
-		storeID, err := engines[i].GetStoreID()
+		storeID, err := eng.GetStoreID()
 		if err != nil {
 			return err
 		}
 
-		dir := specs[i].Path
 		ds.mux.HandleFunc(fmt.Sprintf("/debug/lsm-viz/%d", storeID),
 			func(w http.ResponseWriter, req *http.Request) {
 				if err := analyzeLSM(dir, w); err != nil {

@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/cat"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/exec"
@@ -21,7 +20,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil"
-	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/cockroach/pkg/util/metamorphic"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -38,7 +36,14 @@ var parallelScanResultThreshold = uint64(metamorphic.ConstantWithTestRange(
 	parallelScanResultThresholdProductionValue, /* max */
 ))
 
-const parallelScanResultThresholdProductionValue = 10000
+const (
+	parallelScanResultThresholdProductionValue = 10000
+
+	// NumRecordedJoinTypes includes all join types except for
+	// descpb.RightSemiJoin and descpb.RightAntiJoin, which are recorded as left
+	// joins.
+	NumRecordedJoinTypes = 8
+)
 
 func getParallelScanResultThreshold(forceProductionValue bool) uint64 {
 	if forceProductionValue {
@@ -100,10 +105,13 @@ type Builder struct {
 
 	allowInsertFastPath bool
 
-	// forceForUpdateLocking is a set of opt catalog table IDs that serve as input
-	// for mutation operators, and should be locked using forUpdateLocking to
-	// reduce query retries.
-	forceForUpdateLocking intsets.Fast
+	// forceForUpdateLocking, if set, is the table ID of the table being mutated
+	// that should be locked using forUpdateLocking in mutation's input
+	// operators to reduce query retries. In other words, it allows us to apply
+	// the implicit locking during the initial scan of the mutation. It will
+	// only be set if we are guaranteed to never scan data that won't be
+	// mutated.
+	forceForUpdateLocking opt.TableID
 
 	// planLazySubqueries is true if the builder should plan subqueries that are
 	// lazily evaluated as routines instead of a subquery which is evaluated
@@ -154,12 +162,12 @@ type Builder struct {
 	NanosSinceStatsForecasted time.Duration
 
 	// JoinTypeCounts records the number of times each type of logical join was
-	// used in the query.
-	JoinTypeCounts map[descpb.JoinType]int
+	// used in the query, up to 255.
+	JoinTypeCounts [NumRecordedJoinTypes]uint8
 
-	// JoinAlgorithmCounts records the number of times each type of join algorithm
-	// was used in the query.
-	JoinAlgorithmCounts map[exec.JoinAlgorithm]int
+	// JoinAlgorithmCounts records the number of times each type of join
+	// algorithm was used in the query, up to 255.
+	JoinAlgorithmCounts [exec.NumJoinAlgorithms]uint8
 
 	// ScanCounts records the number of times scans were used in the query.
 	ScanCounts [exec.NumScanCountTypes]int
@@ -271,6 +279,11 @@ func New(
 		b.allowInsertFastPath = sd.InsertFastPath
 	}
 	return b
+}
+
+// DisableTelemetry disables telemetry on this Builder.
+func (b *Builder) DisableTelemetry() {
+	b.disableTelemetry = true
 }
 
 // Build constructs the execution node tree and returns its root node if no

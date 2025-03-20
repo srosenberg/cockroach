@@ -106,7 +106,6 @@ func newTestHelper(t *testing.T) (*testHelper, func()) {
 	require.NotNil(t, th.cfg)
 	th.sqlDB = sqlutils.MakeSQLRunner(db)
 	th.server = s.ApplicationLayer()
-	th.sqlDB.Exec(t, `SET CLUSTER SETTING bulkio.backup.merge_file_buffer_size = '1MiB'`)
 	th.sqlDB.Exec(t, `SET CLUSTER SETTING kv.closed_timestamp.target_duration = '100ms'`) // speeds up test
 
 	return th, func() {
@@ -149,7 +148,7 @@ func (h *testHelper) waitForSuccessfulScheduledJob(t *testing.T, scheduleID jobs
 		h.server.JobRegistry().(*jobs.Registry).TestingNudgeAdoptionQueue()
 		var unused int64
 		return h.sqlDB.DB.QueryRowContext(context.Background(),
-			query, jobs.StatusSucceeded, jobs.CreatedByScheduledJobs, scheduleID).Scan(&unused)
+			query, jobs.StateSucceeded, jobs.CreatedByScheduledJobs, scheduleID).Scan(&unused)
 	})
 }
 
@@ -164,7 +163,7 @@ func (h *testHelper) waitForSuccessfulScheduledJobCount(
 		h.server.JobRegistry().(*jobs.Registry).TestingNudgeAdoptionQueue()
 		var count int
 		err := h.sqlDB.DB.QueryRowContext(context.Background(),
-			query, jobs.StatusSucceeded, jobs.CreatedByScheduledJobs, scheduleID).Scan(&count)
+			query, jobs.StateSucceeded, jobs.CreatedByScheduledJobs, scheduleID).Scan(&count)
 		require.NoError(t, err)
 		if count != expectedCount {
 			return errors.Newf("expected %d jobs; found %d", expectedCount, count)

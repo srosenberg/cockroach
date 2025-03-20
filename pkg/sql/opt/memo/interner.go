@@ -371,6 +371,8 @@ func (h *hasher) HashDatum(val tree.Datum) {
 	case *tree.DCollatedString:
 		h.HashString(t.Locale)
 		h.HashString(t.Contents)
+	case *tree.DJsonpath:
+		h.HashString(string(*t))
 	default:
 		h.bytes, h.bytes3 = encodeDatum(h.bytes[:0], val, h.bytes3[:0])
 		h.HashBytes(h.bytes)
@@ -509,6 +511,7 @@ func (h *hasher) HashScanFlags(val ScanFlags) {
 	h.HashBool(val.NoIndexJoin)
 	h.HashBool(val.NoZigzagJoin)
 	h.HashBool(val.NoFullScan)
+	h.HashBool(val.AvoidFullScan)
 	h.HashBool(val.ForceIndex)
 	h.HashBool(val.ForceInvertedIndex)
 	h.HashBool(val.ForceZigzag)
@@ -906,6 +909,10 @@ func (h *hasher) IsDatumEqual(l, r tree.Datum) bool {
 			return false
 		}
 		return len(lt.Array) != 0 || h.IsTypeEqual(ltyp, rtyp)
+	case *tree.DJsonpath:
+		// TODO(normanchenn): Workaround until we allow jsonpath encoding.
+		rt := r.(*tree.DJsonpath)
+		return h.IsStringEqual(string(*lt), string(*rt))
 	default:
 		h.bytes, h.bytes3 = encodeDatum(h.bytes[:0], l, h.bytes3[:0])
 		h.bytes2, h.bytes3 = encodeDatum(h.bytes2[:0], r, h.bytes3[:0])

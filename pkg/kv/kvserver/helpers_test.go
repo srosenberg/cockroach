@@ -56,7 +56,7 @@ func (s *Store) Transport() *RaftTransport {
 }
 
 func (s *Store) StoreLivenessTransport() *storeliveness.Transport {
-	return s.cfg.StoreLivenessTransport
+	return s.cfg.StoreLiveness.Transport
 }
 
 func (s *Store) FindTargetAndTransferLease(
@@ -707,4 +707,9 @@ func (r *Replica) SupportFromEnabled() bool {
 // for use in tests.
 func RaftFortificationEnabledForRangeID(fracEnabled float64, rangeID roachpb.RangeID) bool {
 	return raftFortificationEnabledForRangeID(fracEnabled, rangeID)
+}
+
+// ProcessTick exports processTick for use in tests.
+func (s *Store) ProcessTick(ctx context.Context, rangeID roachpb.RangeID) {
+	s.processTick(ctx, rangeID)
 }

@@ -20,14 +20,14 @@ SELECT message FROM [SHOW KV TRACE FOR SESSION] WITH ORDINALITY
  WHERE message LIKE 'fetched:%' OR message LIKE 'output row%'
  ORDER BY message LIKE 'fetched:%' DESC, ordinality ASC
 ----
-fetched: /kv2/kv2_pkey/'a' -> <undecoded>
-fetched: /kv2/kv2_pkey/'a'/v -> 'b'
-fetched: /kv2/kv2_pkey/'c' -> <undecoded>
-fetched: /kv2/kv2_pkey/'c'/v -> 'd'
-fetched: /kv2/kv2_pkey/'e' -> <undecoded>
-fetched: /kv2/kv2_pkey/'e'/v -> 'f'
-fetched: /kv2/kv2_pkey/'f' -> <undecoded>
-fetched: /kv2/kv2_pkey/'f'/v -> 'g'
+fetched: /kv2/kv2_pkey/'a':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'a'/v:cf=1 -> 'b'
+fetched: /kv2/kv2_pkey/'c':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'c'/v:cf=1 -> 'd'
+fetched: /kv2/kv2_pkey/'e':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'e'/v:cf=1 -> 'f'
+fetched: /kv2/kv2_pkey/'f':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'f'/v:cf=1 -> 'g'
 output row: ['a' 'b']
 output row: ['c' 'd']
 output row: ['e' 'f']
@@ -61,14 +61,14 @@ SELECT message FROM [SHOW KV TRACE FOR SESSION] WITH ORDINALITY
  WHERE message LIKE 'fetched:%' OR message LIKE 'output row%'
  ORDER BY message LIKE 'fetched:%' DESC, ordinality ASC
 ----
-fetched: /kv2/kv2_pkey/'a' -> <undecoded>
-fetched: /kv2/kv2_pkey/'a'/v -> 'b'
-fetched: /kv2/kv2_pkey/'c' -> <undecoded>
-fetched: /kv2/kv2_pkey/'c'/v -> 'd'
-fetched: /kv2/kv2_pkey/'e' -> <undecoded>
-fetched: /kv2/kv2_pkey/'e'/v -> 'f'
-fetched: /kv2/kv2_pkey/'f' -> <undecoded>
-fetched: /kv2/kv2_pkey/'f'/v -> 'g'
+fetched: /kv2/kv2_pkey/'a':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'a'/v:cf=1 -> 'b'
+fetched: /kv2/kv2_pkey/'c':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'c'/v:cf=1 -> 'd'
+fetched: /kv2/kv2_pkey/'e':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'e'/v:cf=1 -> 'f'
+fetched: /kv2/kv2_pkey/'f':cf=0 -> <undecoded>
+fetched: /kv2/kv2_pkey/'f'/v:cf=1 -> 'g'
 output row: ['a' 'b']
 output row: ['c' 'd']
 output row: ['e' 'f']
@@ -201,6 +201,9 @@ CREATE INDEX y_idx ON xyz (y)
 
 # Ensure that we can use a hint to avoid a full table scan.
 
+statement ok
+SET avoid_full_table_scans_in_mutations = false
+
 # Without the hint, we plan a full table scan.
 query T
 EXPLAIN (VERBOSE) UPDATE xyz SET x = 5 WHERE (y > 0 AND y < 1000) OR (y > 2000 AND y < 3000)
@@ -268,6 +271,80 @@ vectorized: true
               spans: /1-/1000 /2001-/3000
               locking strength: for update
 
+# AVOID_FULL_SCAN also works to ensure a constrained scan.
+query T
+EXPLAIN (VERBOSE) UPDATE xyz@{AVOID_FULL_SCAN} SET x = 5 WHERE (y > 0 AND y < 1000) OR (y > 2000 AND y < 3000)
+----
+distribution: local
+vectorized: true
+·
+• update
+│ columns: ()
+│ estimated row count: 0 (missing stats)
+│ table: xyz
+│ set: x
+│ auto commit
+│
+└── • render
+    │ columns: (x, y, z, x_new)
+    │ render x_new: 5
+    │ render x: x
+    │ render y: y
+    │ render z: z
+    │
+    └── • index join
+        │ columns: (x, y, z)
+        │ estimated row count: 990 (missing stats)
+        │ table: xyz@xyz_pkey
+        │ key columns: x
+        │ locking strength: for update
+        │
+        └── • scan
+              columns: (x, y)
+              estimated row count: 990 (missing stats)
+              table: xyz@y_idx
+              spans: /1-/1000 /2001-/3000
+              locking strength: for update
+
+# We also avoid the full scan using the session setting
+# avoid_full_table_scans_in_mutations.
+statement ok
+SET avoid_full_table_scans_in_mutations = true
+
+query T
+EXPLAIN (VERBOSE) UPDATE xyz SET x = 5 WHERE (y > 0 AND y < 1000) OR (y > 2000 AND y < 3000)
+----
+distribution: local
+vectorized: true
+·
+• update
+│ columns: ()
+│ estimated row count: 0 (missing stats)
+│ table: xyz
+│ set: x
+│ auto commit
+│
+└── • render
+    │ columns: (x, y, z, x_new)
+    │ render x_new: 5
+    │ render x: x
+    │ render y: y
+    │ render z: z
+    │
+    └── • index join
+        │ columns: (x, y, z)
+        │ estimated row count: 990 (missing stats)
+        │ table: xyz@xyz_pkey
+        │ key columns: x
+        │ locking strength: for update
+        │
+        └── • scan
+              columns: (x, y)
+              estimated row count: 990 (missing stats)
+              table: xyz@y_idx
+              spans: /1-/1000 /2001-/3000
+              locking strength: for update
+
 statement ok
 CREATE TABLE pks (
   k1 INT,
@@ -298,8 +375,8 @@ SELECT message FROM [SHOW KV TRACE FOR SESSION] WITH ORDINALITY
  WHERE message LIKE 'fetched:%' OR message LIKE 'output row%'
  ORDER BY message LIKE 'fetched:%' DESC, ordinality ASC
 ----
-fetched: /pks/pks_pkey/2/2 -> <undecoded>
-fetched: /pks/pks_pkey/2/2/v -> 3
+fetched: /pks/pks_pkey/2/2:cf=0 -> <undecoded>
+fetched: /pks/pks_pkey/2/2/v:cf=1 -> 3
 output row: [2 2 3]
 
 # Check that UPDATE properly supports ORDER BY (MySQL extension)
@@ -806,9 +883,9 @@ SELECT message FROM [SHOW KV TRACE FOR SESSION]
  WHERE operation != 'dist sender send'
 ----
 Scan /Table/115/{1-2} lock Exclusive (Block, Unreplicated)
-fetched: /tu/tu_pkey/1 -> <undecoded>
-fetched: /tu/tu_pkey/1 -> <undecoded>
-fetched: /tu/tu_pkey/1/c/d -> /3/4
+fetched: /tu/tu_pkey/1:cf=0 -> <undecoded>
+fetched: /tu/tu_pkey/1:cf=1 -> <undecoded>
+fetched: /tu/tu_pkey/1/c/d:cf=2 -> /3/4
 Put /Table/115/1/1/2/1 -> /TUPLE/3:3:Int/4/1:4:Int/4
 fast path completed
 rows affected: 1
@@ -821,11 +898,11 @@ SELECT message FROM [SHOW KV TRACE FOR SESSION]
  WHERE operation != 'dist sender send'
 ----
 Scan /Table/115/{1-2} lock Exclusive (Block, Unreplicated)
-fetched: /tu/tu_pkey/1 -> <undecoded>
-fetched: /tu/tu_pkey/1/b -> 2
-fetched: /tu/tu_pkey/1/c/d -> /4/4
-Del /Table/115/1/1/1/1
-Del /Table/115/1/1/2/1
+fetched: /tu/tu_pkey/1:cf=0 -> <undecoded>
+fetched: /tu/tu_pkey/1/b:cf=1 -> 2
+fetched: /tu/tu_pkey/1/c/d:cf=2 -> /4/4
+Del (locking) /Table/115/1/1/1/1
+Del (locking) /Table/115/1/1/2/1
 fast path completed
 rows affected: 1
 
@@ -935,7 +1012,7 @@ quality of service: regular
 • update
 │ sql nodes: <hidden>
 │ regions: <hidden>
-│ actual row count: 1
+│ actual row count: 0
 │ table: t137352
 │ set: b
 │ auto commit
@@ -988,7 +1065,7 @@ quality of service: regular
 • update
 │ sql nodes: <hidden>
 │ regions: <hidden>
-│ actual row count: 1
+│ actual row count: 0
 │ table: t137352
 │ set: b
 │ auto commit
@@ -1056,7 +1133,7 @@ quality of service: regular
 • update
 │ sql nodes: <hidden>
 │ regions: <hidden>
-│ actual row count: 1
+│ actual row count: 0
 │ table: t137352
 │ set: b
 │ auto commit
@@ -1122,7 +1199,7 @@ quality of service: regular
 • update
 │ sql nodes: <hidden>
 │ regions: <hidden>
-│ actual row count: 1
+│ actual row count: 0
 │ table: t137352
 │ set: b
 │ auto commit

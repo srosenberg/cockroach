@@ -74,8 +74,8 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 						"timing": {},
 					},
 					"github.com/cockroachdb/cockroach/pkg/jobs": {
-						"RunningStatus": {},
-						"Status":        {},
+						"StatusMessage": {},
+						"State":         {},
 					},
 					"github.com/cockroachdb/cockroach/pkg/jobs/jobspb": {
 						"Type":                      {},
@@ -135,7 +135,7 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 					"github.com/cockroachdb/cockroach/pkg/kv/kvserver/storeliveness/storelivenesspb": {
 						"Epoch": {},
 					},
-					"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilities": {
+					"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilitiespb": {
 						"ID": {},
 					},
 					"github.com/cockroachdb/cockroach/pkg/raft/raftpb": {
@@ -173,8 +173,10 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 						"LicType": {},
 					},
 					"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb": {
-						"JobID":      {},
-						"ScheduleID": {},
+						"JobID":         {},
+						"PolicyCommand": {},
+						"PolicyType":    {},
+						"ScheduleID":    {},
 					},
 					"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb": {
 						"ConstraintValidity":           {},
@@ -211,6 +213,10 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 						"Phase": {},
 						"Type":  {},
 					},
+					"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scpb": {
+						"Status":       {},
+						"TargetStatus": {},
+					},
 					"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scplan/internal/scgraph": {
 						"RuleName": {},
 					},
@@ -222,6 +228,7 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 						"IndexID":        {},
 						"PGAttributeNum": {},
 						"TriggerID":      {},
+						"PolicyID":       {},
 					},
 					"github.com/cockroachdb/cockroach/pkg/sql/sem/tree": {
 						"IsolationLevel": {},
@@ -251,6 +258,12 @@ func runAnalyzer(pass *analysis.Pass) (interface{}, error) {
 						"ClockTimestamp":  {},
 						"LegacyTimestamp": {},
 						"Timestamp":       {},
+					},
+					"github.com/cockroachdb/cockroach/pkg/util/uuid": {
+						"Bytes":     {},
+						"Short":     {},
+						"UUID":      {},
+						"Timestamp": {},
 					},
 					"github.com/cockroachdb/pebble": {
 						"FormatMajorVersion": {},

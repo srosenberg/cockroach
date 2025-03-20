@@ -49,19 +49,19 @@ var (
 	// User-visible health and ops metrics.
 	metaRetryQueueBytes = metric.Metadata{
 		Name:        "logical_replication.retry_queue_bytes",
-		Help:        "The replicated time of the logical replication stream in seconds since the unix epoch.",
+		Help:        "Logical bytes (sum of keys+values) in the retry queue",
 		Measurement: "Bytes",
 		Unit:        metric.Unit_BYTES,
 	}
 	metaRetryQueueEvents = metric.Metadata{
 		Name:        "logical_replication.retry_queue_events",
-		Help:        "The replicated time of the logical replication stream in seconds since the unix epoch.",
+		Help:        "Row update events in the retry queue",
 		Measurement: "Events",
 		Unit:        metric.Unit_COUNT,
 	}
 	metaApplyBatchNanosHist = metric.Metadata{
 		Name:        "logical_replication.batch_hist_nanos",
-		Help:        "Time spent flushing a batch",
+		Help:        "Time spent per row flushing a batch",
 		Measurement: "Nanoseconds",
 		Unit:        metric.Unit_NANOSECONDS,
 	}

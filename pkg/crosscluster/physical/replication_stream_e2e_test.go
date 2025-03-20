@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
@@ -34,6 +36,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/jobutils"
+	"github.com/cockroachdb/cockroach/pkg/testutils/pgurlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
@@ -50,6 +53,53 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestPCRPrivs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	args := replicationtestutils.DefaultTenantStreamingClustersArgs
+	c, cleanup := replicationtestutils.CreateTenantStreamingClusters(ctx, t, args)
+	defer cleanup()
+
+	c.DestSysSQL.Exec(t, fmt.Sprintf("CREATE USER %s", username.TestUser))
+	c.SrcSysSQL.Exec(t, fmt.Sprintf("CREATE USER %s", username.TestUser+"2"))
+	testuser := sqlutils.MakeSQLRunner(c.DestSysServer.SQLConn(t, serverutils.User(username.TestUser)))
+	srcURL, cleanupSinkCert := pgurlutils.PGUrl(t, c.SrcSysServer.AdvSQLAddr(), t.Name(), url.User(username.TestUser+"2"))
+	defer cleanupSinkCert()
+
+	streamReplStmt := fmt.Sprintf("CREATE TENANT %s FROM REPLICATION OF %s ON '%s'",
+		c.Args.DestTenantName,
+		c.Args.SrcTenantName,
+		srcURL.String())
+
+	// Dest user requires both the MANAGEVIRTUALCLUSTER and REPLICATIONDEST system privileges.
+	testuser.ExpectErr(t, "user testuser does not have MANAGEVIRTUALCLUSTER system privilege", streamReplStmt)
+
+	c.DestSysSQL.Exec(t, fmt.Sprintf("GRANT SYSTEM MANAGEVIRTUALCLUSTER TO %s", username.TestUser))
+	testuser.ExpectErr(t, "user testuser does not have REPLICATIONDEST system privilege", streamReplStmt)
+
+	c.DestSysSQL.Exec(t, fmt.Sprintf("GRANT SYSTEM REPLICATIONDEST TO %s", username.TestUser))
+
+	// Ensure the source user has the REPLICATION privilege.
+	testuser.ExpectErr(t, "user testuser2 does not have REPLICATIONSOURCE system privilege", streamReplStmt)
+	sourcePriv := "REPLICATIONSOURCE"
+	if c.Rng.Intn(3) == 0 {
+		// Test deprecated privilege name.
+		sourcePriv = "REPLICATION"
+	}
+	c.SrcSysSQL.Exec(t, fmt.Sprintf("GRANT SYSTEM %s TO %s", sourcePriv, username.TestUser+"2"))
+	c.DestSysSQL.Exec(t, streamReplStmt)
+
+	// Ensure job based auth allows the replication to proceed.
+	var ingestionJobID jobspb.JobID
+	c.DestSysSQL.QueryRow(t, "SELECT id FROM system.jobs WHERE job_type = 'REPLICATION STREAM INGESTION'").Scan(&ingestionJobID)
+	jobutils.WaitForJobToRun(c.T, c.DestSysSQL, ingestionJobID)
+
+	srcTime := c.SrcSysServer.Clock().Now()
+	c.WaitUntilReplicatedTime(srcTime, ingestionJobID)
+
+}
 func TestTenantStreamingProducerJobTimedOut(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
@@ -63,24 +113,24 @@ func TestTenantStreamingProducerJobTimedOut(t *testing.T) {
 
 	jobutils.WaitForJobToRun(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
 	jobutils.WaitForJobToRun(c.T, c.DestSysSQL, jobspb.JobID(ingestionJobID))
-	c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION EXPIRATION WINDOW ='1m'`, c.Args.SrcTenantName))
+	c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION SOURCE EXPIRATION WINDOW ='1m'`, c.Args.SrcTenantName))
 
 	srcTime := c.SrcCluster.Server(0).Clock().Now()
 	c.WaitUntilReplicatedTime(srcTime, jobspb.JobID(ingestionJobID))
 
-	stats := replicationutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL, ingestionJobID)
+	stats := replicationtestutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL, ingestionJobID)
 
 	require.NotNil(t, stats.ReplicationLagInfo)
 	require.True(t, srcTime.LessEq(stats.ReplicationLagInfo.MinIngestedTimestamp))
 
 	// Make producer job easily times out
-	c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION EXPIRATION WINDOW ='100ms'`, c.Args.SrcTenantName))
+	c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION SOURCE EXPIRATION WINDOW ='100ms'`, c.Args.SrcTenantName))
 
 	jobutils.WaitForJobToFail(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
 	// The ingestion job will stop retrying as this is a permanent job error.
 	jobutils.WaitForJobToPause(c.T, c.DestSysSQL, jobspb.JobID(ingestionJobID))
 	require.Regexp(t, "ingestion job failed .* but is being paused",
-		replicationtestutils.RunningStatus(t, c.DestSysSQL, ingestionJobID))
+		replicationtestutils.GetStatusMesssage(t, c.DestSysSQL, ingestionJobID))
 
 	ts := c.DestCluster.Server(0).Clock().Now()
 	afterPauseFingerprint := replicationtestutils.FingerprintTenantAtTimestampNoHistory(t, c.DestSysSQL, c.Args.DestTenantName, ts.AsOfSystemTime())
@@ -98,6 +148,42 @@ func TestTenantStreamingProducerJobTimedOut(t *testing.T) {
 	// After resumed, the ingestion job paused on failure again.
 	c.DestSysSQL.Exec(t, fmt.Sprintf("RESUME JOB %d", ingestionJobID))
 	jobutils.WaitForJobToPause(c.T, c.DestSysSQL, jobspb.JobID(ingestionJobID))
+}
+
+func TestFailbackFailsWithExpiredPTS(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	skip.UnderDeadlock(t, "takes too long")
+
+	ctx := context.Background()
+	args := replicationtestutils.DefaultTenantStreamingClustersArgs
+	c, cleanup := replicationtestutils.CreateTenantStreamingClusters(ctx, t, args)
+	defer cleanup()
+
+	producerJobID, ingestionJobID := c.StartStreamReplication(ctx)
+
+	jobutils.WaitForJobToRun(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
+	jobutils.WaitForJobToRun(c.T, c.DestSysSQL, jobspb.JobID(ingestionJobID))
+
+	// init cutover
+	srcTime := c.SrcCluster.Server(0).Clock().Now()
+	c.WaitUntilReplicatedTime(srcTime, jobspb.JobID(ingestionJobID))
+	c.Cutover(ctx, producerJobID, ingestionJobID, srcTime.GoTime(), false)
+
+	// Make producer job pts job easily time out
+	c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION SOURCE EXPIRATION WINDOW ='10ms'`, c.Args.SrcTenantName))
+	jobutils.WaitForJobToSucceed(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
+
+	destPgURL, cleanupSinkCert := pgurlutils.PGUrl(t, c.DestSysServer.AdvSQLAddr(), t.Name(), url.User(username.RootUser))
+	defer cleanupSinkCert()
+
+	c.SrcSysSQL.Exec(t, fmt.Sprintf("ALTER VIRTUAL CLUSTER '%s' STOP SERVICE", c.Args.SrcTenantName))
+	waitUntilTenantServerStopped(t, c.DestSysServer, string(c.Args.SrcTenantName))
+
+	c.SrcSysSQL.ExpectErr(c.T, `cannot resume replication into tenant`,
+		`ALTER TENANT $1 START REPLICATION OF $2 ON $3`,
+		args.SrcTenantName, args.DestTenantName, destPgURL.String())
 }
 
 // TestTenantStreamingJobRetryReset tests that the job level retry counter
@@ -183,7 +269,7 @@ func TestTenantStreamingPauseResumeIngestion(t *testing.T) {
 	// Pause ingestion.
 	c.DestSysSQL.Exec(t, fmt.Sprintf("PAUSE JOB %d", ingestionJobID))
 	jobutils.WaitForJobToPause(t, c.DestSysSQL, jobspb.JobID(ingestionJobID))
-	pausedCheckpoint := replicationutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL, ingestionJobID).
+	pausedCheckpoint := replicationtestutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL, ingestionJobID).
 		ReplicationLagInfo.MinIngestedTimestamp
 	// Check we paused at a timestamp greater than the previously reached high watermark
 	require.True(t, srcTime.LessEq(pausedCheckpoint))
@@ -194,7 +280,7 @@ func TestTenantStreamingPauseResumeIngestion(t *testing.T) {
 	// to src cluster checkpoints events, the job high watermark may change.
 	<-time.NewTimer(3 * time.Second).C
 	require.Equal(t, pausedCheckpoint,
-		replicationutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL,
+		replicationtestutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL,
 			ingestionJobID).ReplicationLagInfo.MinIngestedTimestamp)
 
 	// Resume ingestion.
@@ -242,7 +328,7 @@ func TestTenantStreamingPauseOnPermanentJobError(t *testing.T) {
 	require.Equal(t, 2, ingestionStarts)
 
 	// Check we didn't make any progress.
-	require.Nil(t, replicationutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL,
+	require.Nil(t, replicationtestutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL,
 		ingestionJobID).ReplicationLagInfo)
 
 	// Resume ingestion.
@@ -643,7 +729,7 @@ func TestTenantStreamingDeleteRange(t *testing.T) {
 				storageutils.RangeKV(string(tableSpan.Key), string(tableSpan.EndKey), int(batchHLCTime.WallTime), ""),
 			})
 			_, _, _, err := c.SrcSysServer.DB().AddSSTableAtBatchTimestamp(ctx, start, end, data, false,
-				false, hlc.Timestamp{}, nil, false, batchHLCTime)
+				hlc.Timestamp{}, nil, false, batchHLCTime)
 			require.NoError(t, err)
 		} else {
 			// Use DelRange directly.
@@ -665,76 +751,6 @@ func TestTenantStreamingDeleteRange(t *testing.T) {
 	// can work on multiple flushes.
 	checkDelRangeOnTable("t1", true /* embeddedInSST */)
 	checkDelRangeOnTable("t2", false /* embeddedInSST */)
-}
-
-func TestTenantStreamingMultipleNodes(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	defer log.Scope(t).Close(t)
-
-	skip.UnderDeadlock(t, "multi-node may time out under deadlock")
-	skip.UnderRace(t, "multi-node test may time out under race")
-
-	ctx := context.Background()
-
-	testutils.RunTrueAndFalse(t, "fromSystem", func(t *testing.T, sys bool) {
-		args := replicationtestutils.DefaultTenantStreamingClustersArgs
-		args.MultitenantSingleClusterNumNodes = 3
-
-		// Track the number of unique addresses that were connected to
-		clientAddresses := make(map[string]struct{})
-		var addressesMu syncutil.Mutex
-		args.TestingKnobs = &sql.StreamingTestingKnobs{
-			BeforeClientSubscribe: func(addr string, token string, _ span.Frontier, _ bool) {
-				addressesMu.Lock()
-				defer addressesMu.Unlock()
-				clientAddresses[addr] = struct{}{}
-			},
-		}
-
-		if sys {
-			args.SrcTenantID = roachpb.SystemTenantID
-			args.SrcTenantName = "system"
-		}
-		telemetry.GetFeatureCounts(telemetry.Raw, telemetry.ResetCounts)
-		c, cleanup := replicationtestutils.CreateMultiTenantStreamingCluster(ctx, t, args)
-		defer cleanup()
-
-		// Make sure we have data on all nodes, so that we will have multiple
-		// connections and client addresses (and actually test multi-node).
-		replicationtestutils.CreateScatteredTable(t, c, 3)
-
-		producerJobID, ingestionJobID := c.StartStreamReplication(ctx)
-		jobutils.WaitForJobToRun(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
-		jobutils.WaitForJobToRun(c.T, c.DestSysSQL, jobspb.JobID(ingestionJobID))
-
-		c.SrcExec(func(t *testing.T, sysSQL *sqlutils.SQLRunner, tenantSQL *sqlutils.SQLRunner) {
-			tenantSQL.Exec(t, "CREATE TABLE d.x (id INT PRIMARY KEY, n INT)")
-			tenantSQL.Exec(t, "INSERT INTO d.x VALUES (1, 1)")
-		})
-
-		c.DestSysSQL.Exec(t, `PAUSE JOB $1`, ingestionJobID)
-		jobutils.WaitForJobToPause(t, c.DestSysSQL, jobspb.JobID(ingestionJobID))
-		c.SrcExec(func(t *testing.T, sysSQL *sqlutils.SQLRunner, tenantSQL *sqlutils.SQLRunner) {
-			tenantSQL.Exec(t, "INSERT INTO d.x VALUES (2, 2)")
-		})
-		c.DestSysSQL.Exec(t, `RESUME JOB $1`, ingestionJobID)
-		jobutils.WaitForJobToRun(t, c.DestSysSQL, jobspb.JobID(ingestionJobID))
-
-		c.SrcExec(func(t *testing.T, sysSQL *sqlutils.SQLRunner, tenantSQL *sqlutils.SQLRunner) {
-			tenantSQL.Exec(t, "INSERT INTO d.x VALUES (3, 3)")
-		})
-
-		c.WaitUntilStartTimeReached(jobspb.JobID(ingestionJobID))
-
-		cutoverTime := c.DestSysServer.Clock().Now()
-		c.Cutover(ctx, producerJobID, ingestionJobID, cutoverTime.GoTime(), false)
-		counts := telemetry.GetFeatureCounts(telemetry.Raw, telemetry.ResetCounts)
-		require.GreaterOrEqual(t, counts["physical_replication.cutover"], int32(1))
-		c.RequireFingerprintMatchAtTimestamp(cutoverTime.AsOfSystemTime())
-
-		// Since the data was distributed across multiple nodes, multiple nodes should've been connected to
-		require.Greater(t, len(clientAddresses), 1)
-	})
 }
 
 func TestSpecsPersistedOnlyAfterInitialPlan(t *testing.T) {
@@ -787,6 +803,7 @@ func TestStreamingAutoReplan(t *testing.T) {
 	ctx := context.Background()
 	args := replicationtestutils.DefaultTenantStreamingClustersArgs
 	args.MultitenantSingleClusterNumNodes = 1
+	args.RoutingMode = streamclient.RoutingModeNode
 
 	retryErrorChan := make(chan error)
 	turnOffReplanning := make(chan struct{})
@@ -802,7 +819,6 @@ func TestStreamingAutoReplan(t *testing.T) {
 			clientAddresses[addr] = struct{}{}
 		},
 		AfterRetryIteration: func(err error) {
-
 			if err != nil && !alreadyReplanned.Load() {
 				retryErrorChan <- err
 				<-turnOffReplanning
@@ -1065,7 +1081,7 @@ func TestProtectedTimestampManagement(t *testing.T) {
 				jobutils.WaitForJobToRun(c.T, c.DestSysSQL, jobspb.JobID(replicationJobID))
 				var emptyCutoverTime time.Time
 				c.Cutover(ctx, producerJobID, replicationJobID, emptyCutoverTime, false)
-				c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION EXPIRATION WINDOW ='100ms'`, c.Args.SrcTenantName))
+				c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION SOURCE EXPIRATION WINDOW ='100ms'`, c.Args.SrcTenantName))
 			}
 
 			// Set GC TTL low, so that the GC job completes quickly in the test.
@@ -1073,7 +1089,7 @@ func TestProtectedTimestampManagement(t *testing.T) {
 			c.DestSysSQL.Exec(t, fmt.Sprintf("DROP TENANT %s", c.Args.DestTenantName))
 
 			if !completeReplication {
-				c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION EXPIRATION WINDOW ='1ms'`, c.Args.SrcTenantName))
+				c.SrcSysSQL.Exec(t, fmt.Sprintf(`ALTER TENANT '%s' SET REPLICATION SOURCE EXPIRATION WINDOW ='1ms'`, c.Args.SrcTenantName))
 				jobutils.WaitForJobToCancel(c.T, c.DestSysSQL, jobspb.JobID(replicationJobID))
 				jobutils.WaitForJobToFail(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
 			}
@@ -1116,9 +1132,10 @@ func TestTenantStreamingShowTenant(t *testing.T) {
 	rowStr := c.DestSysSQL.QueryStr(t, fmt.Sprintf("SHOW TENANT %s WITH REPLICATION STATUS", args.DestTenantName))
 	require.Equal(t, "2", rowStr[0][0])
 	require.Equal(t, "destination", rowStr[0][1])
-	if rowStr[0][3] == "NULL" {
+	require.Equal(t, fmt.Sprintf("%d", ingestionJobID), rowStr[0][2])
+	if rowStr[0][4] == "NULL" {
 		// There is no source yet, therefore the replication is not fully initialized.
-		require.Equal(t, "initializing replication", rowStr[0][2])
+		require.Equal(t, "initializing replication", rowStr[0][3])
 	}
 
 	jobutils.WaitForJobToRun(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
@@ -1133,6 +1150,7 @@ func TestTenantStreamingShowTenant(t *testing.T) {
 	var (
 		id             int
 		dest           string
+		jobID          int
 		status         string
 		source         string
 		sourceUri      string
@@ -1142,13 +1160,14 @@ func TestTenantStreamingShowTenant(t *testing.T) {
 		cutoverTime    []byte // should be nil
 	)
 	row := c.DestSysSQL.QueryRow(t, fmt.Sprintf("SHOW TENANT %s WITH REPLICATION STATUS", args.DestTenantName))
-	row.Scan(&id, &dest, &source, &sourceUri, &protectedTime, &maxReplTime, &replicationLag, &cutoverTime, &status)
+	row.Scan(&id, &dest, &jobID, &source, &sourceUri, &protectedTime, &maxReplTime, &replicationLag, &cutoverTime, &status)
 	require.Equal(t, 2, id)
+	require.Equal(t, ingestionJobID, jobID)
 	require.Equal(t, "destination", dest)
 	require.Equal(t, "replicating", status)
-	expectedURI, err := streamclient.RedactSourceURI(c.SrcURL.String())
+	parsedUri, err := streamclient.ParseClusterUri(c.SrcURL.String())
 	require.NoError(t, err)
-	require.Equal(t, expectedURI, sourceUri)
+	require.Equal(t, parsedUri.Redacted(), sourceUri)
 	require.Less(t, maxReplTime, timeutil.Now())
 	require.Less(t, protectedTime, timeutil.Now())
 	require.GreaterOrEqual(t, maxReplTime, targetReplicatedTime.GoTime())
@@ -1313,6 +1332,7 @@ func TestStreamingRegionalConstraint(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 	skip.UnderRace(t, "takes too long under race")
+	skip.UnderDeadlock(t, "takes too long under deadlock")
 
 	testutils.RunTrueAndFalse(t, "fromSys", func(t *testing.T, sys bool) {
 		ctx := context.Background()
@@ -1534,7 +1554,7 @@ func TestReplicationJobWithReaderTenant(t *testing.T) {
 	srcTime := c.SrcCluster.Server(0).Clock().Now()
 	c.WaitUntilReplicatedTime(srcTime, jobspb.JobID(ingestionJobID))
 
-	stats := replicationutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL, ingestionJobID)
+	stats := replicationtestutils.TestingGetStreamIngestionStatsFromReplicationJob(t, ctx, c.DestSysSQL, ingestionJobID)
 	require.NotNil(t, stats.IngestionDetails.ReadTenantID)
 
 	var (

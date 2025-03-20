@@ -32,6 +32,8 @@ source $root/build/teamcity/util/roachtest_util.sh
 # Standard release branches are in the format `release-24.1` for the
 # 24.1 release, for example.
 release_branch_regex="^release-[0-9][0-9]\.[0-9]"
+# Test selection is enabled only on release branches.
+selective_tests="false"
 
 if [[ "${TC_BUILD_BRANCH}" == "master" ]]; then
   # We default to using test selection on master, unless explicitly
@@ -49,7 +51,7 @@ elif [[ "${TC_BUILD_BRANCH}" =~ ${release_branch_regex}\.[0-9]{1,2}-rc$ ]]; then
   # NOTE: in the future, instead of choosing the tests randomly as we
   # do here, we plan to utilize a smarter test selection strategy (see
   # #119630).
-  select_probability="--select_probability=0.4"
+  select_probability="--select-probability=0.4"
 elif [[ "${TC_BUILD_BRANCH}" =~ ^release- && "${ROACHTEST_FORCE_RUN_INVALID_RELEASE_BRANCH}" != "true" ]]; then
   # The only valid release branches are the ones handled above. That
   # said, from time to time we might have cases where a branch with
@@ -98,5 +100,6 @@ build/teamcity-roachtest-invoke.sh \
   --selective-tests="${selective_tests:-false}" \
   --side-eye-token="${SIDE_EYE_API_TOKEN}" \
   --export-openmetrics="${EXPORT_OPENMETRICS:-false}" \
+  --openmetrics-labels="branch=$(tc_build_branch), cpu-arch=${arch}, suite=nightly" \
   ${EXTRA_ROACHTEST_ARGS:+$EXTRA_ROACHTEST_ARGS} \
   "${TESTS}"

@@ -83,7 +83,9 @@ type Test interface {
 
 	Go(task.Func, ...task.Option)
 	GoWithCancel(task.Func, ...task.Option) context.CancelFunc
-	NewGroup() task.Group
+	NewGroup(...task.Option) task.Group
+	NewErrorGroup(...task.Option) task.ErrorGroup
+	Monitor() Monitor
 
 	// DeprecatedWorkload returns the path to the workload binary.
 	// Don't use this, invoke `./cockroach workload` instead.
@@ -98,4 +100,7 @@ type Test interface {
 	// GetRunId returns the run id of the roachtest run, this is set to build id
 	// when ran from teamcity
 	GetRunId() string
+
+	// Owner returns the owner of the test
+	Owner() string
 }

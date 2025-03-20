@@ -368,7 +368,6 @@ func TestAlterTableDMLInjection(t *testing.T) {
 			// Run a query against the secondary index at each stage.
 			query:        "SELECT operation FROM tbl@i1",
 			schemaChange: "ALTER TABLE tbl ALTER PRIMARY KEY USING COLUMNS (insert_phase_ordinal, operation_phase_ordinal, operation)",
-			skipIssue:    133129,
 		},
 		{
 			desc:        "alter primary key using columns using hash",
@@ -378,6 +377,14 @@ func TestAlterTableDMLInjection(t *testing.T) {
 				"ALTER TABLE tbl ADD PRIMARY KEY (id)",
 			},
 			schemaChange: "ALTER TABLE tbl ALTER PRIMARY KEY USING COLUMNS (insert_phase_ordinal, operation_phase_ordinal, operation) USING HASH",
+		},
+		{
+			desc: "drop a column with a check constraint while querying pg_constraint",
+			setup: []string{
+				"ALTER TABLE tbl ADD COLUMN i INT CHECK (i is NOT NULL) DEFAULT 10",
+			},
+			schemaChange: "ALTER TABLE tbl DROP COLUMN i",
+			query:        "select * from pg_catalog.pg_constraint",
 		},
 		{
 			desc:         "create index",

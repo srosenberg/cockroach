@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backuppb"
+	"github.com/cockroachdb/cockroach/pkg/backup/backupsink"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -67,12 +68,6 @@ var (
 		"amount of time after which a read attempt is considered timed out, which causes the backup to fail",
 		time.Minute*5,
 		settings.NonNegativeDuration,
-		settings.WithPublic)
-	targetFileSize = settings.RegisterByteSizeSetting(
-		settings.ApplicationLevel,
-		"bulkio.backup.file_size",
-		"target size for individual data files produced during BACKUP",
-		128<<20,
 		settings.WithPublic)
 
 	preSplitExports = settings.RegisterBoolSetting(
@@ -142,7 +137,7 @@ type backupDataProcessor struct {
 
 	// Aggregator that aggregates StructuredEvents emitted in the
 	// backupDataProcessors' trace recording.
-	agg      *bulk.TracingAggregator
+	agg      *tracing.TracingAggregator
 	aggTimer timeutil.Timer
 
 	// completedSpans tracks how many spans have been successfully backed up by
@@ -199,7 +194,7 @@ func (bp *backupDataProcessor) Start(ctx context.Context) {
 
 	// Construct an Aggregator to aggregate and render AggregatorEvents emitted in
 	// bps' trace recording.
-	bp.agg = bulk.TracingAggregatorForContext(ctx)
+	bp.agg = tracing.TracingAggregatorForContext(ctx)
 	// If the aggregator is nil, we do not want the timer to fire.
 	if bp.agg != nil {
 		bp.aggTimer.Reset(15 * time.Second)
@@ -301,14 +296,6 @@ type spanAndTime struct {
 	finishesSpec bool
 }
 
-type exportedSpan struct {
-	metadata       backuppb.BackupManifest_File
-	dataSST        []byte
-	revStart       hlc.Timestamp
-	completedSpans int32
-	resumeKey      roachpb.Key
-}
-
 func runBackupProcessor(
 	ctx context.Context,
 	flowCtx *execinfra.FlowCtx,
@@ -403,11 +390,12 @@ func runBackupProcessor(
 		return err
 	}
 
-	sinkConf := sstSinkConf{
-		id:       flowCtx.NodeID.SQLInstanceID(),
-		enc:      spec.Encryption,
-		progCh:   progCh,
-		settings: &flowCtx.Cfg.Settings.SV,
+	sinkConf := backupsink.SSTSinkConf{
+		ID:        flowCtx.NodeID.SQLInstanceID(),
+		Enc:       spec.Encryption,
+		ProgCh:    progCh,
+		Settings:  &flowCtx.Cfg.Settings.SV,
+		ElideMode: spec.ElidePrefix,
 	}
 	storage, err := flowCtx.Cfg.ExternalStorage(ctx, dest, cloud.WithClientName("backup"))
 	if err != nil {
@@ -473,15 +461,13 @@ func runBackupProcessor(
 		// It is safe to close a nil pacer.
 		defer pacer.Close()
 
-		sink := makeFileSSTSink(sinkConf, storage, pacer)
+		sink := backupsink.MakeFileSSTSink(sinkConf, storage, pacer)
 		defer func() {
-			if err := sink.flush(ctx); err != nil {
+			if err := sink.Flush(ctx); err != nil {
 				log.Warningf(ctx, "failed to flush SST sink: %s", err)
 			}
 			logClose(ctx, sink, "SST sink")
 		}()
-
-		sink.elideMode = spec.ElidePrefix
 
 		// priority becomes true when we're sending re-attempts of reads far enough
 		// in the past that we want to run them with priority.
@@ -571,12 +557,19 @@ func runBackupProcessor(
 							redact.Sprintf("ExportRequest for span %s", span.span),
 							timeoutPerAttempt.Get(&clusterSettings.SV), func(ctx context.Context) error {
 								sp := tracing.SpanFromContext(ctx)
+								tracer := sp.Tracer()
+								if tracer == nil {
+									tracer = flowCtx.Cfg.Tracer
+								}
+								if tracer == nil {
+									log.Warning(ctx, "nil tracer in backup processor")
+								}
 								opts := make([]tracing.SpanOption, 0)
 								opts = append(opts, tracing.WithParent(sp))
 								if sendExportRequestWithVerboseTracing.Get(&clusterSettings.SV) {
 									opts = append(opts, tracing.WithRecording(tracingpb.RecordingVerbose))
 								}
-								ctx, exportSpan := sp.Tracer().StartSpanCtx(ctx, "backup.ExportRequest", opts...)
+								ctx, exportSpan := tracer.StartSpanCtx(ctx, "backup.ExportRequest", opts...)
 								rawResp, pErr = kv.SendWrappedWithAdmission(
 									ctx, flowCtx.Cfg.DB.KV().NonTransactionalSender(), header, admissionHeader, req)
 								recording = exportSpan.FinishAndGetConfiguredRecording()
@@ -671,40 +664,40 @@ func runBackupProcessor(
 						// Even if the ExportRequest did not export any data we want to report
 						// the span as completed for accurate progress tracking.
 						if len(resp.Files) == 0 {
-							sink.writeWithNoData(exportedSpan{completedSpans: completedSpans})
+							sink.WriteWithNoData(backupsink.ExportedSpan{CompletedSpans: completedSpans})
 						}
 						for i, file := range resp.Files {
 							entryCounts := countRows(file.Exported, spec.PKIDs)
 
-							ret := exportedSpan{
+							ret := backupsink.ExportedSpan{
 								// BackupManifest_File just happens to contain the exact fields
 								// to store the metadata we need, but there's no actual File
 								// on-disk anywhere yet.
-								metadata: backuppb.BackupManifest_File{
+								Metadata: backuppb.BackupManifest_File{
 									Span:                    file.Span,
 									EntryCounts:             entryCounts,
 									LocalityKV:              destLocalityKV,
 									ApproximatePhysicalSize: uint64(len(file.SST)),
 								},
-								dataSST:  file.SST,
-								revStart: resp.StartTime,
+								DataSST:  file.SST,
+								RevStart: resp.StartTime,
 							}
 							if resp.ResumeSpan != nil {
-								ret.resumeKey = resumeSpan.span.Key
+								ret.ResumeKey = resumeSpan.span.Key
 							}
 							if span.start != spec.BackupStartTime {
-								ret.metadata.StartTime = span.start
-								ret.metadata.EndTime = span.end
+								ret.Metadata.StartTime = span.start
+								ret.Metadata.EndTime = span.end
 							}
 							// If multiple files were returned for this span, only one -- the
 							// last -- should count as completing the requested span.
 							if i == len(resp.Files)-1 {
-								ret.completedSpans = completedSpans
+								ret.CompletedSpans = completedSpans
 							}
 
 							// Cannot set the error to err, which is shared across workers.
 							var writeErr error
-							resumeSpan.span.Key, writeErr = sink.write(ctx, ret)
+							resumeSpan.span.Key, writeErr = sink.Write(ctx, ret)
 							if writeErr != nil {
 								return err
 							}
@@ -719,7 +712,7 @@ func runBackupProcessor(
 				// still be running and may still push new work (a retry) on to todo but
 				// that is OK, since that also means it is still running and thus can
 				// pick up that work on its next iteration.
-				return sink.flush(ctx)
+				return sink.Flush(ctx)
 			}
 		}
 	})

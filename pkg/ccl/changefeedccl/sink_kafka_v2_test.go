@@ -199,7 +199,7 @@ func TestKafkaSinkClientV2_Naming(t *testing.T) {
 			return rec.Topic == `_u2603_` && string(rec.Key) == `k☃` && string(rec.Value) == `v☃`
 		})).Times(1).Return(nil)
 
-		require.NoError(t, fx.bs.EmitRow(fx.ctx, topic(`☃`), []byte(`k☃`), []byte(`v☃`), zeroTS, zeroTS, zeroAlloc))
+		require.NoError(t, fx.bs.EmitRow(fx.ctx, topic(`☃`), []byte(`k☃`), []byte(`v☃`), zeroTS, zeroTS, zeroAlloc, nil))
 
 		testutils.SucceedsSoon(t, func() error {
 			select {
@@ -222,7 +222,7 @@ func TestKafkaSinkClientV2_Naming(t *testing.T) {
 			return rec.Topic == `general` && string(rec.Key) == `k☃` && string(rec.Value) == `v☃`
 		})).Times(1).Return(nil)
 
-		require.NoError(t, fx.bs.EmitRow(fx.ctx, topic(`t1`), []byte(`k☃`), []byte(`v☃`), zeroTS, zeroTS, zeroAlloc))
+		require.NoError(t, fx.bs.EmitRow(fx.ctx, topic(`t1`), []byte(`k☃`), []byte(`v☃`), zeroTS, zeroTS, zeroAlloc, nil))
 
 		testutils.SucceedsSoon(t, func() error {
 			select {
@@ -245,7 +245,7 @@ func TestKafkaSinkClientV2_Naming(t *testing.T) {
 			return rec.Topic == `prefix-_u2603_` && string(rec.Key) == `k☃` && string(rec.Value) == `v☃`
 		})).Times(1).Return(nil)
 
-		require.NoError(t, fx.bs.EmitRow(fx.ctx, topic(`t1`), []byte(`k☃`), []byte(`v☃`), zeroTS, zeroTS, zeroAlloc))
+		require.NoError(t, fx.bs.EmitRow(fx.ctx, topic(`t1`), []byte(`k☃`), []byte(`v☃`), zeroTS, zeroTS, zeroAlloc, nil))
 
 		testutils.SucceedsSoon(t, func() error {
 			select {
@@ -449,6 +449,18 @@ func TestKafkaSinkClientV2_CompressionOpts(t *testing.T) {
 			expected: kgo.GzipCompression().WithLevel(9),
 		},
 		{
+			name:     "gzip level -1",
+			codec:    "GZIP",
+			level:    "-1",
+			expected: kgo.GzipCompression().WithLevel(-1),
+		},
+		{
+			name:     "gzip level -2",
+			codec:    "GZIP",
+			level:    "-2",
+			expected: kgo.GzipCompression().WithLevel(-2),
+		},
+		{
 			name:     "snappy no level",
 			codec:    "SNAPPY",
 			expected: kgo.SnappyCompression(),
@@ -479,6 +491,12 @@ func TestKafkaSinkClientV2_CompressionOpts(t *testing.T) {
 			name:      "invalid gzip level",
 			codec:     "GZIP",
 			level:     "100",
+			shouldErr: true,
+		},
+		{
+			name:      "invalid gzip level '-3'",
+			codec:     "GZIP",
+			level:     "-3",
 			shouldErr: true,
 		},
 		{
@@ -714,7 +732,7 @@ func newKafkaSinkV2Fx(t *testing.T, opts ...fxOpt) *kafkaSinkV2Fx {
 	}
 	u.RawQuery = q.Encode()
 
-	bs, err := makeKafkaSinkV2(ctx, sinkURL{URL: u}, targets, fx.sinkJSONConfig, 1, nilPacerFactory, timeutil.DefaultTimeSource{}, settings, nilMetricsRecorderBuilder, knobs)
+	bs, err := makeKafkaSinkV2(ctx, &changefeedbase.SinkURL{URL: u}, targets, fx.sinkJSONConfig, 1, nilPacerFactory, timeutil.DefaultTimeSource{}, settings, nilMetricsRecorderBuilder, knobs)
 	if err != nil && fx.createClientErrorCb != nil {
 		fx.createClientErrorCb(err)
 		return fx

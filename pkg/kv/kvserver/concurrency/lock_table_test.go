@@ -618,7 +618,17 @@ func TestLockTableBasic(t *testing.T) {
 			case "clear":
 				lt.Clear(d.HasArg("disable"))
 				return lt.String()
-
+			case "clear-ge":
+				var endKeyStr string
+				d.ScanArgs(t, "key", &endKeyStr)
+				locks := lt.ClearGE(roachpb.Key(endKeyStr))
+				var buf strings.Builder
+				fmt.Fprintf(&buf, "num returned for re-acquisition: %d", len(locks))
+				for _, l := range locks {
+					fmt.Fprintf(&buf, "\n span: %s, txn: %s epo: %d, dur: %s, str: %s",
+						l.Span, l.Txn.ID, l.Txn.Epoch, l.Durability, l.Strength)
+				}
+				return buf.String()
 			case "print":
 				return lt.String()
 
@@ -827,7 +837,8 @@ func ScanIgnoredSeqNumbers(t *testing.T, d *datadriven.TestData) []enginepb.Igno
 			}
 			ignoredRange.End = enginepb.TxnSeq(endNum)
 		}
-		ignored = append(ignored, ignoredRange)
+
+		ignored = enginepb.TxnSeqListAppend(ignored, ignoredRange)
 	}
 	return ignored
 }
@@ -2071,8 +2082,8 @@ func TestKeyLocksSafeFormat(t *testing.T) {
 	holder.txn = &enginepb.TxnMeta{ID: uuid.NamespaceDNS}
 	holder.unreplicatedInfo.init()
 	holder.unreplicatedInfo.ts = hlc.Timestamp{WallTime: 123, Logical: 7}
-	require.NoError(t, holder.unreplicatedInfo.acquire(lock.Exclusive, 1))
-	require.NoError(t, holder.unreplicatedInfo.acquire(lock.Shared, 3))
+	require.NoError(t, holder.unreplicatedInfo.acquire(lock.Exclusive, 1, nil))
+	require.NoError(t, holder.unreplicatedInfo.acquire(lock.Shared, 3, nil))
 	replTS := hlc.Timestamp{WallTime: 125, Logical: 1}
 	holder.replicatedInfo.acquire(lock.Intent, replTS)
 	holder.replicatedInfo.acquire(lock.Shared, replTS)
@@ -2099,11 +2110,11 @@ func TestKeyLocksSafeFormatMultipleLockHolders(t *testing.T) {
 	holder1.txn = &enginepb.TxnMeta{ID: uuid.NamespaceDNS}
 	holder1.unreplicatedInfo.init()
 	holder1.unreplicatedInfo.ts = hlc.Timestamp{WallTime: 123, Logical: 7}
-	require.NoError(t, holder1.unreplicatedInfo.acquire(lock.Shared, 3))
+	require.NoError(t, holder1.unreplicatedInfo.acquire(lock.Shared, 3, nil))
 	holder2.txn = &enginepb.TxnMeta{ID: uuid.NamespaceURL}
 	holder2.unreplicatedInfo.init()
 	holder2.unreplicatedInfo.ts = hlc.Timestamp{WallTime: 125, Logical: 1}
-	require.NoError(t, holder2.unreplicatedInfo.acquire(lock.Shared, 6))
+	require.NoError(t, holder2.unreplicatedInfo.acquire(lock.Shared, 6, nil))
 	require.EqualValues(t,
 		" lock: ‹\"KEY\"›\n"+
 			"  holders: txn: 6ba7b810-9dad-11d1-80b4-00c04fd430c8 epoch: 0, iso: Serializable, info: unrepl [(str: Shared seq: 3)]\n"+
@@ -2129,7 +2140,7 @@ func TestKeyLocksSafeFormatWaitQueue(t *testing.T) {
 	holder.txn = &enginepb.TxnMeta{ID: uuid.NamespaceDNS}
 	holder.unreplicatedInfo.init()
 	holder.unreplicatedInfo.ts = hlc.Timestamp{WallTime: 123, Logical: 7}
-	require.NoError(t, holder.unreplicatedInfo.acquire(lock.Shared, 3))
+	require.NoError(t, holder.unreplicatedInfo.acquire(lock.Shared, 3, nil))
 	waiter := queuedGuard{
 		guard:  newLockTableGuardImpl(),
 		active: true,

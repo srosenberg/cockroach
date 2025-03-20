@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
-	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilities"
+	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilitiespb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/exec/explain"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -154,7 +154,7 @@ func TestCPUTimeEndToEnd(t *testing.T) {
 	skip.UnderStress(t, "multinode cluster setup times out under stress")
 	skip.UnderRace(t, "multinode cluster setup times out under race")
 
-	if !grunning.Supported() {
+	if !grunning.Supported {
 		return
 	}
 
@@ -163,13 +163,9 @@ func TestCPUTimeEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	defer tc.Stopper().Stop(ctx)
 
-	if srv := tc.Server(0); srv.TenantController().StartedDefaultTestTenant() {
-		systemSqlDB := srv.SystemLayer().SQLConn(t, serverutils.DBName("system"))
-		_, err := systemSqlDB.Exec(`ALTER TENANT [$1] GRANT CAPABILITY can_admin_relocate_range=true`, serverutils.TestTenantID().ToUint64())
-		require.NoError(t, err)
-		serverutils.WaitForTenantCapabilities(t, srv, serverutils.TestTenantID(), map[tenantcapabilities.ID]string{
-			tenantcapabilities.CanAdminRelocateRange: "true",
-		}, "")
+	if tc.DefaultTenantDeploymentMode().IsExternal() {
+		tc.GrantTenantCapabilities(ctx, t, serverutils.TestTenantID(),
+			map[tenantcapabilitiespb.ID]string{tenantcapabilitiespb.CanAdminRelocateRange: "true"})
 	}
 
 	db := sqlutils.MakeSQLRunner(tc.Conns[0])
@@ -344,4 +340,36 @@ func TestContentionTimeOnWrites(t *testing.T) {
 
 	// Meat of the test - verify that the contention was reported.
 	require.True(t, foundContention)
+}
+
+func TestRetryFields(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	sqlDB := sqlutils.MakeSQLRunner(conn)
+	sqlDB.Exec(t, "CREATE SEQUENCE s")
+
+	retryCountRE := regexp.MustCompile(`number of transaction retries: (\d+)`)
+	retryTimeRE := regexp.MustCompile(`time spent retrying the transaction: (\d+)[µsm]+`)
+	queryMatchRE := func(query string) bool {
+		rows, err := conn.QueryContext(ctx, query)
+		assert.NoError(t, err)
+		var foundCount, foundTime bool
+		for rows.Next() {
+			var res string
+			assert.NoError(t, rows.Scan(&res))
+			if matches := retryCountRE.FindStringSubmatch(res); len(matches) > 0 {
+				foundCount = true
+			}
+			if matches := retryTimeRE.FindStringSubmatch(res); len(matches) > 0 {
+				foundTime = true
+			}
+		}
+		return foundCount && foundTime
+	}
+	assert.True(t, queryMatchRE("EXPLAIN ANALYZE SELECT IF(nextval('s')<=3, crdb_internal.force_retry('1h'::INTERVAL), 0)"))
 }

@@ -1262,6 +1262,25 @@ available replica will error.</p>
 </span></td><td>Stable</td></tr></tbody>
 </table>
 
+### Jsonpath functions
+
+<table>
+<thead><tr><th>Function &rarr; Returns</th><th>Description</th><th>Volatility</th></tr></thead>
+<tbody>
+<tr><td><a name="jsonb_path_query"></a><code>jsonb_path_query(target: jsonb, path: jsonpath) &rarr; jsonb</code></td><td><span class="funcdesc"><p>Returns all JSON items returned by the JSON path for the specified JSON value.</p>
+</span></td><td>Immutable</td></tr>
+<tr><td><a name="jsonb_path_query"></a><code>jsonb_path_query(target: jsonb, path: jsonpath, vars: jsonb) &rarr; jsonb</code></td><td><span class="funcdesc"><p>Returns all JSON items returned by the JSON path for the specified JSON value.
+The vars argument must be a JSON object, and its fields provide named values
+to be substituted into the jsonpath expression.</p>
+</span></td><td>Immutable</td></tr>
+<tr><td><a name="jsonb_path_query"></a><code>jsonb_path_query(target: jsonb, path: jsonpath, vars: jsonb, silent: <a href="bool.html">bool</a>) &rarr; jsonb</code></td><td><span class="funcdesc"><p>Returns all JSON items returned by the JSON path for the specified JSON value.
+The vars argument must be a JSON object, and its fields provide named values
+to be substituted into the jsonpath expression. If the silent argument is true,
+the function suppresses the following errors: missing object field or array
+element, unexpected JSON item type, datetime and numeric errors.</p>
+</span></td><td>Immutable</td></tr></tbody>
+</table>
+
 ### Multi-region functions
 
 <table>
@@ -3119,8 +3138,8 @@ Case mode values range between 0 - 1, representing lower casing and upper casing
 </span></td><td>Immutable</td></tr>
 <tr><td><a name="similar_to_escape"></a><code>similar_to_escape(unescaped: <a href="string.html">string</a>, pattern: <a href="string.html">string</a>, escape: <a href="string.html">string</a>) &rarr; <a href="bool.html">bool</a></code></td><td><span class="funcdesc"><p>Matches <code>unescaped</code> with <code>pattern</code> using <code>escape</code> as an escape token.</p>
 </span></td><td>Immutable</td></tr>
-<tr><td><a name="split_part"></a><code>split_part(input: <a href="string.html">string</a>, delimiter: <a href="string.html">string</a>, return_index_pos: <a href="int.html">int</a>) &rarr; <a href="string.html">string</a></code></td><td><span class="funcdesc"><p>Splits <code>input</code> on <code>delimiter</code> and return the value in the <code>return_index_pos</code>  position (starting at 1).</p>
-<p>For example, <code>split_part('123.456.789.0','.',3)</code>returns <code>789</code>.</p>
+<tr><td><a name="split_part"></a><code>split_part(input: <a href="string.html">string</a>, delimiter: <a href="string.html">string</a>, return_index_pos: <a href="int.html">int</a>) &rarr; <a href="string.html">string</a></code></td><td><span class="funcdesc"><p>Splits <code>input</code> using <code>delimiter</code> and returns the field at <code>return_index_pos</code> (starting from 1). If <code>return_index_pos</code> is negative, it returns the |<code>return_index_pos</code>|'th field from the end.</p>
+<p>For example, <code>split_part('123.456.789.0', '.', 3)</code> returns <code>789</code>.</p>
 </span></td><td>Immutable</td></tr>
 <tr><td><a name="strpos"></a><code>strpos(input: <a href="bytes.html">bytes</a>, find: <a href="bytes.html">bytes</a>) &rarr; <a href="int.html">int</a></code></td><td><span class="funcdesc"><p>Calculates the position where the byte subarray <code>find</code> begins in <code>input</code>.</p>
 </span></td><td>Immutable</td></tr>
@@ -3160,6 +3179,9 @@ Case mode values range between 0 - 1, representing lower casing and upper casing
 <tr><td><a name="substring"></a><code>substring(input: varbit, start_pos: <a href="int.html">int</a>) &rarr; varbit</code></td><td><span class="funcdesc"><p>Returns a bit subarray of <code>input</code> starting at <code>start_pos</code> (count starts at 1).</p>
 </span></td><td>Immutable</td></tr>
 <tr><td><a name="substring"></a><code>substring(input: varbit, start_pos: <a href="int.html">int</a>, length: <a href="int.html">int</a>) &rarr; varbit</code></td><td><span class="funcdesc"><p>Returns a bit subarray of <code>input</code> starting at <code>start_pos</code> (count starts at 1) and including up to <code>length</code> characters.</p>
+</span></td><td>Immutable</td></tr>
+<tr><td><a name="substring_index"></a><code>substring_index(input: <a href="string.html">string</a>, delim: <a href="string.html">string</a>, count: <a href="int.html">int</a>) &rarr; <a href="string.html">string</a></code></td><td><span class="funcdesc"><p>Returns a substring of <code>input</code> before <code>count</code> occurrences of <code>delim</code>.
+If <code>count</code> is positive, the leftmost part is returned. If <code>count</code> is negative, the rightmost part is returned.</p>
 </span></td><td>Immutable</td></tr>
 <tr><td><a name="to_char_with_style"></a><code>to_char_with_style(date: <a href="date.html">date</a>, datestyle: <a href="string.html">string</a>) &rarr; <a href="string.html">string</a></code></td><td><span class="funcdesc"><p>Convert an date to a string assuming the string is formatted using the given DateStyle.</p>
 </span></td><td>Immutable</td></tr>

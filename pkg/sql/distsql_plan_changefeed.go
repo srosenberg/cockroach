@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
@@ -112,12 +113,14 @@ func PlanCDCExpression(
 		return cdcPlan, err
 	}
 	if log.V(2) {
-		log.Infof(ctx, "Optimized CDC expression: %s", memo.RootExpr().String())
+		log.Infof(ctx, "Optimized CDC expression: %s", memo)
 	}
 
 	const allowAutoCommit = false
+	const disableTelemetryAndPlanGists = false
 	if err := opc.runExecBuilder(
-		ctx, &p.curPlan, &p.stmt, newExecFactory(ctx, p), memo, p.SemaCtx(), p.EvalContext(), allowAutoCommit,
+		ctx, &p.curPlan, &p.stmt, newExecFactory(ctx, p), memo, p.SemaCtx(),
+		p.EvalContext(), allowAutoCommit, disableTelemetryAndPlanGists,
 	); err != nil {
 		return cdcPlan, err
 	}
@@ -265,11 +268,12 @@ func (p CDCExpressionPlan) CollectPlanColumns(collector func(column colinfo.Resu
 // datums must match the number of inputs (and types) expected by this flow
 // (verified below).
 type cdcValuesNode struct {
-	source        execinfra.RowSource
-	datumRow      []tree.Datum
-	colOrd        []int
-	resultColumns []colinfo.ResultColumn
-	alloc         tree.DatumAlloc
+	zeroInputPlanNode
+	source   execinfra.RowSource
+	datumRow []tree.Datum
+	colOrd   []int
+	columns  colinfo.ResultColumns
+	alloc    tree.DatumAlloc
 }
 
 var _ planNode = (*cdcValuesNode)(nil)
@@ -278,13 +282,13 @@ func newCDCValuesNode(
 	scan *scanNode, source execinfra.RowSource, sourceCols catalog.TableColMap,
 ) (planNode, error) {
 	v := cdcValuesNode{
-		source:        source,
-		datumRow:      make([]tree.Datum, len(scan.resultColumns)),
-		resultColumns: scan.resultColumns,
-		colOrd:        make([]int, len(scan.cols)),
+		source:   source,
+		datumRow: make([]tree.Datum, len(scan.columns)),
+		columns:  scan.columns,
+		colOrd:   make([]int, len(scan.catalogCols)),
 	}
 
-	for i, c := range scan.cols {
+	for i, c := range scan.catalogCols {
 		sourceOrd, ok := sourceCols.Get(c.GetID())
 		if !ok {
 			return nil, errors.Newf("source does not contain column %s (id %d)", c.GetName(), c.GetID())
@@ -375,6 +379,18 @@ func (c *cdcOptCatalog) ResolveDataSource(
 	_, desc, err := resolver.ResolveExistingTableObject(ctx, c.planner, name, lflags)
 	if err != nil {
 		return nil, cat.DataSourceName{}, err
+	}
+
+	// We block tables with row-level security enabled because they can inject
+	// filters into the select op. This conflicts with the CDC expression's
+	// expectation that the SELECT contains no filters — that all filters are
+	// converted into a projection for the __crdb_filter column (see
+	// predicateAsProjection). Since the RLS filters aren’t included in
+	// __crdb_filter, we block this functionality until that work is complete.
+	if desc.IsRowLevelSecurityEnabled() {
+		return nil, cat.DataSourceName{}, unimplemented.NewWithIssuef(
+			142171,
+			"CDC queries are not supported on tables with row-level security enabled")
 	}
 
 	ds, err := c.newCDCDataSource(ctx, desc, c.targetFamilyID)
@@ -539,6 +555,11 @@ func (d *familyTableDescriptor) EnforcedCheckConstraints() []catalog.CheckConstr
 		}
 	}
 	return filtered
+}
+
+// EnforcedCheckValidators implements catalog.TableDescriptor interface.
+func (d *familyTableDescriptor) EnforcedCheckValidators() []catalog.CheckConstraintValidator {
+	panic(errors.AssertionFailedf("not implemented"))
 }
 
 // familyColumns returns column list adopted for targeted column family.

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationutils"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
@@ -21,7 +22,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
@@ -38,6 +39,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/asof"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
@@ -54,22 +56,37 @@ var streamCreationHeader = colinfo.ResultColumns{
 	{Name: "job_id", Typ: types.Int},
 }
 
+var checkJobWithSameParent = `
+SELECT
+	t.job_id
+	FROM (
+		SELECT
+			id AS job_id,
+			crdb_internal.pb_to_json(
+				'cockroach.sql.jobs.jobspb.Payload',
+				payload)->'logicalReplicationDetails'->>'parentId' AS parent_id 
+		FROM crdb_internal.system_jobs 
+		WHERE job_type = 'LOGICAL REPLICATION'
+	) AS t
+	WHERE t.parent_id = $1
+`
+
 func createLogicalReplicationStreamPlanHook(
 	ctx context.Context, untypedStmt tree.Statement, p sql.PlanHookState,
-) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
+) (sql.PlanHookRowFn, colinfo.ResultColumns, bool, error) {
 	stmt, ok := untypedStmt.(*tree.CreateLogicalReplicationStream)
 	if !ok {
-		return nil, nil, nil, false, nil
+		return nil, nil, false, nil
 	}
 
 	exprEval := p.ExprEvaluator("LOGICAL REPLICATION STREAM")
 
 	from, err := exprEval.String(ctx, stmt.PGURL)
 	if err != nil {
-		return nil, nil, nil, false, err
+		return nil, nil, false, err
 	}
 
-	fn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) (retErr error) {
+	fn := func(ctx context.Context, resultsCh chan<- tree.Datums) (retErr error) {
 		defer func() {
 			if retErr == nil {
 				telemetry.Count("logical_replication_stream.started")
@@ -85,14 +102,6 @@ func createLogicalReplicationStreamPlanHook(
 			return err
 		}
 
-		// TODO(dt): the global priv is a big hammer; should we be checking just on
-		// table(s) or database being replicated from and into?
-		if err := p.CheckPrivilege(
-			ctx, syntheticprivilege.GlobalPrivilegeObject, privilege.REPLICATION,
-		); err != nil {
-			return err
-		}
-
 		if stmt.From.Database != "" {
 			return errors.UnimplementedErrorf(errors.IssueLink{}, "logical replication streams on databases are unsupported")
 		}
@@ -100,7 +109,7 @@ func createLogicalReplicationStreamPlanHook(
 			return pgerror.New(pgcode.InvalidParameterValue, "the same number of source and destination tables must be specified")
 		}
 
-		options, err := evalLogicalReplicationOptions(ctx, stmt.Options, exprEval, p)
+		options, err := evalLogicalReplicationOptions(ctx, stmt.Options, exprEval, p, stmt.CreateTable)
 		if err != nil {
 			return err
 		}
@@ -135,13 +144,22 @@ func createLogicalReplicationStreamPlanHook(
 				return pgerror.Newf(pgcode.InvalidParameterValue, "unknown discard option %q", m)
 			}
 		}
-		resolvedDestObjects, err := resolveDestinationObjects(ctx, p, stmt.Into, stmt.CreateTable)
+
+		resolvedDestObjects, err := resolveDestinationObjects(ctx, p, p.SessionData(), stmt.Into, stmt.CreateTable)
 		if err != nil {
 			return err
 		}
 
+		if err := checkReplicationPrivileges(ctx, p, stmt, resolvedDestObjects, options.BidirectionalURI()); err != nil {
+			return errors.Wrapf(err, "failed privilege check: table or system level REPLICATIONDEST privilege required")
+		}
+
 		if !p.ExtendedEvalContext().TxnIsSingleStmt {
 			return errors.New("cannot CREATE LOGICAL REPLICATION STREAM in a multi-statement transaction")
+		}
+
+		if !p.ExecCfg().Settings.Version.ActiveVersion(ctx).AtLeast(clusterversion.V25_1.Version()) {
+			return errors.New("cannot create ldr stream until finalizing on 25.1")
 		}
 
 		// Commit the planner txn because several operations below may take several
@@ -160,35 +178,55 @@ func createLogicalReplicationStreamPlanHook(
 		// txn during statement execution.
 		p.InternalSQLTxn().Descriptors().ReleaseAll(ctx)
 
-		streamAddress := crosscluster.StreamAddress(from)
-		streamURL, err := streamAddress.URL()
+		if options.ParentID != 0 {
+			row, err := p.ExecCfg().InternalDB.Executor().QueryRow(ctx, "check-parent-job", nil, checkJobWithSameParent, fmt.Sprintf("%d", options.ParentID))
+			if err != nil {
+				return err
+			}
+			if row != nil {
+				// If a job already exists with the same parent ID, then this CREATE
+				// LOGICAL stmt execution is a retry and the replication stream already
+				// exists.
+				jobID := int(*row[0].(*tree.DInt))
+				resultsCh <- tree.Datums{tree.NewDInt(tree.DInt(jobID))}
+				return nil
+			}
+		}
+
+		configUri, err := streamclient.ParseConfigUri(from)
 		if err != nil {
 			return err
 		}
-		streamAddress = crosscluster.StreamAddress(streamURL.String())
+		if !configUri.IsExternalOrTestScheme() {
+			return errors.New("uri must be an external connection")
+		}
+
+		clusterUri, err := configUri.AsClusterUri(ctx, p.ExecCfg().InternalDB)
+		if err != nil {
+			return err
+		}
 
 		cleanedURI, err := cloud.SanitizeExternalStorageURI(from, nil)
 		if err != nil {
 			return err
 		}
 
-		client, err := streamclient.NewStreamClient(ctx, streamAddress, p.ExecCfg().InternalDB, streamclient.WithLogical())
+		client, err := streamclient.NewStreamClient(ctx, clusterUri, p.ExecCfg().InternalDB, streamclient.WithLogical())
 		if err != nil {
 			return err
 		}
 		defer func() {
 			_ = client.Close(ctx)
 		}()
-		if err := client.Dial(ctx); err != nil {
-			return err
-		}
 
 		srcTableNames := make([]string, len(stmt.From.Tables))
 		for i, tb := range stmt.From.Tables {
 			srcTableNames[i] = tb.String()
 		}
 		spec, err := client.CreateForTables(ctx, &streampb.ReplicationProducerRequest{
-			TableNames: srcTableNames,
+			TableNames:                  srcTableNames,
+			AllowOffline:                options.ParentID != 0,
+			UnvalidatedReverseStreamURI: options.BidirectionalURI(),
 		})
 		if err != nil {
 			return err
@@ -253,8 +291,21 @@ func createLogicalReplicationStreamPlanHook(
 			defaultConflictResolution = *cr
 		}
 
+		jobID := p.ExecCfg().JobRegistry.MakeJobID()
+		var reverseStreamCmd string
+		if stmt.CreateTable && options.BidirectionalURI() != "" {
+			reverseStmt := *stmt
+			reverseStmt.From, reverseStmt.Into = reverseStmt.Into, reverseStmt.From
+			reverseStmt.CreateTable = false
+			reverseStmt.Options.BidirectionalURI = nil
+			reverseStmt.Options.ParentID = tree.NewStrVal(jobID.String())
+			reverseStmt.PGURL = tree.NewStrVal(options.BidirectionalURI())
+			reverseStmt.Options.Cursor = &tree.Placeholder{Idx: 0}
+			reverseStreamCmd = reverseStmt.String()
+		}
+
 		jr := jobs.Record{
-			JobID:       p.ExecCfg().JobRegistry.MakeJobID(),
+			JobID:       jobID,
 			Description: fmt.Sprintf("LOGICAL REPLICATION STREAM into %s from %s", resolvedDestObjects.TargetDescription(), cleanedURI),
 			Username:    p.User(),
 			Details: jobspb.LogicalReplicationDetails{
@@ -262,13 +313,16 @@ func createLogicalReplicationStreamPlanHook(
 				SourceClusterID:           spec.SourceClusterID,
 				ReplicationStartTime:      replicationStartTime,
 				ReplicationPairs:          repPairs,
-				SourceClusterConnStr:      string(streamAddress),
+				SourceClusterConnUri:      configUri.Serialize(),
 				TableNames:                srcTableNames,
 				DefaultConflictResolution: defaultConflictResolution,
 				Discard:                   discard,
 				Mode:                      mode,
 				MetricsLabel:              options.metricsLabel,
 				CreateTable:               stmt.CreateTable,
+				ReverseStreamCommand:      reverseStreamCmd,
+				ParentID:                  int64(options.ParentID),
+				Command:                   stmt.String(),
 			},
 			Progress: progress,
 		}
@@ -279,7 +333,7 @@ func createLogicalReplicationStreamPlanHook(
 		return nil
 	}
 
-	return fn, streamCreationHeader, nil, false, nil
+	return fn, streamCreationHeader, false, nil
 }
 
 type ResolvedDestObjects struct {
@@ -303,9 +357,18 @@ func (r *ResolvedDestObjects) TargetDescription() string {
 	return targetDescription
 }
 
+func (r *ResolvedDestObjects) TargetTableNames() []string {
+	var targetTableNames []string
+	for i := range r.TableNames {
+		targetTableNames = append(targetTableNames, r.TableNames[i].Table())
+	}
+	return targetTableNames
+}
+
 func resolveDestinationObjects(
 	ctx context.Context,
-	p sql.PlanHookState,
+	r resolver.SchemaResolver,
+	sessionData *sessiondata.SessionData,
 	destResources tree.LogicalReplicationResources,
 	createTable bool,
 ) (ResolvedDestObjects, error) {
@@ -315,15 +378,16 @@ func resolveDestinationObjects(
 		if err != nil {
 			return resolved, err
 		}
-		dstObjName.HasExplicitSchema()
-
+		dstTableName := dstObjName.ToTableName()
 		if createTable {
-			_, _, resPrefix, err := resolver.ResolveTarget(ctx,
-				&dstObjName, p, p.SessionData().Database, p.SessionData().SearchPath)
+			found, _, resPrefix, err := resolver.ResolveTarget(ctx,
+				&dstObjName, r, sessionData.Database, sessionData.SearchPath)
 			if err != nil {
 				return resolved, errors.Newf("resolving target import name")
 			}
-
+			if !found {
+				return resolved, errors.Newf("database or schema not found for destination table %s", destResources.Tables[i])
+			}
 			if resolved.ParentDatabaseID == 0 {
 				resolved.ParentDatabaseID = resPrefix.Database.GetID()
 				resolved.ParentSchemaID = resPrefix.Schema.GetID()
@@ -332,7 +396,9 @@ func resolveDestinationObjects(
 			} else if resolved.ParentSchemaID != resPrefix.Schema.GetID() {
 				return resolved, errors.Newf("destination tables must all be in the same schema")
 			}
-
+			if _, _, err := resolver.ResolveMutableExistingTableObject(ctx, r, &dstTableName, true, tree.ResolveRequireTableDesc); err == nil {
+				return resolved, errors.Newf("destination table %s already exists", destResources.Tables[i])
+			}
 			tbNameWithSchema := tree.MakeTableNameWithSchema(
 				tree.Name(resPrefix.Database.GetName()),
 				tree.Name(resPrefix.Schema.GetName()),
@@ -340,10 +406,9 @@ func resolveDestinationObjects(
 			)
 			resolved.TableNames = append(resolved.TableNames, tbNameWithSchema)
 		} else {
-			dstTableName := dstObjName.ToTableName()
-			prefix, td, err := resolver.ResolveMutableExistingTableObject(ctx, p, &dstTableName, true, tree.ResolveRequireTableDesc)
+			prefix, td, err := resolver.ResolveMutableExistingTableObject(ctx, r, &dstTableName, true, tree.ResolveRequireTableDesc)
 			if err != nil {
-				return resolved, err
+				return resolved, errors.Wrapf(err, "failed to find existing destination table %s", destResources.Tables[i])
 			}
 
 			tbNameWithSchema := tree.MakeTableNameWithSchema(
@@ -370,14 +435,20 @@ func doLDRPlan(
 	details := jr.Details.(jobspb.LogicalReplicationDetails)
 	return execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
 		var (
-			err          error
-			writtenDescs []catalog.Descriptor
+			err             error
+			ingestedCatalog externalpb.ExternalCatalog
 		)
 		if details.CreateTable {
-			writtenDescs, err = externalcatalog.IngestExternalCatalog(ctx, execCfg, user, srcExternalCatalog, txn, txn.Descriptors(), resolvedDestObjects.ParentDatabaseID, resolvedDestObjects.ParentSchemaID, false)
+			ingestingTableNames := make([]string, len(resolvedDestObjects.TableNames))
+			for i := range resolvedDestObjects.TableNames {
+				ingestingTableNames[i] = resolvedDestObjects.TableNames[i].Table()
+			}
+			ingestedCatalog, err = externalcatalog.IngestExternalCatalog(ctx, execCfg, user, srcExternalCatalog, txn, txn.Descriptors(), resolvedDestObjects.ParentDatabaseID, resolvedDestObjects.ParentSchemaID, true /* setOffline */, ingestingTableNames)
 			if err != nil {
 				return err
 			}
+			details.IngestedExternalCatalog = ingestedCatalog
+			jr.Details = details
 		}
 
 		dstTableDescs := make([]*tabledesc.Mutable, 0, len(details.ReplicationPairs))
@@ -390,7 +461,7 @@ func doLDRPlan(
 				// error during validation.
 				//
 				// Instead, we could populate repPairs in this txn.
-				details.ReplicationPairs[i].DstDescriptorID = int32(writtenDescs[i].GetID())
+				details.ReplicationPairs[i].DstDescriptorID = int32(ingestedCatalog.Tables[i].GetID())
 			}
 			dstTableDesc, err := txn.Descriptors().MutableByID(txn.KV()).Table(ctx, catid.DescID(details.ReplicationPairs[i].DstDescriptorID))
 			if err != nil {
@@ -443,9 +514,13 @@ func createLogicalReplicationStreamTypeCheck(
 			stmt.Options.Mode,
 			stmt.Options.MetricsLabel,
 			stmt.Options.Discard,
+			stmt.Options.BidirectionalURI,
+			stmt.Options.ParentID,
 		},
+		exprutil.Ints{stmt.Options.ParentID},
 		exprutil.Bools{
 			stmt.Options.SkipSchemaCheck,
+			stmt.Options.Unidirectional,
 		},
 	}
 	if err := exprutil.TypeCheck(ctx, "LOGICAL REPLICATION STREAM", p.SemaCtx(),
@@ -462,10 +537,12 @@ type resolvedLogicalReplicationOptions struct {
 	mode            string
 	defaultFunction *jobspb.LogicalReplicationDetails_DefaultConflictResolution
 	// Mapping of table name to function descriptor
-	userFunctions   map[string]int32
-	discard         string
-	skipSchemaCheck bool
-	metricsLabel    string
+	userFunctions    map[string]int32
+	discard          string
+	skipSchemaCheck  bool
+	metricsLabel     string
+	bidirectionalURI string
+	ParentID         catpb.JobID
 }
 
 func evalLogicalReplicationOptions(
@@ -473,6 +550,7 @@ func evalLogicalReplicationOptions(
 	options tree.LogicalReplicationOptions,
 	eval exprutil.Evaluator,
 	p sql.PlanHookState,
+	createTable bool,
 ) (*resolvedLogicalReplicationOptions, error) {
 	r := &resolvedLogicalReplicationOptions{}
 	if options.Mode != nil {
@@ -557,6 +635,28 @@ func evalLogicalReplicationOptions(
 	if options.SkipSchemaCheck == tree.DBoolTrue {
 		r.skipSchemaCheck = true
 	}
+	if options.ParentID != nil {
+		parentID, err := eval.Int(ctx, options.ParentID)
+		if err != nil {
+			return nil, err
+		}
+		r.ParentID = catpb.JobID(parentID)
+	}
+	unidirectional := options.Unidirectional == tree.DBoolTrue
+
+	if options.BidirectionalURI != nil {
+		uri, err := eval.String(ctx, options.BidirectionalURI)
+		if err != nil {
+			return nil, err
+		}
+		r.bidirectionalURI = uri
+	}
+	if createTable && unidirectional && r.bidirectionalURI != "" {
+		return nil, errors.New("UNIDIRECTIONAL and BIDIRECTIONAL cannot be specified together")
+	}
+	if createTable && !unidirectional && r.bidirectionalURI == "" {
+		return nil, errors.New("either BIDIRECTIONAL or UNIDRECTIONAL must be specified")
+	}
 	return r, nil
 }
 
@@ -569,6 +669,9 @@ func lookupFunctionID(
 	}
 	if len(rf.Overloads) > 1 {
 		return 0, errors.Newf("function %q has more than 1 overload", u.String())
+	}
+	if rf.UnsupportedWithIssue != 0 {
+		return 0, rf.MakeUnsupportedError()
 	}
 	fnOID := rf.Overloads[0].Oid
 	descID := typedesc.UserDefinedTypeOIDToID(fnOID)
@@ -621,4 +724,44 @@ func (r *resolvedLogicalReplicationOptions) SkipSchemaCheck() bool {
 		return false
 	}
 	return r.skipSchemaCheck
+}
+
+func (r *resolvedLogicalReplicationOptions) BidirectionalURI() string {
+	if r == nil || r.bidirectionalURI == "" {
+		return ""
+	}
+	return r.bidirectionalURI
+}
+
+func checkReplicationPrivileges(
+	ctx context.Context,
+	p sql.PlanHookState,
+	stmt *tree.CreateLogicalReplicationStream,
+	resolvedDestObjects ResolvedDestObjects,
+	bidirectionalStream string,
+) error {
+	if err := p.CheckPrivilege(
+		ctx, syntheticprivilege.GlobalPrivilegeObject, privilege.REPLICATIONDEST,
+	); err != nil {
+		if !stmt.CreateTable {
+			return replicationutils.AuthorizeTableLevelPriv(ctx, p, p.ExtendedEvalContext().SessionAccessor, privilege.REPLICATIONDEST, resolvedDestObjects.TargetTableNames())
+		} else {
+			dbDesc, err := p.InternalSQLTxn().Descriptors().ByIDWithLeased(p.InternalSQLTxn().KV()).WithoutNonPublic().Get().Database(ctx, resolvedDestObjects.ParentDatabaseID)
+			if err != nil {
+				return err
+			}
+			if err := p.CheckPrivilege(ctx, dbDesc, privilege.CREATE); err != nil {
+				return err
+			}
+			if bidirectionalStream != "" {
+				// TODO(msbutler): how to validate that the user in the reverse stream
+				// URI has REPLICATIONSOURCE priv on a table that has yet to be created?
+				// We could assert it is the same user as the current user, then we
+				// could grant the user the REPLICATIONSOURCE priv on table creation?
+				// Or, we could make REPLICATIONSOURCE a db level priv, required for
+				// BIDI??
+			}
+		}
+	}
+	return nil
 }

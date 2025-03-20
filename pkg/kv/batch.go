@@ -50,7 +50,7 @@ type Batch struct {
 	reqs            []kvpb.RequestUnion
 
 	// approxMutationReqBytes tracks the approximate size of keys and values in
-	// mutations added to this batch via Put, CPut, InitPut, Del, etc.
+	// mutations added to this batch via Put, CPut, Del, etc.
 	approxMutationReqBytes int
 	// Set when AddRawRequest is used, in which case using the "other"
 	// operations renders the batch unusable.
@@ -88,8 +88,8 @@ type BulkSourceIterator[T GValue] interface {
 }
 
 // ApproximateMutationBytes returns the approximate byte size of the mutations
-// added to this batch via Put, CPut, InitPut, Del, etc methods. Mutations added
-// via AddRawRequest are not tracked.
+// added to this batch via Put, CPut, Del, etc methods. Mutations added via
+// AddRawRequest are not tracked.
 func (b *Batch) ApproximateMutationBytes() int {
 	return b.approxMutationReqBytes
 }
@@ -430,7 +430,7 @@ func (b *Batch) GetForShare(key interface{}, dur kvpb.KeyLockingDurabilityType) 
 	b.get(key, kvpb.ForShare, dur)
 }
 
-func (b *Batch) put(key, value interface{}, inline bool) {
+func (b *Batch) put(key, value interface{}, inline bool, mustAcquireExclusiveLock bool) {
 	k, err := marshalKey(key)
 	if err != nil {
 		b.initResult(0, 1, notRaw, err)
@@ -443,6 +443,8 @@ func (b *Batch) put(key, value interface{}, inline bool) {
 	}
 	if inline {
 		b.appendReqs(kvpb.NewPutInline(k, v))
+	} else if mustAcquireExclusiveLock {
+		b.appendReqs(kvpb.NewPutMustAcquireExclusiveLock(k, v))
 	} else {
 		b.appendReqs(kvpb.NewPut(k, v))
 	}
@@ -463,7 +465,20 @@ func (b *Batch) Put(key, value interface{}) {
 		// value. If the intention was indeed to delete the key, use Del() instead.
 		panic("can't Put an empty Value; did you mean to Del() instead?")
 	}
-	b.put(key, value, false)
+	b.put(key, value, false /* inline */, false /* mustAcquireExclusiveLock */)
+}
+
+// PutMustAcquireExclusiveLock is the same as Put but guarantees that a lock
+// with the strength no lower than "exclusive" will be acquired on the key, even
+// if it doesn't exist (in order to prevent concurrent requests from writing at
+// this key).
+func (b *Batch) PutMustAcquireExclusiveLock(key, value interface{}) {
+	if value == nil {
+		// Empty values are used as deletion tombstones, so one can't write an empty
+		// value. If the intention was indeed to delete the key, use Del() instead.
+		panic("can't Put an empty Value; did you mean to Del() instead?")
+	}
+	b.put(key, value, false /* inline */, true /* mustAcquireExclusiveLock */)
 }
 
 // PutBytes allows an arbitrary number of PutRequests to be added to the batch.
@@ -525,7 +540,7 @@ func (b *Batch) PutTuples(bs BulkSource[[]byte]) {
 // A nil value can be used to delete the respective key, since there is no
 // DelInline(). This is different from Put().
 func (b *Batch) PutInline(key, value interface{}) {
-	b.put(key, value, true)
+	b.put(key, value, true /* inline */, false /* mustAcquireExclusiveLock */)
 }
 
 // CPut conditionally sets the value for a key if the existing value is equal to
@@ -563,9 +578,7 @@ func (b *Batch) CPutAllowingIfNotExists(key, value interface{}, expValue []byte)
 // This is used by logical data replication and other uses of this API
 // are discouraged since the semantics are subject to change as
 // required by that feature.
-func (b *Batch) CPutWithOriginTimestamp(
-	key, value interface{}, expValue []byte, ts hlc.Timestamp, shouldWinTie bool,
-) {
+func (b *Batch) CPutWithOriginTimestamp(key, value interface{}, expValue []byte, ts hlc.Timestamp) {
 	k, err := marshalKey(key)
 	if err != nil {
 		b.initResult(0, 1, notRaw, err)
@@ -579,7 +592,6 @@ func (b *Batch) CPutWithOriginTimestamp(
 	}
 	r := kvpb.NewConditionalPut(k, v, expValue, false)
 	r.(*kvpb.ConditionalPutRequest).OriginTimestamp = ts
-	r.(*kvpb.ConditionalPutRequest).ShouldWinOriginTimestampTie = shouldWinTie
 	b.appendReqs(r)
 	b.approxMutationReqBytes += len(k) + len(v.RawBytes)
 	b.initResult(1, 1, notRaw, nil)
@@ -623,6 +635,32 @@ func (b *Batch) cputInternal(
 	}
 	b.approxMutationReqBytes += len(k) + len(v.RawBytes)
 	b.initResult(1, 1, notRaw, nil)
+}
+
+// CPutBytesEmpty allows multiple []byte value type CPut requests to be added to
+// the batch using BulkSource interface. The values for these keys are
+// expected to be empty.
+func (b *Batch) CPutBytesEmpty(bs BulkSource[[]byte]) {
+	numKeys := bs.Len()
+	reqs := make([]struct {
+		req   kvpb.ConditionalPutRequest
+		union kvpb.RequestUnion_ConditionalPut
+	}, numKeys)
+	i := 0
+	bsi := bs.Iter()
+	b.bulkRequest(numKeys, func() (kvpb.RequestUnion, int) {
+		pr := &reqs[i].req
+		union := &reqs[i].union
+		union.ConditionalPut = pr
+		pr.AllowIfDoesNotExist = false
+		pr.ExpBytes = nil
+		i++
+		k, v := bsi.Next()
+		pr.Key = k
+		pr.Value.SetBytes(v)
+		pr.Value.InitChecksum(k)
+		return kvpb.RequestUnion{Value: union}, len(k) + len(pr.Value.RawBytes)
+	})
 }
 
 // CPutTuplesEmpty allows multiple CPut tuple requests to be added to the batch
@@ -672,76 +710,6 @@ func (b *Batch) CPutValuesEmpty(bs BulkSource[roachpb.Value]) {
 		k, v := bsi.Next()
 		pr.Key = k
 		pr.Value = v
-		pr.Value.InitChecksum(k)
-		return kvpb.RequestUnion{Value: union}, len(k) + len(pr.Value.RawBytes)
-	})
-}
-
-// InitPut sets the first value for a key to value. An ConditionFailedError is
-// reported if a value already exists for the key and it's not equal to the
-// value passed in. If failOnTombstones is set to true, tombstones will return
-// a ConditionFailedError just like a mismatched value.
-//
-// key can be either a byte slice or a string. value can be any key type, a
-// protoutil.Message or any Go primitive type (bool, int, etc). It is illegal
-// to set value to nil.
-func (b *Batch) InitPut(key, value interface{}, failOnTombstones bool) {
-	k, err := marshalKey(key)
-	if err != nil {
-		b.initResult(0, 1, notRaw, err)
-		return
-	}
-	v, err := marshalValue(value)
-	if err != nil {
-		b.initResult(0, 1, notRaw, err)
-		return
-	}
-	b.appendReqs(kvpb.NewInitPut(k, v, failOnTombstones))
-	b.approxMutationReqBytes += len(k) + len(v.RawBytes)
-	b.initResult(1, 1, notRaw, nil)
-}
-
-// InitPutBytes allows multiple []byte value type InitPut requests to be added to
-// the batch using BulkSource interface.
-func (b *Batch) InitPutBytes(bs BulkSource[[]byte]) {
-	numKeys := bs.Len()
-	reqs := make([]struct {
-		req   kvpb.InitPutRequest
-		union kvpb.RequestUnion_InitPut
-	}, numKeys)
-	i := 0
-	bsi := bs.Iter()
-	b.bulkRequest(numKeys, func() (kvpb.RequestUnion, int) {
-		pr := &reqs[i].req
-		union := &reqs[i].union
-		union.InitPut = pr
-		i++
-		k, v := bsi.Next()
-		pr.Key = k
-		pr.Value.SetBytes(v)
-		pr.Value.InitChecksum(k)
-		return kvpb.RequestUnion{Value: union}, len(k) + len(pr.Value.RawBytes)
-	})
-}
-
-// InitPutTuples allows multiple tuple value type InitPut to be added to the
-// batch using BulkSource interface.
-func (b *Batch) InitPutTuples(bs BulkSource[[]byte]) {
-	numKeys := bs.Len()
-	reqs := make([]struct {
-		req   kvpb.InitPutRequest
-		union kvpb.RequestUnion_InitPut
-	}, numKeys)
-	i := 0
-	bsi := bs.Iter()
-	b.bulkRequest(numKeys, func() (kvpb.RequestUnion, int) {
-		pr := &reqs[i].req
-		union := &reqs[i].union
-		union.InitPut = pr
-		i++
-		k, v := bsi.Next()
-		pr.Key = k
-		pr.Value.SetTuple(v)
 		pr.Value.InitChecksum(k)
 		return kvpb.RequestUnion{Value: union}, len(k) + len(pr.Value.RawBytes)
 	})
@@ -878,6 +846,16 @@ func (b *Batch) ReverseScanForShare(s, e interface{}, dur kvpb.KeyLockingDurabil
 //
 // key can be either a byte slice or a string.
 func (b *Batch) Del(keys ...interface{}) {
+	b.delImpl(false /* mustAcquireExclusiveLock */, keys...)
+}
+
+// DelMustAcquireExclusiveLock is the same as Del but also sets
+// mustAcquireExclusiveLock flag on the DeleteRequest.
+func (b *Batch) DelMustAcquireExclusiveLock(keys ...interface{}) {
+	b.delImpl(true /* mustAcquireExclusiveLock */, keys...)
+}
+
+func (b *Batch) delImpl(mustAcquireExclusiveLock bool, keys ...interface{}) {
 	reqs := make([]kvpb.Request, 0, len(keys))
 	for _, key := range keys {
 		k, err := marshalKey(key)
@@ -885,7 +863,7 @@ func (b *Batch) Del(keys ...interface{}) {
 			b.initResult(len(keys), 0, notRaw, err)
 			return
 		}
-		reqs = append(reqs, kvpb.NewDelete(k))
+		reqs = append(reqs, kvpb.NewDelete(k, mustAcquireExclusiveLock))
 		b.approxMutationReqBytes += len(k)
 	}
 	b.appendReqs(reqs...)
@@ -899,24 +877,16 @@ func (b *Batch) Del(keys ...interface{}) {
 //
 // key can be either a byte slice or a string.
 func (b *Batch) DelRange(s, e interface{}, returnKeys bool) {
-	begin, err := marshalKey(s)
-	if err != nil {
-		b.initResult(0, 0, notRaw, err)
-		return
-	}
-	end, err := marshalKey(e)
-	if err != nil {
-		b.initResult(0, 0, notRaw, err)
-		return
-	}
-	b.appendReqs(kvpb.NewDeleteRange(begin, end, returnKeys))
-	b.initResult(1, 0, notRaw, nil)
+	b.delRangeImpl(s, e, returnKeys, false /* usingTombstone */)
 }
 
 // DelRangeUsingTombstone deletes the rows between begin (inclusive) and end
-// (exclusive) using an MVCC range tombstone. Callers must check
-// storage.CanUseMVCCRangeTombstones before using this.
+// (exclusive) using an MVCC range tombstone.
 func (b *Batch) DelRangeUsingTombstone(s, e interface{}) {
+	b.delRangeImpl(s, e, false /* returnKeys */, true /* usingTombstone */)
+}
+
+func (b *Batch) delRangeImpl(s, e interface{}, returnKeys bool, usingTombstone bool) {
 	start, err := marshalKey(s)
 	if err != nil {
 		b.initResult(0, 0, notRaw, err)
@@ -932,7 +902,8 @@ func (b *Batch) DelRangeUsingTombstone(s, e interface{}) {
 			Key:    start,
 			EndKey: end,
 		},
-		UseRangeTombstone: true,
+		ReturnKeys:        returnKeys,
+		UseRangeTombstone: usingTombstone,
 	})
 	b.initResult(1, 0, notRaw, nil)
 }
@@ -1063,7 +1034,6 @@ func (b *Batch) addSSTable(
 	s, e interface{},
 	data []byte,
 	disallowConflicts bool,
-	disallowShadowing bool,
 	disallowShadowingBelow hlc.Timestamp,
 	stats *enginepb.MVCCStats,
 	ingestAsWrites bool,
@@ -1086,7 +1056,6 @@ func (b *Batch) addSSTable(
 		},
 		Data:                           data,
 		DisallowConflicts:              disallowConflicts,
-		DisallowShadowing:              disallowShadowing,
 		DisallowShadowingBelow:         disallowShadowingBelow,
 		MVCCStats:                      stats,
 		IngestAsWrites:                 ingestAsWrites,

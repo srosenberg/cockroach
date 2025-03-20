@@ -7,6 +7,7 @@ package logical
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -15,6 +16,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationutils"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
+	"github.com/cockroachdb/cockroach/pkg/jobs/ingeststopped"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobsprofiler"
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
@@ -24,6 +26,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/externalcatalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/typedesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
@@ -31,12 +34,14 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/physicalplan"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/util/bulk"
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/span"
+	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -67,8 +72,18 @@ var (
 	)
 )
 
+var errOfflineInitialScanComplete = errors.New("spinning down offline initial scan")
+var maxWait = time.Minute * 5
+
 type logicalReplicationResumer struct {
 	job *jobs.Job
+
+	mu struct {
+		syncutil.Mutex
+		// perNodeAggregatorStats is a per component running aggregate of trace
+		// driven AggregatorStats emitted by the processors.
+		perNodeAggregatorStats bulk.ComponentAggregatorStats
+	}
 }
 
 var _ jobs.Resumer = (*logicalReplicationResumer)(nil)
@@ -79,29 +94,58 @@ func (r *logicalReplicationResumer) Resume(ctx context.Context, execCtx interfac
 	return r.handleResumeError(ctx, jobExecCtx, r.ingestWithRetries(ctx, jobExecCtx))
 }
 
-// The ingestion job should never fail, only pause, as progress should never be lost.
+// The ingestion job should always pause, unless the error is marked as a permanent job error.
 func (r *logicalReplicationResumer) handleResumeError(
 	ctx context.Context, execCtx sql.JobExecContext, err error,
 ) error {
 	if err == nil {
 		return nil
 	}
-	r.updateRunningStatus(ctx, redact.Sprintf("pausing after error: %s", err.Error()))
+	if jobs.IsPermanentJobError(err) {
+		r.updateStatusMessage(ctx, redact.Sprintf("permanent error: %s", err.Error()))
+		return err
+	}
+	r.updateStatusMessage(ctx, redact.Sprintf("pausing after error: %s", err.Error()))
 	return jobs.MarkPauseRequestError(err)
 }
 
-func (r *logicalReplicationResumer) updateRunningStatus(
-	ctx context.Context, runningStatus redact.RedactableString,
+func (r *logicalReplicationResumer) updateStatusMessage(
+	ctx context.Context, status redact.RedactableString,
 ) {
-	log.Infof(ctx, "%s", runningStatus)
+	log.Infof(ctx, "%s", status)
 	err := r.job.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
-		md.Progress.RunningStatus = string(runningStatus.Redact())
+		md.Progress.StatusMessage = string(status.Redact())
 		ju.UpdateProgress(md.Progress)
 		return nil
 	})
 	if err != nil {
 		log.Warningf(ctx, "error when updating job running status: %s", err)
 	}
+}
+
+func (r *logicalReplicationResumer) getClusterUris(
+	ctx context.Context, job *jobs.Job, db *sql.InternalDB,
+) ([]streamclient.ClusterUri, error) {
+	var (
+		progress = job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
+		payload  = job.Details().(jobspb.LogicalReplicationDetails)
+	)
+
+	clusterUri, err := streamclient.LookupClusterUri(ctx, payload.SourceClusterConnUri, db)
+	if err != nil {
+		return nil, err
+	}
+
+	uris := []streamclient.ClusterUri{clusterUri}
+	for _, uri := range progress.PartitionConnUris {
+		parsed, err := streamclient.ParseClusterUri(uri)
+		if err != nil {
+			return nil, err
+		}
+		uris = append(uris, parsed)
+	}
+
+	return uris, nil
 }
 
 func (r *logicalReplicationResumer) ingest(
@@ -111,7 +155,6 @@ func (r *logicalReplicationResumer) ingest(
 	var (
 		execCfg        = jobExecCtx.ExecCfg()
 		distSQLPlanner = jobExecCtx.DistSQLPlanner()
-		evalCtx        = jobExecCtx.ExtendedEvalContext()
 
 		progress = r.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
 		payload  = r.job.Details().(jobspb.LogicalReplicationDetails)
@@ -121,8 +164,13 @@ func (r *logicalReplicationResumer) ingest(
 		replicatedTimeAtStart = progress.ReplicatedTime
 	)
 
+	uris, err := r.getClusterUris(ctx, r.job, execCfg.InternalDB)
+	if err != nil {
+		return err
+	}
+
 	client, err := streamclient.GetFirstActiveClient(ctx,
-		append([]string{payload.SourceClusterConnStr}, progress.StreamAddresses...),
+		uris,
 		execCfg.InternalDB,
 		streamclient.WithStreamID(streampb.StreamID(streamID)),
 		streamclient.WithLogical(),
@@ -131,6 +179,22 @@ func (r *logicalReplicationResumer) ingest(
 		return err
 	}
 	defer func() { _ = client.Close(ctx) }()
+
+	status, err := client.Heartbeat(ctx, streampb.StreamID(payload.StreamID), progress.ReplicatedTime)
+	if err != nil {
+		log.Warningf(ctx, "could not heartbeat source cluster with stream id %d", payload.StreamID)
+	}
+	if status.StreamStatus == streampb.StreamReplicationStatus_STREAM_INACTIVE {
+		return jobs.MarkAsPermanentJobError(errors.Newf("history retention job is no longer active"))
+	}
+
+	if err := r.maybeStartReverseStream(ctx, jobExecCtx, client); err != nil {
+		return err
+	}
+
+	if err := r.maybePublishCreatedTables(ctx, jobExecCtx); err != nil {
+		return err
+	}
 
 	asOf := replicatedTimeAtStart
 	if asOf.IsEmpty() {
@@ -148,19 +212,28 @@ func (r *logicalReplicationResumer) ingest(
 	if err != nil {
 		return err
 	}
-	if err := r.job.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
-		ldrProg := md.Progress.Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
-		ldrProg.StreamAddresses = planInfo.streamAddress
-		ju.UpdateProgress(md.Progress)
-		return nil
-	}); err != nil {
-		return err
+
+	// If the routing mode is gateway, we don't want to checkpoint addresses
+	// since they may not be in the same network.
+	if uris[0].RoutingMode() != streamclient.RoutingModeGateway {
+		if err := r.job.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+			ldrProg := md.Progress.Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
+			ldrProg.PartitionConnUris = planInfo.partitionPgUrls
+			ju.UpdateProgress(md.Progress)
+			return nil
+		}); err != nil {
+			return err
+		}
 	}
+	// Update the local progress copy as it was just updated.
+	progress = r.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
 
 	// TODO(azhu): add a flag to avoid recreating dlq tables during replanning
-	dlqClient := InitDeadLetterQueueClient(execCfg.InternalDB.Executor(), planInfo.destTableBySrcID)
-	if err := dlqClient.Create(ctx); err != nil {
-		return errors.Wrap(err, "failed to create dead letter queue")
+	if !(payload.CreateTable && progress.ReplicatedTime.IsEmpty()) {
+		dlqClient := InitDeadLetterQueueClient(execCfg.InternalDB.Executor(), planInfo.destTableBySrcID)
+		if err := dlqClient.Create(ctx); err != nil {
+			return errors.Wrap(err, "failed to create dead letter queue")
+		}
 	}
 
 	frontier, err := span.MakeFrontierAt(replicatedTimeAtStart, planInfo.sourceSpans...)
@@ -215,6 +288,7 @@ func (r *logicalReplicationResumer) ingest(
 			job:                   r.job,
 			frontierUpdates:       heartbeatSender.FrontierUpdates,
 			rangeStats:            newRangeStatsCollector(planInfo.writeProcessorCount),
+			r:                     r,
 		}
 		rowResultWriter := sql.NewCallbackResultWriter(rh.handleRow)
 		distSQLReceiver := sql.MakeDistSQLReceiver(
@@ -224,18 +298,18 @@ func (r *logicalReplicationResumer) ingest(
 			execCfg.RangeDescriptorCache,
 			nil, /* txn */
 			nil, /* clockUpdater */
-			evalCtx.Tracing,
+			jobExecCtx.ExtendedEvalContext().Tracing,
 		)
 		defer distSQLReceiver.Release()
-		// Copy the evalCtx, as dsp.Run() might change it.
-		evalCtxCopy := *evalCtx
+		// Copy the eval.Context, as dsp.Run() might change it.
+		evalCtxCopy := jobExecCtx.ExtendedEvalContext().Context.Copy()
 		distSQLPlanner.Run(
 			ctx,
 			initialPlanCtx,
 			nil, /* txn */
 			initialPlan,
 			distSQLReceiver,
-			&evalCtxCopy,
+			evalCtxCopy,
 			nil, /* finishedSetupFn */
 		)
 
@@ -253,6 +327,79 @@ func (r *logicalReplicationResumer) ingest(
 		metrics.ReplanCount.Inc(1)
 	}
 	return err
+}
+
+func (r *logicalReplicationResumer) maybeStartReverseStream(
+	ctx context.Context, jobExecCtx sql.JobExecContext, client streamclient.Client,
+) error {
+
+	// Instantiate a local copy of progress and details as they are gated behind a mutex.
+	progress := r.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
+	details := r.job.Details().(jobspb.LogicalReplicationDetails)
+
+	if !(details.ReverseStreamCommand != "" && progress.ReplicatedTime.IsSet() && !progress.StartedReverseStream) {
+		return nil
+	}
+
+	// Begin the reverse stream at a system time before source tables have been
+	// published but after they have been created during this job's planning.
+	now := jobExecCtx.ExecCfg().Clock.Now()
+	if err := client.ExecStatement(ctx, details.ReverseStreamCommand, "start-reverse-stream", now.AsOfSystemTime()); err != nil {
+		return errors.Wrapf(err, "failed to start reverse stream")
+	}
+
+	if err := r.job.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+		md.Progress.Details.(*jobspb.Progress_LogicalReplication).LogicalReplication.StartedReverseStream = true
+		ju.UpdateProgress(md.Progress)
+		return nil
+	}); err != nil {
+		return err
+	}
+	log.Infof(ctx, "started reverse stream")
+	return nil
+}
+
+func (r *logicalReplicationResumer) maybePublishCreatedTables(
+	ctx context.Context, jobExecCtx sql.JobExecContext,
+) error {
+
+	// Instantiate a local copy of progress and details as they are gated behind a mutex.
+	progress := r.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
+	details := r.job.Details().(jobspb.LogicalReplicationDetails)
+
+	if !(details.CreateTable && progress.ReplicatedTime.IsSet() && !progress.PublishedNewTables) {
+		return nil
+	}
+	if details.ReverseStreamCommand != "" && !progress.StartedReverseStream {
+		return errors.AssertionFailedf("attempting to publish descriptors before starting reverse stream")
+	}
+
+	if err := ingeststopped.WaitForNoIngestingNodes(ctx, jobExecCtx, r.job, maxWait); err != nil {
+		return errors.Wrapf(err, "unable to verify that attempted LDR job %d had stopped offline ingesting %s", r.job.ID(), maxWait)
+	}
+	log.Infof(ctx, "verified no nodes still offline ingesting on behalf of job %d", r.job.ID())
+
+	return sql.DescsTxn(ctx, jobExecCtx.ExecCfg(), func(ctx context.Context, txn isql.Txn, descCol *descs.Collection) error {
+		b := txn.KV().NewBatch()
+		for i := range details.IngestedExternalCatalog.Tables {
+			td, err := descCol.MutableByID(txn.KV()).Table(ctx, details.IngestedExternalCatalog.Tables[i].GetID())
+			if err != nil {
+				return err
+			}
+			td.SetPublic()
+			if err := descCol.WriteDescToBatch(ctx, true /* kvTrace */, td, b); err != nil {
+				return err
+			}
+		}
+		if err := txn.KV().Run(ctx, b); err != nil {
+			return err
+		}
+		return r.job.WithTxn(txn).Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+			md.Progress.Details.(*jobspb.Progress_LogicalReplication).LogicalReplication.PublishedNewTables = true
+			ju.UpdateProgress(md.Progress)
+			return nil
+		})
+	})
 }
 
 func getNodes(plan *sql.PhysicalPlan) (src, dst map[string]struct{}, nodeCount int) {
@@ -289,7 +436,7 @@ type logicalReplicationPlanner struct {
 
 type logicalReplicationPlanInfo struct {
 	sourceSpans         []roachpb.Span
-	streamAddress       []string
+	partitionPgUrls     []string
 	destTableBySrcID    map[descpb.ID]dstTableMetadata
 	writeProcessorCount int
 }
@@ -335,8 +482,12 @@ func (p *logicalReplicationPlanner) generatePlanImpl(
 	if asOf.IsEmpty() {
 		asOf = payload.ReplicationStartTime
 	}
+
 	req := streampb.LogicalReplicationPlanRequest{
 		PlanAsOf: asOf,
+		// During an offline initial scan, we need to replicate the whole table, not
+		// just the primary keys.
+		UseTableSpan: payload.CreateTable && progress.ReplicatedTime.IsEmpty(),
 	}
 	for _, pair := range payload.ReplicationPairs {
 		req.TableIDs = append(req.TableIDs, pair.SrcDescriptorID)
@@ -346,8 +497,13 @@ func (p *logicalReplicationPlanner) generatePlanImpl(
 	if err != nil {
 		return nil, nil, info, err
 	}
+
+	if payload.CreateTable && progress.ReplicatedTime.IsEmpty() {
+		return p.planOfflineInitialScan(ctx, dsp, plan)
+	}
+
 	info.sourceSpans = plan.SourceSpans
-	info.streamAddress = plan.Topology.StreamAddresses()
+	info.partitionPgUrls = plan.Topology.SerializedClusterUris()
 
 	var defaultFnOID oid.Oid
 	if defaultFnID := payload.DefaultConflictResolution.FunctionId; defaultFnID != 0 {
@@ -414,8 +570,13 @@ func (p *logicalReplicationPlanner) generatePlanImpl(
 		return nil, nil, info, err
 	}
 
+	sourceUri, err := streamclient.LookupClusterUri(ctx, payload.SourceClusterConnUri, execCfg.InternalDB)
+	if err != nil {
+		return nil, nil, info, err
+	}
+
 	specs, err := constructLogicalReplicationWriterSpecs(ctx,
-		crosscluster.StreamAddress(payload.SourceClusterConnStr),
+		sourceUri,
 		plan.Topology,
 		destNodeLocalities,
 		payload.ReplicationStartTime,
@@ -462,11 +623,105 @@ func (p *logicalReplicationPlanner) generatePlanImpl(
 		execinfrapb.PostProcessSpec{},
 		logicalReplicationWriterResultType,
 		execinfrapb.Ordering{},
+		nil, /* finalizeLastStageCb */
 	)
 	physicalPlan.PlanToStreamColMap = []int{0}
 	sql.FinalizePlan(ctx, planCtx, physicalPlan)
 
 	return physicalPlan, planCtx, info, nil
+}
+
+func (p *logicalReplicationPlanner) planOfflineInitialScan(
+	ctx context.Context, dsp *sql.DistSQLPlanner, plan streamclient.LogicalReplicationPlan,
+) (*sql.PhysicalPlan, *sql.PlanningCtx, logicalReplicationPlanInfo, error) {
+	var (
+		execCfg  = p.jobExecCtx.ExecCfg()
+		evalCtx  = p.jobExecCtx.ExtendedEvalContext()
+		progress = p.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
+		payload  = p.job.Payload().Details.(*jobspb.Payload_LogicalReplicationDetails).LogicalReplicationDetails
+		info     = logicalReplicationPlanInfo{
+			sourceSpans:     plan.SourceSpans,
+			partitionPgUrls: plan.Topology.SerializedClusterUris(),
+		}
+	)
+
+	rekeys := make([]execinfrapb.TableRekey, 0, len(payload.ReplicationPairs))
+	if err := sql.DescsTxn(ctx, execCfg, func(ctx context.Context, txn isql.Txn, descriptors *descs.Collection) error {
+		for _, pair := range payload.ReplicationPairs {
+			// TODO(msbutler): avoid a marshalling round trip.
+			dstTableDesc, err := descriptors.ByIDWithoutLeased(txn.KV()).Get().Table(ctx, descpb.ID(pair.DstDescriptorID))
+			if err != nil {
+				return errors.Wrapf(err, "failed to look up table descriptor %d", pair.DstDescriptorID)
+			}
+			newDescBytes, err := protoutil.Marshal(dstTableDesc.DescriptorProto())
+			if err != nil {
+				return errors.NewAssertionErrorWithWrappedErrf(err,
+					"marshalling descriptor")
+			}
+			rekeys = append(rekeys, execinfrapb.TableRekey{
+				OldID:   uint32(pair.SrcDescriptorID),
+				NewDesc: newDescBytes,
+			})
+		}
+		return nil
+	}); err != nil {
+		return nil, nil, info, err
+	}
+
+	// TODO(msbutler): consider repartitioning topology
+
+	planCtx, nodes, err := dsp.SetupAllNodesPlanning(ctx, evalCtx, execCfg)
+	if err != nil {
+		return nil, nil, info, err
+	}
+	destNodeLocalities, err := physical.GetDestNodeLocalities(ctx, dsp, nodes)
+	if err != nil {
+		return nil, nil, info, err
+	}
+
+	uri, err := streamclient.LookupClusterUri(ctx, payload.SourceClusterConnUri, execCfg.InternalDB)
+	if err != nil {
+		return nil, nil, info, err
+	}
+
+	specs, err := constructOfflineInitialScanSpecs(ctx,
+		uri,
+		plan.Topology,
+		destNodeLocalities,
+		payload.ReplicationStartTime,
+		progress.Checkpoint,
+		p.job.ID(),
+		streampb.StreamID(payload.StreamID),
+		rekeys,
+		payload.MetricsLabel,
+	)
+	if err != nil {
+		return nil, nil, info, err
+	}
+
+	// Setup a one-stage plan with one proc per input spec.
+	corePlacement := make([]physicalplan.ProcessorCorePlacement, 0, len(specs))
+	for instanceID := range specs {
+		for _, spec := range specs[instanceID] {
+			corePlacement = append(corePlacement, physicalplan.ProcessorCorePlacement{
+				SQLInstanceID: instanceID,
+				Core:          execinfrapb.ProcessorCoreUnion{LogicalReplicationOfflineScan: &spec},
+			})
+		}
+	}
+
+	physPlan := planCtx.NewPhysicalPlan()
+	physPlan.AddNoInputStage(
+		corePlacement,
+		execinfrapb.PostProcessSpec{},
+		logicalReplicationWriterResultType,
+		execinfrapb.Ordering{},
+		nil, /* finalizeLastStageCb */
+	)
+
+	physPlan.PlanToStreamColMap = []int{0}
+	sql.FinalizePlan(ctx, planCtx, physPlan)
+	return physPlan, planCtx, info, nil
 }
 
 // rowHandler is responsible for handling checkpoints sent by logical
@@ -482,9 +737,27 @@ type rowHandler struct {
 	rangeStats rangeStatsByProcessorID
 
 	lastPartitionUpdate time.Time
+
+	r *logicalReplicationResumer
+}
+
+func (rh *rowHandler) handleTraceAgg(agg *execinfrapb.TracingAggregatorEvents) {
+	componentID := execinfrapb.ComponentID{
+		FlowID:        agg.FlowID,
+		SQLInstanceID: agg.SQLInstanceID,
+	}
+	// Update the running aggregate of the component with the latest received
+	// aggregate.
+	rh.r.mu.Lock()
+	defer rh.r.mu.Unlock()
+	rh.r.mu.perNodeAggregatorStats[componentID] = agg.Events
 }
 
 func (rh *rowHandler) handleMeta(ctx context.Context, meta *execinfrapb.ProducerMetadata) error {
+	if meta.AggregatorEvents != nil {
+		rh.handleTraceAgg(meta.AggregatorEvents)
+	}
+
 	if meta.BulkProcessorProgress == nil {
 		log.VInfof(ctx, 2, "received non progress producer meta: %v", meta)
 		return nil
@@ -516,18 +789,18 @@ func (rh *rowHandler) handleRow(ctx context.Context, row tree.Datums) error {
 			return err
 		}
 	}
+	replicatedTime := rh.frontier.Frontier()
+	alwaysPersist := rh.replicatedTimeAtStart.Less(replicatedTime) && rh.replicatedTimeAtStart.IsEmpty()
 
 	updateFreq := jobCheckpointFrequency.Get(rh.settings)
-	if updateFreq == 0 || timeutil.Since(rh.lastPartitionUpdate) < updateFreq {
+	if !alwaysPersist && (updateFreq == 0 || timeutil.Since(rh.lastPartitionUpdate) < updateFreq) {
 		return nil
 	}
 
 	frontierResolvedSpans := make([]jobspb.ResolvedSpan, 0)
-	rh.frontier.Entries(func(sp roachpb.Span, ts hlc.Timestamp) (done span.OpResult) {
+	for sp, ts := range rh.frontier.Entries() {
 		frontierResolvedSpans = append(frontierResolvedSpans, jobspb.ResolvedSpan{Span: sp, Timestamp: ts})
-		return span.ContinueMatch
-	})
-	replicatedTime := rh.frontier.Frontier()
+	}
 
 	rh.lastPartitionUpdate = timeutil.Now()
 	log.VInfof(ctx, 2, "persisting replicated time of %s", replicatedTime.GoTime())
@@ -542,7 +815,7 @@ func (rh *rowHandler) handleRow(ctx context.Context, row tree.Datums) error {
 
 			// TODO (msbutler): add ldr initial and lagging range timeseries metrics.
 			aggRangeStats, fractionCompleted, status := rh.rangeStats.RollupStats()
-			progress.RunningStatus = status
+			progress.StatusMessage = status
 
 			if replicatedTime.IsSet() {
 				prog.ReplicatedTime = replicatedTime
@@ -582,6 +855,12 @@ func (rh *rowHandler) handleRow(ctx context.Context, row tree.Datums) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+	if rh.job.Details().(jobspb.LogicalReplicationDetails).CreateTable && replicatedTime.IsSet() && rh.replicatedTimeAtStart.IsEmpty() {
+		// NB: the frontier update for the replicated time may not get sent over to
+		// the source, but this isn't a big deal-- when the distsql flow retries a
+		// new heartbeat will be sent.
+		return errOfflineInitialScanComplete
+	}
 	return nil
 }
 
@@ -614,6 +893,9 @@ func (r *logicalReplicationResumer) ingestWithRetries(
 		if knobs := execCtx.ExecCfg().StreamingTestingKnobs; knobs != nil && knobs.AfterRetryIteration != nil {
 			knobs.AfterRetryIteration(err)
 		}
+		if err := execCtx.ExecCfg().JobRegistry.CheckPausepoint("logical_replication.after.retryable_error"); err != nil {
+			return err
+		}
 	}
 	return err
 }
@@ -640,10 +922,12 @@ func loadOnlineReplicatedTime(
 func (r *logicalReplicationResumer) OnFailOrCancel(
 	ctx context.Context, execCtx interface{}, _ error,
 ) error {
-	execCfg := execCtx.(sql.JobExecContext).ExecCfg()
+	jobExecCtx := execCtx.(sql.JobExecContext)
+	execCfg := jobExecCtx.ExecCfg()
 
 	// Remove the LDR job ID from the destination table descriptors.
 	details := r.job.Details().(jobspb.LogicalReplicationDetails)
+	progress := r.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
 	destTableIDs := make([]uint32, 0, len(details.ReplicationPairs))
 	for _, pair := range details.ReplicationPairs {
 		destTableIDs = append(destTableIDs, uint32(pair.DstDescriptorID))
@@ -651,30 +935,69 @@ func (r *logicalReplicationResumer) OnFailOrCancel(
 	if err := replicationutils.UnlockLDRTables(ctx, execCfg, destTableIDs, r.job.ID()); err != nil {
 		return err
 	}
+	if details.CreateTable && !progress.PublishedNewTables {
+		if err := ingeststopped.WaitForNoIngestingNodes(ctx, jobExecCtx, r.job, maxWait); err != nil {
+			log.Errorf(ctx, "unable to verify that attempted LDR job %d had stopped offline ingesting %s: %v", r.job.ID(), maxWait, err)
+		} else {
+			log.Infof(ctx, "verified no nodes still offline ingesting on behalf of job %d", r.job.ID())
+		}
+		if err := execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
+			return externalcatalog.DropIngestedExternalCatalog(ctx, execCfg, jobExecCtx.User(), details.IngestedExternalCatalog, txn, execCfg.JobRegistry, txn.Descriptors(), fmt.Sprintf("gc for ldr job %d", r.job.ID()))
+		}); err != nil {
+			return err
+		}
+	}
 
 	r.completeProducerJob(ctx, execCfg.InternalDB)
 	return nil
 }
 
-// CollectProfile implements jobs.Resumer interface
-func (r *logicalReplicationResumer) CollectProfile(_ context.Context, _ interface{}) error {
+// CollectProfile implements the jobs.Resumer interface.
+func (r *logicalReplicationResumer) CollectProfile(ctx context.Context, execCtx interface{}) error {
+	p := execCtx.(sql.JobExecContext)
+	var aggStatsCopy bulk.ComponentAggregatorStats
+	func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		aggStatsCopy = r.mu.perNodeAggregatorStats.DeepCopy()
+	}()
+
+	if err := bulk.FlushTracingAggregatorStats(ctx, r.job.ID(),
+		p.ExecCfg().InternalDB, aggStatsCopy); err != nil {
+		return errors.Wrap(err, "failed to flush aggregator stats")
+	}
+
 	return nil
+}
+
+// ForceRealSpan implements the TraceableJob interface.
+func (r *logicalReplicationResumer) ForceRealSpan() bool {
+	return true
+}
+
+// DumpTraceAfterRun implements the TraceableJob interface.
+func (r *logicalReplicationResumer) DumpTraceAfterRun() bool {
+	return false
 }
 
 func (r *logicalReplicationResumer) completeProducerJob(
 	ctx context.Context, internalDB *sql.InternalDB,
 ) {
 	var (
-		progress = r.job.Progress().Details.(*jobspb.Progress_LogicalReplication).LogicalReplication
-		payload  = r.job.Details().(jobspb.LogicalReplicationDetails)
+		payload = r.job.Details().(jobspb.LogicalReplicationDetails)
 	)
 
 	streamID := streampb.StreamID(payload.StreamID)
 	log.Infof(ctx, "attempting to update producer job %d", streamID)
 	if err := timeutil.RunWithTimeout(ctx, "complete producer job", 30*time.Second,
 		func(ctx context.Context) error {
+			uris, err := r.getClusterUris(ctx, r.job, internalDB)
+			if err != nil {
+				return err
+			}
+
 			client, err := streamclient.GetFirstActiveClient(ctx,
-				append([]string{payload.SourceClusterConnStr}, progress.StreamAddresses...),
+				uris,
 				internalDB,
 				streamclient.WithStreamID(streamID),
 				streamclient.WithLogical(),
@@ -690,7 +1013,7 @@ func (r *logicalReplicationResumer) completeProducerJob(
 	}
 }
 
-func closeAndLog(ctx context.Context, d streamclient.Dialer) {
+func closeAndLog(ctx context.Context, d streamclient.Client) {
 	if err := d.Close(ctx); err != nil {
 		log.Warningf(ctx, "error closing stream client: %s", err.Error())
 	}
@@ -719,6 +1042,12 @@ func init() {
 		func(job *jobs.Job, _ *cluster.Settings) jobs.Resumer {
 			return &logicalReplicationResumer{
 				job: job,
+				mu: struct {
+					syncutil.Mutex
+					perNodeAggregatorStats bulk.ComponentAggregatorStats
+				}{
+					perNodeAggregatorStats: make(bulk.ComponentAggregatorStats),
+				},
 			}
 		},
 		jobs.WithJobMetrics(m),

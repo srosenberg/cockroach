@@ -25,6 +25,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
+	"github.com/cockroachdb/redact/interfaces"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -445,6 +446,21 @@ func (pb *ProcessorBase) Reset() {
 // ProcessorBase.
 type procState int
 
+func (i procState) SafeFormat(s interfaces.SafePrinter, verb rune) {
+	switch i {
+	case StateRunning:
+		s.Print("StateRunning")
+	case StateDraining:
+		s.Print("StateDraining")
+	case StateTrailingMeta:
+		s.Print("StateTrailingMeta")
+	case StateExhausted:
+		s.Print("StateExhausted")
+	}
+}
+
+var _ redact.SafeFormatter = procState(0)
+
 //go:generate stringer -type=procState
 const (
 	// StateRunning is the common state of a processor: it's producing rows for
@@ -840,7 +856,7 @@ func ProcessorSpan(
 	eventListeners ...tracing.EventListener,
 ) (context.Context, *tracing.Span) {
 	sp := tracing.SpanFromContext(ctx)
-	if sp == nil || sp.IsNoop() {
+	if sp == nil {
 		return ctx, nil
 	}
 	var listenersOpt tracing.SpanOption

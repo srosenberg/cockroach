@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/lexbase"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/collatedstring"
 	"github.com/cockroachdb/cockroach/pkg/util/pretty"
@@ -233,7 +234,7 @@ type CreateIndex struct {
 	Name        Name
 	Table       TableName
 	Unique      bool
-	Inverted    bool
+	Type        idxtype.T
 	IfNotExists bool
 	Columns     IndexElemList
 	Sharded     *ShardedIndexDef
@@ -256,8 +257,11 @@ func (node *CreateIndex) Format(ctx *FmtCtx) {
 	if node.Unique {
 		ctx.WriteString("UNIQUE ")
 	}
-	if node.Inverted {
+	switch node.Type {
+	case idxtype.INVERTED:
 		ctx.WriteString("INVERTED ")
+	case idxtype.VECTOR:
+		ctx.WriteString("VECTOR ")
 	}
 	ctx.WriteString("INDEX ")
 	if node.Concurrently {
@@ -1030,7 +1034,7 @@ type IndexTableDef struct {
 	Columns          IndexElemList
 	Sharded          *ShardedIndexDef
 	Storing          NameList
-	Inverted         bool
+	Type             idxtype.T
 	PartitionByIndex *PartitionByIndex
 	StorageParams    StorageParams
 	Predicate        Expr
@@ -1039,8 +1043,11 @@ type IndexTableDef struct {
 
 // Format implements the NodeFormatter interface.
 func (node *IndexTableDef) Format(ctx *FmtCtx) {
-	if node.Inverted {
+	switch node.Type {
+	case idxtype.INVERTED:
 		ctx.WriteString("INVERTED ")
+	case idxtype.VECTOR:
+		ctx.WriteString("VECTOR ")
 	}
 	ctx.WriteString("INDEX ")
 	if node.Name != "" {
@@ -1991,6 +1998,7 @@ type RefreshMaterializedView struct {
 	Name              *UnresolvedObjectName
 	Concurrently      bool
 	RefreshDataOption RefreshDataOption
+	AsOf              AsOfClause
 }
 
 // RefreshDataOption corresponds to arguments for the REFRESH MATERIALIZED VIEW
@@ -2016,6 +2024,10 @@ func (node *RefreshMaterializedView) Format(ctx *FmtCtx) {
 		ctx.WriteString("CONCURRENTLY ")
 	}
 	ctx.FormatNode(node.Name)
+	if node.AsOf.Expr != nil {
+		ctx.WriteString(" ")
+		ctx.FormatNode(&node.AsOf)
+	}
 	switch node.RefreshDataOption {
 	case RefreshDataWithData:
 		ctx.WriteString(" WITH DATA")
@@ -2203,9 +2215,9 @@ type CreateTenantFromReplication struct {
 	// to use the TenantSpec type. This supports the auto-promotion
 	// of simple identifiers to strings.
 	ReplicationSourceTenantName *TenantSpec
-	// ReplicationSourceAddress is the address of the source cluster that we are
+	// ReplicationSourceConnUri is the address of the source cluster that we are
 	// replicating data from.
-	ReplicationSourceAddress Expr
+	ReplicationSourceConnUri Expr
 
 	Options TenantReplicationOptions
 }
@@ -2229,15 +2241,15 @@ func (node *CreateTenantFromReplication) Format(ctx *FmtCtx) {
 	// do not contain sensitive information.
 	ctx.FormatNode(node.TenantSpec)
 
-	if node.ReplicationSourceAddress != nil {
+	if node.ReplicationSourceConnUri != nil {
 		ctx.WriteString(" FROM REPLICATION OF ")
 		ctx.FormatNode(node.ReplicationSourceTenantName)
 		ctx.WriteString(" ON ")
-		_, canOmitParentheses := node.ReplicationSourceAddress.(alreadyDelimitedAsSyntacticDExpr)
+		_, canOmitParentheses := node.ReplicationSourceConnUri.(alreadyDelimitedAsSyntacticDExpr)
 		if !canOmitParentheses {
 			ctx.WriteByte('(')
 		}
-		ctx.FormatNode(node.ReplicationSourceAddress)
+		ctx.FormatNode(node.ReplicationSourceConnUri)
 		if !canOmitParentheses {
 			ctx.WriteByte(')')
 		}

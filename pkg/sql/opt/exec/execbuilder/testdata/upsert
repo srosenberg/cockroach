@@ -360,6 +360,9 @@ vectorized: true
                           table: indexed@secondary
                           spans: FULL SCAN
 
+statement ok
+SET avoid_full_table_scans_in_mutations = false
+
 query T
 EXPLAIN (VERBOSE) UPSERT INTO indexed@{NO_FULL_SCAN} VALUES (1)
 ----
@@ -409,6 +412,164 @@ vectorized: true
 
 query error could not produce a query plan conforming to the NO_FULL_SCAN hint
 EXPLAIN (VERBOSE) UPSERT INTO indexed@{FORCE_INDEX=secondary,NO_FULL_SCAN} VALUES (1)
+
+# AVOID_FULL_SCAN also works to ensure a constrained scan, and does not error if
+# one is not possible.
+query T
+EXPLAIN (VERBOSE) UPSERT INTO indexed@{AVOID_FULL_SCAN} VALUES (1)
+----
+distribution: local
+vectorized: true
+·
+• upsert
+│ columns: ()
+│ estimated row count: 0 (missing stats)
+│ into: indexed(a, b, c, d)
+│ auto commit
+│ arbiter indexes: indexed_pkey
+│
+└── • project
+    │ columns: (column1, b_default, c_default, d_comp, a, b, c, d, b_default, c_default, d_comp, a, check1)
+    │
+    └── • render
+        │ columns: (check1, column1, b_default, c_default, d_comp, a, b, c, d)
+        │ render check1: c_default > 0
+        │ render column1: column1
+        │ render b_default: b_default
+        │ render c_default: c_default
+        │ render d_comp: d_comp
+        │ render a: a
+        │ render b: b
+        │ render c: c
+        │ render d: d
+        │
+        └── • cross join (left outer)
+            │ columns: (column1, b_default, c_default, d_comp, a, b, c, d)
+            │ estimated row count: 1 (missing stats)
+            │
+            ├── • values
+            │     columns: (column1, b_default, c_default, d_comp)
+            │     size: 4 columns, 1 row
+            │     row 0, expr 0: 1
+            │     row 0, expr 1: CAST(NULL AS INT8)
+            │     row 0, expr 2: 10
+            │     row 0, expr 3: 11
+            │
+            └── • scan
+                  columns: (a, b, c, d)
+                  estimated row count: 1 (missing stats)
+                  table: indexed@indexed_pkey
+                  spans: /1/0
+                  locking strength: for update
+
+query T
+EXPLAIN (VERBOSE) UPSERT INTO indexed@{FORCE_INDEX=secondary,AVOID_FULL_SCAN} VALUES (1)
+----
+distribution: local
+vectorized: true
+·
+• upsert
+│ columns: ()
+│ estimated row count: 0 (missing stats)
+│ into: indexed(a, b, c, d)
+│ auto commit
+│ arbiter indexes: indexed_pkey
+│
+└── • project
+    │ columns: (column1, b_default, c_default, d_comp, a, b, c, d, b_default, c_default, d_comp, a, check1)
+    │
+    └── • render
+        │ columns: (check1, column1, b_default, c_default, d_comp, a, b, c, d)
+        │ render check1: c_default > 0
+        │ render column1: column1
+        │ render b_default: b_default
+        │ render c_default: c_default
+        │ render d_comp: d_comp
+        │ render a: a
+        │ render b: b
+        │ render c: c
+        │ render d: d
+        │
+        └── • cross join (left outer)
+            │ columns: (column1, b_default, c_default, d_comp, a, b, c, d)
+            │ estimated row count: 1 (missing stats)
+            │
+            ├── • values
+            │     columns: (column1, b_default, c_default, d_comp)
+            │     size: 4 columns, 1 row
+            │     row 0, expr 0: 1
+            │     row 0, expr 1: CAST(NULL AS INT8)
+            │     row 0, expr 2: 10
+            │     row 0, expr 3: 11
+            │
+            └── • filter
+                │ columns: (a, b, c, d)
+                │ estimated row count: 1 (missing stats)
+                │ filter: a = 1
+                │
+                └── • index join
+                    │ columns: (a, b, c, d)
+                    │ estimated row count: 1,000 (missing stats)
+                    │ table: indexed@indexed_pkey
+                    │ key columns: a
+                    │
+                    └── • scan
+                          columns: (a, b, d)
+                          estimated row count: 1,000 (missing stats)
+                          table: indexed@secondary
+                          spans: FULL SCAN
+
+# We also avoid the full scan using the session setting
+# avoid_full_table_scans_in_mutations.
+statement ok
+SET avoid_full_table_scans_in_mutations = true
+
+query T
+EXPLAIN (VERBOSE) UPSERT INTO indexed VALUES (1)
+----
+distribution: local
+vectorized: true
+·
+• upsert
+│ columns: ()
+│ estimated row count: 0 (missing stats)
+│ into: indexed(a, b, c, d)
+│ auto commit
+│ arbiter indexes: indexed_pkey
+│
+└── • project
+    │ columns: (column1, b_default, c_default, d_comp, a, b, c, d, b_default, c_default, d_comp, a, check1)
+    │
+    └── • render
+        │ columns: (check1, column1, b_default, c_default, d_comp, a, b, c, d)
+        │ render check1: c_default > 0
+        │ render column1: column1
+        │ render b_default: b_default
+        │ render c_default: c_default
+        │ render d_comp: d_comp
+        │ render a: a
+        │ render b: b
+        │ render c: c
+        │ render d: d
+        │
+        └── • cross join (left outer)
+            │ columns: (column1, b_default, c_default, d_comp, a, b, c, d)
+            │ estimated row count: 1 (missing stats)
+            │
+            ├── • values
+            │     columns: (column1, b_default, c_default, d_comp)
+            │     size: 4 columns, 1 row
+            │     row 0, expr 0: 1
+            │     row 0, expr 1: CAST(NULL AS INT8)
+            │     row 0, expr 2: 10
+            │     row 0, expr 3: 11
+            │
+            └── • scan
+                  columns: (a, b, c, d)
+                  estimated row count: 1 (missing stats)
+                  table: indexed@indexed_pkey
+                  spans: /1/0
+                  locking strength: for update
 
 query T
 EXPLAIN (VERBOSE)
@@ -707,7 +868,9 @@ statement ok
 CREATE TABLE table38627 (a INT PRIMARY KEY, b INT, FAMILY (a, b)); INSERT INTO table38627 VALUES(1,1)
 
 statement ok
-BEGIN; ALTER TABLE table38627 ADD COLUMN c INT NOT NULL DEFAULT 5
+BEGIN;
+SET LOCAL autocommit_before_ddl=off;
+ALTER TABLE table38627 ADD COLUMN c INT NOT NULL DEFAULT 5
 
 query T
 EXPLAIN (VERBOSE) UPSERT INTO table38627 SELECT * FROM table38627 WHERE a=1
@@ -836,22 +999,15 @@ vectorized: true
         │ render b: b
         │ render c: c
         │
-        └── • merge join (right outer)
-            │ columns: (a, b, c, x, y, z)
+        └── • lookup join (left outer)
+            │ columns: (x, y, z, a, b, c)
             │ estimated row count: 311 (missing stats)
-            │ equality: (b, c) = (y, z)
-            │ merge ordering: +"(b=y)",+"(c=z)"
-            │
-            ├── • scan
-            │     columns: (a, b, c)
-            │     ordering: +b,+c
-            │     estimated row count: 1,000 (missing stats)
-            │     table: target@target_b_c_key
-            │     spans: FULL SCAN
+            │ table: target@target_b_c_key
+            │ equality: (y, z) = (b, c)
+            │ equality cols are key
             │
             └── • distinct
                 │ columns: (x, y, z)
-                │ ordering: +y,+z
                 │ estimated row count: 311 (missing stats)
                 │ distinct on: y, z
                 │ nulls are distinct
@@ -894,9 +1050,9 @@ query T
 SELECT message FROM [SHOW KV TRACE FOR SESSION]
  WHERE operation != 'dist sender send'
 ----
-Put /Table/117/1/1/0 -> /TUPLE/
-Del /Table/117/1/1/1/1
-Del /Table/117/1/1/2/1
+Put (locking) /Table/117/1/1/0 -> /TUPLE/
+Del (locking) /Table/117/1/1/1/1
+Del (locking) /Table/117/1/1/2/1
 fast path completed
 rows affected: 1
 
@@ -916,7 +1072,7 @@ SELECT operation, message FROM [SHOW KV TRACE FOR SESSION]
 ----
 colbatchscan  Scan /Table/120/1/2/0 lock Exclusive (Block, Unreplicated)
 count         CPut /Table/120/1/2/0 -> /TUPLE/2:2:Int/3
-count         InitPut /Table/120/2/3/0 -> /BYTES/0x8a
+count         CPut /Table/120/2/3/0 -> /BYTES/0x8a
 count         fast path completed
 sql query     rows affected: 1
 
@@ -929,7 +1085,7 @@ SELECT operation, message FROM [SHOW KV TRACE FOR SESSION]
 ----
 colbatchscan  Scan /Table/120/1/1/0 lock Exclusive (Block, Unreplicated)
 count         CPut /Table/120/1/1/0 -> /TUPLE/2:2:Int/2
-count         InitPut /Table/120/2/2/0 -> /BYTES/0x89
+count         CPut /Table/120/2/2/0 -> /BYTES/0x89
 count         fast path completed
 sql query     rows affected: 1
 
@@ -944,8 +1100,8 @@ SELECT operation, message FROM [SHOW KV TRACE FOR SESSION]
 colbatchscan  Scan /Table/120/1/2/0 lock Exclusive (Block, Unreplicated)
 colbatchscan  fetched: /kv/kv_pkey/2/v -> /3
 count         Put /Table/120/1/2/0 -> /TUPLE/2:2:Int/2
-count         Del /Table/120/2/3/0
-count         CPut /Table/120/2/2/0 -> /BYTES/0x8a (expecting does not exist)
+count         Del (locking) /Table/120/2/3/0
+count         CPut /Table/120/2/2/0 -> /BYTES/0x8a
 sql query     execution failed after 0 rows: duplicate key value violates unique constraint "woo"
 
 # Test that implicit SELECT FOR UPDATE doesn't spread to subqueries.
@@ -1123,3 +1279,12 @@ quality of service: regular
                   regions: <hidden>
                   actual row count: 1
                   size: 3 columns, 1 row
+
+# Regression test for #136458. The canary column ordinal should be correctly
+# selected when the canaray column is also a partial index DEL column.
+
+statement ok
+CREATE TABLE t136458 (c BOOL PRIMARY KEY, INDEX (c) WHERE c)
+
+statement ok
+UPSERT INTO t136458 (c) VALUES (false)

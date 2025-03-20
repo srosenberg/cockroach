@@ -29,7 +29,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
+	"github.com/cockroachdb/cockroach/pkg/sql/regionliveness"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlclustersettings"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
@@ -42,6 +44,7 @@ import (
 )
 
 type alterDatabaseOwnerNode struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseOwner
 	desc *dbdesc.Mutable
 }
@@ -127,6 +130,7 @@ func (n *alterDatabaseOwnerNode) Values() tree.Datums          { return tree.Dat
 func (n *alterDatabaseOwnerNode) Close(context.Context)        {}
 
 type alterDatabaseAddRegionNode struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseAddRegion
 	desc *dbdesc.Mutable
 }
@@ -309,6 +313,7 @@ func (n *alterDatabaseAddRegionNode) Values() tree.Datums          { return tree
 func (n *alterDatabaseAddRegionNode) Close(context.Context)        {}
 
 type alterDatabaseDropRegionNode struct {
+	zeroInputPlanNode
 	n                     *tree.AlterDatabaseDropRegion
 	desc                  *dbdesc.Mutable
 	removingPrimaryRegion bool
@@ -480,6 +485,39 @@ func (p *planner) AlterDatabaseDropRegion(
 		if err := p.checkCanDropSystemDatabaseRegion(ctx, n.Region); err != nil {
 			return nil, err
 		}
+		tablesToClean := []string{"sqlliveness", "lease", "sql_instances"}
+		for _, t := range tablesToClean {
+			livenessQuery := fmt.Sprintf(
+				`SELECT count(*) > 0 FROM system.%s WHERE crdb_region = '%s' AND 
+          crdb_internal.sql_liveness_is_alive(session_id)`, t, n.Region)
+			row, err := p.QueryRowEx(ctx, "check-session-liveness-for-region",
+				sessiondata.NodeUserSessionDataOverride, livenessQuery)
+			if err != nil {
+				return nil, err
+			}
+			// Block dropping n.Region if any associated session is active.
+			if tree.MustBeDBool(row[0]) {
+				return nil, errors.WithHintf(
+					pgerror.Newf(
+						pgcode.InvalidDatabaseDefinition,
+						"cannot drop region %q",
+						n.Region,
+					),
+					"You must not have any active sessions that are in this region. "+
+						"Ensure that there no nodes that still belong to region %q", n.Region,
+				)
+			}
+		}
+		// For the region_liveness table, we can just safely remove the reference
+		// (if any) of the dropping region from the table.
+		if _, err := p.ExecEx(ctx, "remove-region-liveness-ref",
+			sessiondata.NodeUserSessionDataOverride, `DELETE FROM system.region_liveness
+			        WHERE crdb_region = $1`, n.Region); err != nil {
+			return nil, err
+		}
+		if err := regionliveness.CleanupSystemTableForRegion(ctx, p.execCfg.Codec, n.Region.String(), p.txn); err != nil {
+			return nil, err
+		}
 	}
 
 	// Ensure survivability goal and number of regions after the drop jive.
@@ -492,10 +530,10 @@ func (p *planner) AlterDatabaseDropRegion(
 	}
 
 	return &alterDatabaseDropRegionNode{
-		n,
-		dbDesc,
-		removingPrimaryRegion,
-		toDrop,
+		n:                     n,
+		desc:                  dbDesc,
+		removingPrimaryRegion: removingPrimaryRegion,
+		toDrop:                toDrop,
 	}, nil
 }
 
@@ -826,6 +864,7 @@ func (n *alterDatabaseDropRegionNode) Values() tree.Datums          { return tre
 func (n *alterDatabaseDropRegionNode) Close(context.Context)        {}
 
 type alterDatabasePrimaryRegionNode struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabasePrimaryRegion
 	desc *dbdesc.Mutable
 }
@@ -1212,6 +1251,7 @@ func (n *alterDatabasePrimaryRegionNode) Close(context.Context)        {}
 func (n *alterDatabasePrimaryRegionNode) ReadingOwnWrites()            {}
 
 type alterDatabaseSurvivalGoalNode struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseSurvivalGoal
 	desc *dbdesc.Mutable
 }
@@ -1351,6 +1391,7 @@ func (n *alterDatabaseSurvivalGoalNode) Values() tree.Datums          { return t
 func (n *alterDatabaseSurvivalGoalNode) Close(context.Context)        {}
 
 type alterDatabasePlacementNode struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabasePlacement
 	desc *dbdesc.Mutable
 }
@@ -1494,6 +1535,7 @@ func (n *alterDatabasePlacementNode) Values() tree.Datums          { return tree
 func (n *alterDatabasePlacementNode) Close(context.Context)        {}
 
 type alterDatabaseAddSuperRegion struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseAddSuperRegion
 	desc *dbdesc.Mutable
 }
@@ -1598,6 +1640,7 @@ func (n *alterDatabaseAddSuperRegion) Values() tree.Datums          { return tre
 func (n *alterDatabaseAddSuperRegion) Close(context.Context)        {}
 
 type alterDatabaseDropSuperRegion struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseDropSuperRegion
 	desc *dbdesc.Mutable
 }
@@ -1720,6 +1763,7 @@ func (p *planner) getSuperRegionsForDatabase(
 }
 
 type alterDatabaseAlterSuperRegion struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseAlterSuperRegion
 	desc *dbdesc.Mutable
 }
@@ -1887,6 +1931,7 @@ func (p *planner) addSuperRegion(
 }
 
 type alterDatabaseSecondaryRegion struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseSecondaryRegion
 	desc *dbdesc.Mutable
 }
@@ -1966,7 +2011,7 @@ func (n *alterDatabaseSecondaryRegion) startExec(params runParams) error {
 	}
 
 	regions, ok := prevRegionConfig.GetSuperRegionRegionsForRegion(prevRegionConfig.PrimaryRegion())
-	if !ok && prevRegionConfig.IsMemberOfExplicitSuperRegion(catpb.RegionName(n.n.SecondaryRegion)) {
+	if !ok && prevRegionConfig.IsMemberOfSuperRegion(catpb.RegionName(n.n.SecondaryRegion)) {
 		return pgerror.New(pgcode.InvalidDatabaseDefinition,
 			"the secondary region can not be in a super region, unless the primary is also "+
 				"within a super region",
@@ -2035,6 +2080,7 @@ func (n *alterDatabaseSecondaryRegion) Values() tree.Datums          { return tr
 func (n *alterDatabaseSecondaryRegion) Close(context.Context)        {}
 
 type alterDatabaseDropSecondaryRegion struct {
+	zeroInputPlanNode
 	n    *tree.AlterDatabaseDropSecondaryRegion
 	desc *dbdesc.Mutable
 }
@@ -2184,6 +2230,7 @@ func (n *alterDatabaseDropSecondaryRegion) Values() tree.Datums          { retur
 func (n *alterDatabaseDropSecondaryRegion) Close(context.Context)        {}
 
 type alterDatabaseSetZoneConfigExtensionNode struct {
+	zeroInputPlanNode
 	n          *tree.AlterDatabaseSetZoneConfigExtension
 	desc       *dbdesc.Mutable
 	yamlConfig tree.TypedExpr

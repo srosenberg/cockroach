@@ -534,8 +534,8 @@ var queries = [...]benchQuery{
 	},
 	{
 		name:    "json-insert",
-		query:   `INSERT INTO json_table(k, i, j) VALUES (1, 10, '{"a": "foo", "b": "bar", "c": [2, 3, "baz", true, false, null]}')`,
-		args:    []interface{}{},
+		query:   `INSERT INTO json_table(k, i, j) VALUES ($1, $2, $3)`,
+		args:    []interface{}{1, 10, `'{"a": "foo", "b": "bar", "c": [2, 3, "baz", true, false, null]}'`},
 		cleanup: "TRUNCATE TABLE json_table",
 	},
 	{
@@ -813,6 +813,7 @@ type harness struct {
 	prepMemo  *memo.Memo
 	testCat   *testcat.Catalog
 	optimizer xform.Optimizer
+	gf        explain.PlanGistFactory
 }
 
 func newHarness(tb testing.TB, query benchQuery, schemas []string) *harness {
@@ -863,7 +864,7 @@ func newHarness(tb testing.TB, query benchQuery, schemas []string) *harness {
 			tb.Fatalf("%v", err)
 		}
 	} else {
-		if _, _, err := h.optimizer.TryPlaceholderFastPath(); err != nil {
+		if _, err := h.optimizer.TryPlaceholderFastPath(); err != nil {
 			tb.Fatalf("%v", err)
 		}
 	}
@@ -943,10 +944,11 @@ func (h *harness) runSimple(tb testing.TB, query benchQuery, phase Phase) {
 		tb.Fatalf("invalid phase %s for Simple", phase)
 	}
 
+	h.gf.Init(exec.StubFactory{})
 	root := execMemo.RootExpr()
 	eb := execbuilder.New(
 		context.Background(),
-		explain.NewPlanGistFactory(exec.StubFactory{}),
+		&h.gf,
 		&h.optimizer,
 		execMemo,
 		nil, /* catalog */
@@ -999,10 +1001,11 @@ func (h *harness) runPrepared(tb testing.TB, phase Phase) {
 		tb.Fatalf("invalid phase %s for Prepared", phase)
 	}
 
+	h.gf.Init(exec.StubFactory{})
 	root := execMemo.RootExpr()
 	eb := execbuilder.New(
 		context.Background(),
-		explain.NewPlanGistFactory(exec.StubFactory{}),
+		&h.gf,
 		&h.optimizer,
 		execMemo,
 		nil, /* catalog */
@@ -1775,11 +1778,13 @@ func BenchmarkExecBuild(b *testing.B) {
 		execMemo := h.optimizer.Memo()
 		root := execMemo.RootExpr()
 
+		var gf explain.PlanGistFactory
 		b.Run(tc.query.name, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
+				gf.Init(exec.StubFactory{})
 				eb := execbuilder.New(
 					context.Background(),
-					explain.NewPlanGistFactory(exec.StubFactory{}),
+					&gf,
 					&h.optimizer,
 					execMemo,
 					nil, /* catalog */

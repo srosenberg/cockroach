@@ -33,10 +33,7 @@ import "cloud/cloudpb/external_storage.proto";
 // descriptor in the database, and doesn't emit any rows nor support
 // any post-processing.
 message BackfillerSpec {
-  // TODO(lidor): job_id is not needed when interoperability with 22.2 is
-  // dropped, the new way to send the job tag is using 'job_tag' in the
-  // SetupFlowRequest message.
-  optional int64 job_id = 13 [(gogoproto.nullable) = false, (gogoproto.customname) = "JobID"];
+  reserved 13; // job_id
   enum Type {
     Invalid = 0;
     Column = 1;
@@ -82,12 +79,13 @@ message BackfillerSpec {
   // timestamp, even if the request gets pushed server-side. This ensures the
   // writes comply with the timestamp cache and closed timestamp. See also
   // AddSSTableRequest.SSTTimestampToRequestTimestamp.
-  //
-  // Note that older nodes do not respect this flag so callers should
-  // check MVCCAddSSTable before setting this option.
   optional bool write_at_batch_timestamp = 12 [(gogoproto.nullable) = false];
 
-  // NEXTID: 15.
+  // SourceIndexID is the source index that will be used for this backfill. If
+  // the value of 0 is specified then the primary index will be used implicitly.
+  optional uint32 source_index_id = 16 [(gogoproto.nullable) = false, (gogoproto.customname) = "SourceIndexID", (gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb.IndexID"];
+
+  // NEXTID: 17.
 }
 
 // JobProgress identifies the job to report progress on. This reporting
@@ -189,7 +187,7 @@ message StreamIngestionPartitionSpec {
 
   optional string subscription_token = 2 [(gogoproto.nullable) = false];
 
-  optional string address = 3 [(gogoproto.nullable) = false];
+  optional string partition_conn_uri = 3 [(gogoproto.nullable) = false];
 
   repeated roachpb.Span spans = 4 [(gogoproto.nullable) = false];
 
@@ -275,8 +273,9 @@ message StreamIngestionFrontierSpec {
   // Checkpoint stores a set of resolved spans denoting completed progress
   optional jobs.jobspb.StreamIngestionCheckpoint checkpoint = 7 [(gogoproto.nullable) = false];
 
-  // StreamAddresses are the addresses that can be connected to to interact with the source job
-  repeated string stream_addresses = 8;
+	// ConnectionUris are the URIs that can be connected to to interact with the
+	// source job
+  repeated string connection_uris = 8;
 
   // PartitionSpecs contains the topology of the physical replication stream.
   optional StreamIngestionPartitionSpecs partition_specs = 9 [(gogoproto.nullable) = false];
@@ -515,8 +514,9 @@ message LogicalReplicationWriterSpec {
     // ingesting data from the PreviousReplicatedTimestamp described above.
     optional util.hlc.Timestamp initial_scan_timestamp = 5 [(gogoproto.nullable) = false];
 
-    // StreamAddress locate the stream so that a stream client can be initialized.
-    optional string stream_address = 6 [(gogoproto.nullable) = false];
+		// PartitionConnUri locate the stream so that a stream client can be
+		// initialized.
+    optional string partition_conn_uri = 6 [(gogoproto.nullable) = false];
 
     // Checkpoint stores a set of resolved spans denoting completed progress.
     optional jobs.jobspb.StreamIngestionCheckpoint checkpoint = 7 [(gogoproto.nullable) = false];
@@ -536,4 +536,35 @@ message LogicalReplicationWriterSpec {
     optional string metrics_label = 11 [(gogoproto.nullable) = false];
 
     // Next ID: 13.
+}
+
+message LogicalReplicationOfflineScanSpec {
+    // JobID of the job that ran the replicationWriterProcessor.
+    optional int64 job_id = 1 [(gogoproto.nullable) = false, (gogoproto.customname) = "JobID"];
+
+    // StreamID is the ID of the stream (which is shared across the producer and consumer).
+    optional uint64 stream_id = 2 [(gogoproto.nullable) = false, (gogoproto.customname) = "StreamID"];
+
+    // PartitionSpec is the source partition this processor will create a
+    // subscription for.
+    optional StreamIngestionPartitionSpec partition_spec = 3 [(gogoproto.nullable) = false];
+
+    // InitialScanTimestamp is the timestamp at which the partition will run the
+    // initial rangefeed scan before replicating further changes to the target
+    // spans. This timestamp is always non-empty, but a partition will only run an
+    // initial scan if no progress has been recorded prior to the current
+    // resumption of the replication job. Otherwise, all spans will start
+    // ingesting data from the PreviousReplicatedTimestamp described above.
+    optional util.hlc.Timestamp initial_scan_timestamp = 4 [(gogoproto.nullable) = false];
+
+    // StreamAddress locate the stream so that a stream client can be initialized.
+    optional string stream_address = 5 [(gogoproto.nullable) = false];
+
+    // Checkpoint stores a set of resolved spans denoting completed progress.
+    optional jobs.jobspb.StreamIngestionCheckpoint checkpoint = 6 [(gogoproto.nullable) = false];
+
+    repeated TableRekey rekey = 7 [(gogoproto.nullable) = false];
+
+    optional string metrics_label = 8 [(gogoproto.nullable) = false];
+
 }

@@ -92,6 +92,10 @@ type SemaProperties struct {
 	// Ancestors is mutated during semantic analysis to provide contextual
 	// information for each descendent during traversal of sub-expressions.
 	Ancestors ScalarAncestors
+
+	// IgnoreUnpreferredOverloads is set to true when "unpreferred" overloads
+	// should not be used during type-checking and overload resolution.
+	IgnoreUnpreferredOverloads bool
 }
 
 type semaRequirements struct {
@@ -332,14 +336,14 @@ func decorateTypeCheckError(err error, format string, a ...interface{}) error {
 // their inferred types in the provided context. The optional desired parameter can
 // be used to hint the desired type for the root of the resulting typed expression
 // tree. Like with Expr.TypeCheck, it is not valid to provide a nil desired
-// type. Instead, call it with the wildcard type types.Any if no specific type is
+// type. Instead, call it with the wildcard type types.AnyElement if no specific type is
 // desired.
 func TypeCheck(
 	ctx context.Context, expr Expr, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
 	if desired == nil {
 		return nil, errors.AssertionFailedf(
-			"the desired type for tree.TypeCheck cannot be nil, use types.Any instead: %T", expr)
+			"the desired type for tree.TypeCheck cannot be nil, use types.AnyElement instead: %T", expr)
 	}
 
 	return expr.TypeCheck(ctx, semaCtx, desired)
@@ -466,7 +470,7 @@ func (expr *CaseExpr) TypeCheck(
 			tmpExprs = append(tmpExprs, when.Cond)
 		}
 
-		typedSubExprs, _, err := typeCheckSameTypedExprs(ctx, semaCtx, types.Any, tmpExprs...)
+		typedSubExprs, _, err := typeCheckSameTypedExprs(ctx, semaCtx, types.AnyElement, tmpExprs...)
 		if err != nil {
 			return nil, decorateTypeCheckError(err, "incompatible condition type:")
 		}
@@ -610,10 +614,10 @@ func isArrayExpr(expr Expr) bool {
 func (expr *CastExpr) TypeCheck(
 	ctx context.Context, semaCtx *SemaContext, _ *types.T,
 ) (TypedExpr, error) {
-	// The desired type provided to a CastExpr is ignored. Instead, types.Any is
+	// The desired type provided to a CastExpr is ignored. Instead, types.AnyElement is
 	// passed to the child of the cast. There are a few exceptions, described
 	// below.
-	desired := types.Any
+	desired := types.AnyElement
 	exprType, err := ResolveType(ctx, expr.Type, semaCtx.GetTypeResolver())
 	if err != nil {
 		return nil, err
@@ -735,7 +739,7 @@ func (expr *IndirectionExpr) TypeCheck(
 			if t.Slice {
 				return nil, pgerror.Newf(pgcode.DatatypeMismatch, "jsonb subscript does not support slices")
 			}
-			beginExpr, err := t.Begin.TypeCheck(ctx, semaCtx, types.Any)
+			beginExpr, err := t.Begin.TypeCheck(ctx, semaCtx, types.AnyElement)
 			if err != nil {
 				return nil, err
 			}
@@ -875,7 +879,7 @@ func (expr *ColumnAccessExpr) TypeCheck(
 	// at least this label and the element type T for this label" from
 	// the sub-expression. Of course, our type system does not support
 	// this. So drop the type constraint instead.
-	subExpr, err := expr.Expr.TypeCheck(ctx, semaCtx, types.Any)
+	subExpr, err := expr.Expr.TypeCheck(ctx, semaCtx, types.AnyElement)
 	if err != nil {
 		return nil, err
 	}
@@ -955,6 +959,7 @@ func (expr *ComparisonExpr) TypeCheck(
 ) (TypedExpr, error) {
 	var leftTyped, rightTyped TypedExpr
 	var cmpOp *CmpOp
+	var cmpOpSym treecmp.ComparisonOperatorSymbol
 	var alwaysNull bool
 	var err error
 	if expr.Operator.Symbol.HasSubOperator() {
@@ -966,11 +971,7 @@ func (expr *ComparisonExpr) TypeCheck(
 			expr.Left,
 			expr.Right,
 		)
-		if err == nil {
-			err = checkRefCursorComparison(
-				expr.SubOperator.Symbol, leftTyped.ResolvedType(), rightTyped.ResolvedType(),
-			)
-		}
+		cmpOpSym = expr.SubOperator.Symbol
 	} else {
 		leftTyped, rightTyped, cmpOp, alwaysNull, err = typeCheckComparisonOp(
 			ctx,
@@ -979,11 +980,11 @@ func (expr *ComparisonExpr) TypeCheck(
 			expr.Left,
 			expr.Right,
 		)
-		if err == nil {
-			err = checkRefCursorComparison(
-				expr.Operator.Symbol, leftTyped.ResolvedType(), rightTyped.ResolvedType(),
-			)
-		}
+		cmpOpSym = expr.Operator.Symbol
+	}
+	if err == nil {
+		err = runValidations(cmpOpSym, leftTyped.ResolvedType(), rightTyped.ResolvedType(),
+			[]types.Family{types.RefCursorFamily, types.JsonpathFamily})
 	}
 	if err != nil {
 		return nil, err
@@ -1456,7 +1457,7 @@ func (expr *FuncExpr) TypeCheck(
 	if expr.OrderBy != nil {
 		if err = expr.typeCheckWithFuncAncestor(semaCtx, func() error {
 			for i := range expr.OrderBy {
-				typedExpr, err := expr.OrderBy[i].Expr.TypeCheck(ctx, semaCtx, types.Any)
+				typedExpr, err := expr.OrderBy[i].Expr.TypeCheck(ctx, semaCtx, types.AnyElement)
 				if err != nil {
 					return err
 				}
@@ -1505,7 +1506,7 @@ func (expr *IfErrExpr) TypeCheck(
 	var retType *types.T
 	var err error
 	if expr.Else == nil {
-		typedCond, err = expr.Cond.TypeCheck(ctx, semaCtx, types.Any)
+		typedCond, err = expr.Cond.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if err != nil {
 			return nil, err
 		}
@@ -1566,7 +1567,7 @@ func (expr *IfExpr) TypeCheck(
 func (expr *IsOfTypeExpr) TypeCheck(
 	ctx context.Context, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
-	exprTyped, err := expr.Expr.TypeCheck(ctx, semaCtx, types.Any)
+	exprTyped, err := expr.Expr.TypeCheck(ctx, semaCtx, types.AnyElement)
 	if err != nil {
 		return nil, err
 	}
@@ -1601,7 +1602,7 @@ func (expr *NotExpr) TypeCheck(
 func (expr *IsNullExpr) TypeCheck(
 	ctx context.Context, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
-	exprTyped, err := expr.Expr.TypeCheck(ctx, semaCtx, types.Any)
+	exprTyped, err := expr.Expr.TypeCheck(ctx, semaCtx, types.AnyElement)
 	if err != nil {
 		return nil, err
 	}
@@ -1614,7 +1615,7 @@ func (expr *IsNullExpr) TypeCheck(
 func (expr *IsNotNullExpr) TypeCheck(
 	ctx context.Context, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
-	exprTyped, err := expr.Expr.TypeCheck(ctx, semaCtx, types.Any)
+	exprTyped, err := expr.Expr.TypeCheck(ctx, semaCtx, types.AnyElement)
 	if err != nil {
 		return nil, err
 	}
@@ -1641,7 +1642,7 @@ func (expr *NullIfExpr) TypeCheck(
 			leftType, op, rightType)
 		return nil, decorateTypeCheckError(err, "incompatible NULLIF expressions")
 	}
-	err = checkRefCursorComparison(treecmp.EQ, leftType, rightType)
+	err = checkComparison(treecmp.EQ, leftType, rightType, types.RefCursorFamily)
 	if err != nil {
 		return nil, err
 	}
@@ -1734,18 +1735,14 @@ func (expr *RangeCond) TypeCheck(
 ) (TypedExpr, error) {
 	leftFromTyped, fromTyped, _, _, err := typeCheckComparisonOp(ctx, semaCtx, treecmp.MakeComparisonOperator(treecmp.GT), expr.Left, expr.From)
 	if err == nil {
-		err = checkRefCursorComparison(
-			treecmp.GT, leftFromTyped.ResolvedType(), fromTyped.ResolvedType(),
-		)
+		err = checkComparison(treecmp.GT, leftFromTyped.ResolvedType(), fromTyped.ResolvedType(), types.RefCursorFamily)
 	}
 	if err != nil {
 		return nil, err
 	}
 	leftToTyped, toTyped, _, _, err := typeCheckComparisonOp(ctx, semaCtx, treecmp.MakeComparisonOperator(treecmp.LT), expr.Left, expr.To)
 	if err == nil {
-		err = checkRefCursorComparison(
-			treecmp.LT, leftToTyped.ResolvedType(), toTyped.ResolvedType(),
-		)
+		err = checkComparison(treecmp.LT, leftToTyped.ResolvedType(), toTyped.ResolvedType(), types.RefCursorFamily)
 	}
 	if err != nil {
 		return nil, err
@@ -1880,7 +1877,7 @@ func (expr *Tuple) TypeCheck(
 	var labels []string
 	contents := make([]*types.T, len(expr.Exprs))
 	for i, subExpr := range expr.Exprs {
-		desiredElem := types.Any
+		desiredElem := types.AnyElement
 		if desired.Family() == types.TupleFamily && len(desired.TupleContents()) > i {
 			desiredElem = desired.TupleContents()[i]
 		}
@@ -1907,7 +1904,7 @@ var errAmbiguousArrayType = pgerror.Newf(pgcode.IndeterminateDatatype, "cannot d
 func (expr *Array) TypeCheck(
 	ctx context.Context, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
-	desiredParam := types.Any
+	desiredParam := types.AnyElement
 	if desired.Family() == types.ArrayFamily {
 		desiredParam = desired.ArrayContents()
 	}
@@ -1942,7 +1939,7 @@ func (expr *Array) TypeCheck(
 func (expr *ArrayFlatten) TypeCheck(
 	ctx context.Context, semaCtx *SemaContext, desired *types.T,
 ) (TypedExpr, error) {
-	desiredParam := types.Any
+	desiredParam := types.AnyElement
 	if desired.Family() == types.ArrayFamily {
 		desiredParam = desired.ArrayContents()
 	}
@@ -2165,6 +2162,12 @@ func (d *DJSON) TypeCheck(_ context.Context, _ *SemaContext, _ *types.T) (TypedE
 
 // TypeCheck implements the Expr interface. It is implemented as an idempotent
 // identity function for Datum.
+func (d *DJsonpath) TypeCheck(_ context.Context, _ *SemaContext, _ *types.T) (TypedExpr, error) {
+	return d, nil
+}
+
+// TypeCheck implements the Expr interface. It is implemented as an idempotent
+// identity function for Datum.
 func (d *DTSQuery) TypeCheck(_ context.Context, _ *SemaContext, _ *types.T) (TypedExpr, error) {
 	return d, nil
 }
@@ -2335,7 +2338,7 @@ func typeCheckComparisonOpWithSubOperator(
 		sameTypeExprs[0] = left
 		copy(sameTypeExprs[1:], array.Exprs)
 
-		typedSubExprs, retType, err := typeCheckSameTypedExprs(ctx, semaCtx, types.Any, sameTypeExprs...)
+		typedSubExprs, retType, err := typeCheckSameTypedExprs(ctx, semaCtx, types.AnyElement, sameTypeExprs...)
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsWithSubOpFmt, left, subOp, op, right, err)
 			return nil, nil, nil, false,
@@ -2364,7 +2367,7 @@ func typeCheckComparisonOpWithSubOperator(
 		// If the right expression is not an array constructor, we type the left
 		// expression in isolation.
 		var err error
-		leftTyped, err = left.TypeCheck(ctx, semaCtx, types.Any)
+		leftTyped, err = left.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if err != nil {
 			return nil, nil, nil, false, err
 		}
@@ -2505,13 +2508,13 @@ func typeCheckComparisonOp(
 			switched = false
 		}
 		disallowSwitch = true
-		typedLeft, err = foldedLeft.TypeCheck(ctx, semaCtx, types.Any)
+		typedLeft, err = foldedLeft.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
 			return nil, nil, nil, false,
 				pgerror.Newf(pgcode.InvalidParameterValue, unsupportedCompErrFmt, sigWithErr)
 		}
-		typedRight, err = foldedRight.TypeCheck(ctx, semaCtx, types.Any)
+		typedRight, err = foldedRight.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
 			return nil, nil, nil, false,
@@ -2532,7 +2535,7 @@ func typeCheckComparisonOp(
 		sameTypeExprs[0] = foldedLeft
 		copy(sameTypeExprs[1:], rightTuple.Exprs)
 
-		typedSubExprs, retType, err := typeCheckSameTypedExprs(ctx, semaCtx, types.Any, sameTypeExprs...)
+		typedSubExprs, retType, err := typeCheckSameTypedExprs(ctx, semaCtx, types.AnyElement, sameTypeExprs...)
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
 			return nil, nil, nil, false,
@@ -2560,7 +2563,7 @@ func typeCheckComparisonOp(
 		return typedLeft, rightTuple, fn, false, nil
 
 	case foldedOp.Symbol == treecmp.In && rightIsSubquery:
-		typedLeft, err = foldedLeft.TypeCheck(ctx, semaCtx, types.Any)
+		typedLeft, err = foldedLeft.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if err != nil {
 			sigWithErr := fmt.Sprintf(compExprsFmt, left, op, right, err)
 			return nil, nil, nil, false,
@@ -2611,8 +2614,8 @@ func typeCheckComparisonOp(
 	case leftIsTuple || rightIsTuple:
 		var errLeft, errRight error
 		// Tuple must compare with a tuple type, as handled above.
-		typedLeft, errLeft = foldedLeft.TypeCheck(ctx, semaCtx, types.Any)
-		typedRight, errRight = foldedRight.TypeCheck(ctx, semaCtx, types.Any)
+		typedLeft, errLeft = foldedLeft.TypeCheck(ctx, semaCtx, types.AnyElement)
+		typedRight, errRight = foldedRight.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if errLeft == nil && errRight == nil &&
 			((typedLeft.ResolvedType().Family() == types.TupleFamily &&
 				typedRight.ResolvedType().Family() != types.TupleFamily) ||
@@ -2679,9 +2682,9 @@ func typeCheckComparisonOp(
 		placeholderComparison = true
 	}
 	if !disallowSwitch && !placeholderComparison && !columnComparison {
-		_, _, err := typeCheckSameTypedExprs(ctx, semaCtx, types.Any, foldedLeft, foldedRight)
+		_, _, err := typeCheckSameTypedExprs(ctx, semaCtx, types.AnyElement, foldedLeft, foldedRight)
 		if err != nil {
-			_, _, err = typeCheckSameTypedExprs(ctx, semaCtx, types.Any, foldedRight, foldedLeft)
+			_, _, err = typeCheckSameTypedExprs(ctx, semaCtx, types.AnyElement, foldedRight, foldedLeft)
 			if err == nil {
 				s = getOverloadTypeChecker(ops, foldedRight, foldedLeft)
 				switched = !switched
@@ -2697,7 +2700,7 @@ func typeCheckComparisonOp(
 		}
 	}
 	defer s.release()
-	if err := s.typeCheckOverloadedExprs(ctx, semaCtx, types.Any, true); err != nil {
+	if err := s.typeCheckOverloadedExprs(ctx, semaCtx, types.AnyElement, true); err != nil {
 		return nil, nil, nil, false, err
 	}
 	typedSubExprs := s.typedExprs
@@ -2984,7 +2987,7 @@ func typeCheckSameTypedConsts(
 		for i, ok := s.constIdxs.Next(0); ok; i, ok = s.constIdxs.Next(i + 1) {
 			if !canConstantBecome(s.exprs[i].(Constant), typ) {
 				if required {
-					typedExpr, err := s.exprs[i].TypeCheck(s.ctx, s.semaCtx, types.Any)
+					typedExpr, err := s.exprs[i].TypeCheck(s.ctx, s.semaCtx, types.AnyElement)
 					if err != nil {
 						return nil, err
 					}
@@ -3160,7 +3163,7 @@ func typeCheckSameTypedTupleExprs(
 			sameTypeExprs = append(sameTypeExprs, expr.(*Tuple).Exprs[elemIdx])
 			sameTypeExprsIndices = append(sameTypeExprsIndices, exprIdx)
 		}
-		desiredElem := types.Any
+		desiredElem := types.AnyElement
 		if len(desired.TupleContents()) > elemIdx {
 			desiredElem = desired.TupleContents()[elemIdx]
 		}
@@ -3208,7 +3211,7 @@ func checkAllExprsAreTuplesOrNulls(ctx context.Context, semaCtx *SemaContext, ex
 		if !(isTuple || isNull) {
 			// We avoid calling TypeCheck on Tuple exprs since that causes the
 			// types to be resolved, which we only want to do later in type-checking.
-			typedExpr, err := expr.TypeCheck(ctx, semaCtx, types.Any)
+			typedExpr, err := expr.TypeCheck(ctx, semaCtx, types.AnyElement)
 			if err != nil {
 				return err
 			}
@@ -3441,7 +3444,7 @@ func ProcessPlaceholderAnnotations(
 		}
 	}
 
-	walkStmt(&v, stmt)
+	WalkStmt(&v, stmt)
 	return v.err
 }
 
@@ -3519,7 +3522,7 @@ func getMostSignificantOverload(
 		for k, idx := range oImpls {
 			candidate := overloads[idx]
 			srcParams := candidate.params()
-			matches := srcParams.MatchIdentical(allArgTypes)
+			matches := srcParams.MatchOid(allArgTypes)
 			if !matches {
 				routineType, outParamOrdinals, _ := candidate.outParamInfo()
 				defaultExprs := candidate.defaultExprs()
@@ -3562,7 +3565,7 @@ func getMostSignificantOverload(
 						ovInputTypes = ovInputTypes[:len(ovInputTypes)-numOmittedExprs]
 					}
 				}
-				matches = ovInputTypes.MatchIdentical(inputTypes)
+				matches = ovInputTypes.MatchOid(inputTypes)
 			}
 			if matches {
 				if foundMatch {
@@ -3764,17 +3767,19 @@ var CannotAcceptTriggerErr = pgerror.New(pgcode.FeatureNotSupported,
 	"cannot accept a value of type trigger",
 )
 
-// checkRefCursorComparison checks whether the given types are or contain the
-// REFCURSOR data type, which is invalid for comparison. We don't simply remove
+// checkComparison checks whether the given types are or contain the
+// given family, which is invalid for comparison. We don't simply remove
 // the relevant comparison overloads because we rely on their existence in
 // various locations throughout the codebase.
-func checkRefCursorComparison(op treecmp.ComparisonOperatorSymbol, left, right *types.T) error {
+func checkComparison(
+	op treecmp.ComparisonOperatorSymbol, left, right *types.T, family types.Family,
+) error {
 	if (op == treecmp.IsNotDistinctFrom || op == treecmp.IsDistinctFrom) &&
-		(left.Family() == types.RefCursorFamily && right.Family() == types.UnknownFamily) {
-		// Special case: "REFCURSOR IS [NOT] DISTINCT FROM NULL" is allowed.
+		(left.Family() == family && right.Family() == types.UnknownFamily) {
+		// Special case: "<family> IS [NOT] DISTINCT FROM NULL" is allowed.
 		return nil
 	}
-	if left.Family() == types.RefCursorFamily || right.Family() == types.RefCursorFamily {
+	if left.Family() == family || right.Family() == family {
 		return pgerror.Newf(pgcode.UndefinedFunction,
 			"unsupported comparison operator: %s %s %s", left, op, right,
 		)
@@ -3782,7 +3787,7 @@ func checkRefCursorComparison(op treecmp.ComparisonOperatorSymbol, left, right *
 	var checkRecursive func(*types.T) bool
 	checkRecursive = func(typ *types.T) bool {
 		switch typ.Family() {
-		case types.RefCursorFamily:
+		case family:
 			return true
 		case types.TupleFamily:
 			for _, t := range typ.TupleContents() {
@@ -3797,8 +3802,19 @@ func checkRefCursorComparison(op treecmp.ComparisonOperatorSymbol, left, right *
 	}
 	if checkRecursive(left) || checkRecursive(right) {
 		return pgerror.Newf(pgcode.UndefinedFunction,
-			"could not identify a comparison function for type refcursor",
+			"could not identify a comparison function for family %q", family.String(),
 		)
+	}
+	return nil
+}
+
+func runValidations(
+	op treecmp.ComparisonOperatorSymbol, left, right *types.T, families []types.Family,
+) error {
+	for _, family := range families {
+		if err := checkComparison(op, left, right, family); err != nil {
+			return err
+		}
 	}
 	return nil
 }

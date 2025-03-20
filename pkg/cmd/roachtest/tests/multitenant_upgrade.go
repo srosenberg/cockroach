@@ -31,7 +31,7 @@ func registerMultiTenantUpgrade(r registry.Registry) {
 		Timeout:          5 * time.Hour,
 		Cluster:          r.MakeClusterSpec(7),
 		CompatibleClouds: registry.CloudsWithServiceRegistration,
-		Suites:           registry.Suites(registry.Nightly),
+		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
 		Owner:            registry.OwnerServer,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runMultitenantUpgrade(ctx, t, c)
@@ -177,19 +177,26 @@ func runMultitenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) 
 	// parallel. The returned channel is closed once the workload
 	// finishes running on every tenant.
 	runTPCC := func(
-		ctx context.Context, c cluster.Cluster, binaryPath string, h *mixedversion.Helper,
+		ctx context.Context, h *mixedversion.Helper, version *clusterupgrade.Version,
 	) chan struct{} {
 		return forEachTenant(
 			"run tpcc",
 			ctx,
 			h,
 			func(ctx context.Context, l *logger.Logger, tenant *tenantUpgradeStatus) error {
+				nodes := c.Node(tenant.nodes[0])
+				// We may attempt to runTPCC using a cockroach binary version
+				// that was never uploaded. See #142807.
+				binaryPath, err := clusterupgrade.UploadCockroach(ctx, t, l, c, nodes, version)
+				if err != nil {
+					return errors.Wrapf(err, "uploading cockroach %s", version)
+				}
 				cmd := fmt.Sprintf(
 					"%s workload run tpcc --warehouses %d --duration %s %s",
 					binaryPath, numWarehouses, tpccDuration, tenant.pgurl(),
 				)
 
-				return c.RunE(ctx, option.WithNodes(c.Node(tenant.nodes[0])), cmd)
+				return c.RunE(ctx, option.WithNodes(nodes), cmd)
 			},
 		)
 	}
@@ -221,15 +228,26 @@ func runMultitenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) 
 		func(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *mixedversion.Helper) error {
 			for _, tenant := range tenants {
 				if !tenant.running {
-					if err := startTenant(ctx, l, tenant, h.Context().FromVersion, true); err != nil {
-						return err
+					if h.IsFinalizing() {
+						// If the upgrading service is finalizing, we need to stage the tenants with the upgraded
+						// binary to allow the tenant to start successfully.
+						if err := startTenant(ctx, l, tenant, h.Context().ToVersion, true); err != nil {
+							return err
+						}
+					} else {
+						// For all other upgrade stages, we can stage the tenant with the previous binary version i.e.
+						// the version from which the system tenant is being upgraded. This tests the scenario that
+						// in a mixed version state, tenants on the previous version can continue to connect
+						// to the cluster.
+						if err := startTenant(ctx, l, tenant, h.Context().FromVersion, true); err != nil {
+							return err
+						}
 					}
 				}
 			}
 
-			binaryPath := clusterupgrade.BinaryPathForVersion(t, h.Context().FromVersion, "cockroach")
 			l.Printf("waiting for tpcc to run on tenants...")
-			<-runTPCC(ctx, c, binaryPath, h)
+			<-runTPCC(ctx, h, h.Context().FromVersion)
 			return nil
 		},
 	)
@@ -250,8 +268,7 @@ func runMultitenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) 
 				}
 			}
 
-			binaryPath := clusterupgrade.BinaryPathForVersion(t, h.Context().ToVersion, "cockroach")
-			tpccFinished := runTPCC(ctx, c, binaryPath, h)
+			tpccFinished := runTPCC(ctx, h, h.Context().ToVersion)
 
 			upgradeFinished := forEachTenant(
 				"finalize upgrade",

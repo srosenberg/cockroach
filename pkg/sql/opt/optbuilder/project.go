@@ -166,7 +166,7 @@ func (b *Builder) analyzeSelectList(
 				}
 			}
 
-			desired := types.Any
+			desired := types.AnyElement
 			if i < len(desiredTypes) {
 				desired = desiredTypes[i]
 			}
@@ -219,7 +219,7 @@ func (b *Builder) resolveColRef(e tree.Expr, inScope *scope) tree.TypedExpr {
 			if sqlerrors.IsUndefinedColumnError(resolveErr) {
 				return func() tree.TypedExpr {
 					defer wrapColTupleStarPanic(resolveErr)
-					return inScope.resolveType(columnNameAsTupleStar(colName), types.Any)
+					return inScope.resolveType(columnNameAsTupleStar(colName), types.AnyElement)
 				}()
 			}
 			panic(resolveErr)
@@ -260,7 +260,7 @@ func (b *Builder) getColName(expr tree.SelectExpr) string {
 // See Builder.buildStmt for a description of the remaining input and return
 // values.
 func (b *Builder) finishBuildScalar(
-	texpr tree.TypedExpr, scalar opt.ScalarExpr, inScope, outScope *scope, outCol *scopeColumn,
+	texpr tree.TypedExpr, scalar opt.ScalarExpr, outScope *scope, outCol *scopeColumn,
 ) (out opt.ScalarExpr) {
 	b.maybeTrackRegclassDependenciesForViews(texpr)
 	b.maybeTrackUserDefinedTypeDepsForViews(texpr)

@@ -1649,6 +1649,19 @@ func NewPutInline(key roachpb.Key, value roachpb.Value) Request {
 	}
 }
 
+// NewPutMustAcquireExclusiveLock returns a Request initialized to put the value
+// at key. It also sets the MustAcquireExclusiveLock flag.
+func NewPutMustAcquireExclusiveLock(key roachpb.Key, value roachpb.Value) Request {
+	value.InitChecksum(key)
+	return &PutRequest{
+		RequestHeader: RequestHeader{
+			Key: key,
+		},
+		Value:                    value,
+		MustAcquireExclusiveLock: true,
+	}
+}
+
 // NewConditionalPut returns a Request initialized to put value at key if the
 // existing value at key equals expValue.
 //
@@ -1690,28 +1703,13 @@ func NewConditionalPutInline(
 	}
 }
 
-// NewInitPut returns a Request initialized to put the value at key, as long as
-// the key doesn't exist, returning a ConditionFailedError if the key exists and
-// the existing value is different from value. If failOnTombstones is set to
-// true, tombstones count as mismatched values and will cause a
-// ConditionFailedError.
-func NewInitPut(key roachpb.Key, value roachpb.Value, failOnTombstones bool) Request {
-	value.InitChecksum(key)
-	return &InitPutRequest{
-		RequestHeader: RequestHeader{
-			Key: key,
-		},
-		Value:            value,
-		FailOnTombstones: failOnTombstones,
-	}
-}
-
 // NewDelete returns a Request initialized to delete the value at key.
-func NewDelete(key roachpb.Key) Request {
+func NewDelete(key roachpb.Key, mustAcquireExclusiveLock bool) Request {
 	return &DeleteRequest{
 		RequestHeader: RequestHeader{
 			Key: key,
 		},
+		MustAcquireExclusiveLock: mustAcquireExclusiveLock,
 	}
 }
 

@@ -21,8 +21,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
@@ -30,7 +32,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/kr/pretty"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 )
 
 // shudownGracePeriod is the default grace period (in seconds) that we
@@ -75,17 +76,25 @@ func registerDecommission(r registry.Registry) {
 	}
 	{
 		numNodes := 4
-		r.Add(registry.TestSpec{
-			Name:             "decommission/drains",
-			Owner:            registry.OwnerKV,
-			Cluster:          r.MakeClusterSpec(numNodes),
-			CompatibleClouds: registry.AllExceptAWS,
-			Suites:           registry.Suites(registry.Nightly),
-			Leases:           registry.MetamorphicLeases,
-			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-				runDecommissionDrains(ctx, t, c)
-			},
-		})
+		for _, dead := range []bool{false, true} {
+			name := "decommission/drains"
+			if dead {
+				name += "/dead"
+			} else {
+				name += "/alive"
+			}
+			r.Add(registry.TestSpec{
+				Name:             name,
+				Owner:            registry.OwnerKV,
+				Cluster:          r.MakeClusterSpec(numNodes),
+				CompatibleClouds: registry.AllExceptAWS,
+				Suites:           registry.Suites(registry.Weekly),
+				Leases:           registry.MetamorphicLeases,
+				Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+					runDecommissionDrains(ctx, t, c, dead)
+				},
+			})
+		}
 	}
 	{
 		numNodes := 6
@@ -109,7 +118,7 @@ func registerDecommission(r registry.Registry) {
 			Owner:            registry.OwnerKV,
 			Cluster:          r.MakeClusterSpec(numNodes),
 			CompatibleClouds: registry.AllExceptAWS,
-			Suites:           registry.Suites(registry.Nightly),
+			Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 				runDecommissionMixedVersions(ctx, t, c)
 			},
@@ -179,10 +188,9 @@ func runDrainAndDecommission(
 		require.NoError(t, err)
 	}
 
-	var m *errgroup.Group
-	m, ctx = errgroup.WithContext(ctx)
+	m := t.NewGroup(task.WithContext(ctx))
 	m.Go(
-		func() error {
+		func(ctx context.Context, l *logger.Logger) error {
 			return c.RunE(ctx, option.WithNodes(c.Node(pinnedNode)),
 				fmt.Sprintf("./cockroach workload run kv --max-rate 500 --tolerate-errors --duration=%s {pgurl:1-%d}",
 					duration.String(), nodes-4,
@@ -197,7 +205,7 @@ func runDrainAndDecommission(
 	// Drain the last 3 nodes from the cluster.
 	for nodeID := nodes - 2; nodeID <= nodes; nodeID++ {
 		id := nodeID
-		m.Go(func() error {
+		m.Go(func(ctx context.Context, l *logger.Logger) error {
 			drain := func(id int) error {
 				t.Status(fmt.Sprintf("draining node %d", id))
 				return c.RunE(ctx, option.WithNodes(c.Node(id)), fmt.Sprintf("./cockroach node drain --certs-dir=%s --port={pgport:%d}", install.CockroachNodeCertsDir, id))
@@ -209,7 +217,7 @@ func runDrainAndDecommission(
 	// the draining status of the two nodes we just drained.
 	time.Sleep(30 * time.Second)
 
-	m.Go(func() error {
+	m.Go(func(ctx context.Context, l *logger.Logger) error {
 		// Decommission the fourth-to-last node from the cluster.
 		id := nodes - 3
 		decom := func(id int) error {
@@ -218,9 +226,7 @@ func runDrainAndDecommission(
 		}
 		return decom(id)
 	})
-	if err := m.Wait(); err != nil {
-		t.Fatal(err)
-	}
+	m.Wait()
 }
 
 // runDecommission decommissions and wipes nodes in a cluster repeatedly,
@@ -275,8 +281,8 @@ func runDecommission(
 		fmt.Sprintf("./cockroach workload run kv --max-rate 500 --tolerate-errors --duration=%s {pgurl:1-%d}", duration.String(), nodes),
 	}
 
-	run := func(stmt string) {
-		db := c.Conn(ctx, t.L(), pinnedNode)
+	run := func(l *logger.Logger, stmt string) {
+		db := c.Conn(ctx, l, pinnedNode)
 		defer db.Close()
 
 		t.Status(stmt)
@@ -284,21 +290,20 @@ func runDecommission(
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.L().Printf("run: %s\n", stmt)
+		l.Printf("run: %s\n", stmt)
 	}
 
-	var m *errgroup.Group // see comment in version.go
-	m, ctx = errgroup.WithContext(ctx)
-	for _, cmd := range workloads {
+	m := t.NewGroup(task.WithContext(ctx)) // see comment in version.go
+	for idx, cmd := range workloads {
 		cmd := cmd // copy is important for goroutine
-		m.Go(func() error {
+		m.Go(func(ctx context.Context, _ *logger.Logger) error {
 			return c.RunE(ctx, option.WithNodes(c.Node(pinnedNode)), cmd)
-		})
+		}, task.Name(fmt.Sprintf("workload-%d", idx)))
 	}
 
 	stopOpts := option.NewStopOpts(option.Graceful(shutdownGracePeriod))
 
-	m.Go(func() error {
+	m.Go(func(ctx context.Context, l *logger.Logger) error {
 		tBegin, whileDown := timeutil.Now(), true
 		node := nodes
 		for timeutil.Since(tBegin) <= duration {
@@ -317,18 +322,18 @@ func runDecommission(
 				return err
 			}
 
-			run(fmt.Sprintf(`ALTER RANGE default CONFIGURE ZONE = 'constraints: {"+node%d"}'`, node))
+			run(l, fmt.Sprintf(`ALTER RANGE default CONFIGURE ZONE = 'constraints: {"+node%d"}'`, node))
 			if err := h.waitUpReplicated(ctx, nodeID, node, "kv"); err != nil {
 				return err
 			}
 
 			if whileDown {
-				if err := c.StopE(ctx, t.L(), stopOpts, c.Node(node)); err != nil {
+				if err := c.StopE(ctx, l, stopOpts, c.Node(node)); err != nil {
 					return err
 				}
 			}
 
-			run(fmt.Sprintf(`ALTER RANGE default CONFIGURE ZONE = 'constraints: {"-node%d"}'`, node))
+			run(l, fmt.Sprintf(`ALTER RANGE default CONFIGURE ZONE = 'constraints: {"-node%d"}'`, node))
 
 			targetNodeList := option.NodeListOption{nodeID}
 
@@ -348,7 +353,7 @@ func runDecommission(
 			}
 
 			if !whileDown {
-				if err := c.StopE(ctx, t.L(), stopOpts, c.Node(node)); err != nil {
+				if err := c.StopE(ctx, l, stopOpts, c.Node(node)); err != nil {
 					return err
 				}
 			}
@@ -358,16 +363,13 @@ func runDecommission(
 				return err
 			}
 
-			db := c.Conn(ctx, t.L(), pinnedNode)
-			defer db.Close()
-
 			startOpts := option.NewStartOpts(option.SkipInit)
 			startOpts.RoachprodOpts.JoinTargets = []int{pinnedNode}
 			extraArgs := []string{
 				fmt.Sprintf("--attrs=node%d", node),
 			}
 			startOpts.RoachprodOpts.ExtraArgs = append(startOpts.RoachprodOpts.ExtraArgs, extraArgs...)
-			if err := c.StartE(ctx, t.L(), withDecommissionVMod(startOpts),
+			if err := c.StartE(ctx, l, withDecommissionVMod(startOpts),
 				install.MakeClusterSettings(), c.Node(node)); err != nil {
 				return err
 			}
@@ -376,10 +378,8 @@ func runDecommission(
 		// having disappeared. Verify that the workloads don't dip their qps or
 		// show spikes in latencies.
 		return nil
-	})
-	if err := m.Wait(); err != nil {
-		t.Fatal(err)
-	}
+	}, task.Name("decommission"))
+	m.Wait()
 }
 
 // runDecommissionRandomized tests a bunch of node
@@ -991,7 +991,7 @@ func runDecommissionRandomized(ctx context.Context, t test.Test, c cluster.Clust
 // the end of decommissioning. The test cluster contains 4 nodes and the fourth
 // node is decommissioned. While the decommissioning node has open SQL
 // connections, queries should never fail.
-func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster) {
+func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster, dead bool) {
 	var (
 		numNodes     = 4
 		pinnedNodeID = 1
@@ -1021,10 +1021,6 @@ func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster) 
 		require.NoError(t, err)
 	}
 
-	// Connect to node 4 (the target node of the decommission).
-	decommNodeDB := c.Conn(ctx, t.L(), decommNodeID)
-	defer decommNodeDB.Close()
-
 	// Decommission node 4 and poll its status during the decommission.
 	var (
 		maxAttempts = 50
@@ -1036,19 +1032,28 @@ func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster) 
 		// The expected output of decommission while the node is about to be drained/is draining.
 		expReplicasTransferred = [][]string{
 			decommissionHeader,
-			{strconv.Itoa(decommNodeID), "true|false", "0", "true", "decommissioning", "false", "ready", "0"},
+			{strconv.Itoa(decommNodeID), "true|false", "0", "true", "decommissioning", "false", ".*", "0"},
 			decommissionFooter,
 		}
 		// The expected output of decommission once the node is finally marked as "decommissioned."
 		expDecommissioned = [][]string{
 			decommissionHeader,
-			{strconv.Itoa(decommNodeID), "true|false", "0", "true", "decommissioned", "false", "ready", "0"},
+			{strconv.Itoa(decommNodeID), "true|false", "0", "true", "decommissioned", "false", ".*", "0"},
 			decommissionFooter,
 		}
 	)
+	if dead {
+		t.Status(fmt.Sprintf("stopping node %d and waiting for it to be recognized as dead", decommNodeID))
+		c.Stop(ctx, t.L(), option.DefaultStopOpts(), decommNode)
+		// This should reliably result in the node being perceived as non-live from
+		// this point on. If the node were still "down but live" when decommission
+		// finishes, we'd try to drain a live node and get an error (since it can't
+		// be reached any more).
+		time.Sleep(15 * time.Second)
+	}
 	t.Status(fmt.Sprintf("decommissioning node %d", decommNodeID))
 	e := retry.WithMaxAttempts(ctx, retryOpts, maxAttempts, func() error {
-		o, err := h.decommission(ctx, decommNode, pinnedNodeID, "--wait=none", "--format=csv")
+		o, e, err := h.decommissionExt(ctx, decommNode, pinnedNodeID, "--wait=none", "--format=csv")
 		require.NoError(t, errors.Wrapf(err, "decommission failed"))
 
 		// Check if all the replicas have been transferred.
@@ -1056,12 +1061,31 @@ func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster) 
 			return err
 		}
 
-		// Check to see if the node has been drained or decomissioned.
+		// When the target node is dead in this test configuration, the draining
+		// step is moot. If the target node is alive, the last decommission
+		// invocation should have drained it, which we verify below.
+
+		if dead {
+			return nil
+		}
+
+		// Check that the cli printed the below message. We do this because the drain
+		// step does not error out the decommission command on failure (to make that
+		// command more resilient to situations in which a node is terminated right
+		// around the time we try to drain it).
+		// This message is emitted in `cli.runDecommissionNodeImpl` and has a
+		// back-referencing comment mentioning that this roachtest matches on
+		// it.
+		require.Contains(t, e, "drained successfully")
+
+		// Check to see if the node has been drained or decommissioned.
 		// If not, queries should not fail.
+		// Connect to node 4 (the target node of the decommission).
+		decommNodeDB := c.Conn(ctx, t.L(), decommNodeID)
+		defer decommNodeDB.Close()
 		if err = run(decommNodeDB, `SHOW DATABASES`); err != nil {
-			if strings.Contains(err.Error(), "not accepting clients") || // drained
-				strings.Contains(err.Error(), "node is decommissioned") { // decommissioned
-				return nil
+			if strings.Contains(err.Error(), "not accepting clients") {
+				return nil // success (drained)
 			}
 			t.Fatal(err)
 		}
@@ -1217,11 +1241,21 @@ func (h *decommTestHelper) getLogicalNodeID(ctx context.Context, nodeIdx int) (i
 	return nodeID, nil
 }
 
-// decommission decommissions the given targetNodes, running the process
-// through the specified runNode.
 func (h *decommTestHelper) decommission(
 	ctx context.Context, targetNodes option.NodeListOption, runNode int, verbs ...string,
 ) (string, error) {
+	o, _, err := h.decommissionExt(ctx, targetNodes, runNode, verbs...)
+	return o, err
+}
+
+// decommission decommissions the given targetNodes, running the process
+// through the specified runNode.
+// Returns stdout, stderr, error.
+// Stdout has the tabular decommission process, stderr contains informational
+// updates.
+func (h *decommTestHelper) decommissionExt(
+	ctx context.Context, targetNodes option.NodeListOption, runNode int, verbs ...string,
+) (string, string, error) {
 	args := []string{"node", "decommission"}
 	args = append(args, verbs...)
 
@@ -1232,7 +1266,7 @@ func (h *decommTestHelper) decommission(
 			args = append(args, strconv.Itoa(target))
 		}
 	}
-	return execCLI(ctx, h.t, h.c, runNode, args...)
+	return execCLIExt(ctx, h.t, h.c, runNode, args...)
 }
 
 // recommission recommissions the given targetNodes, running the process
@@ -1461,13 +1495,20 @@ func (h *decommTestHelper) getRandNodeOtherThan(ids ...int) int {
 func execCLI(
 	ctx context.Context, t test.Test, c cluster.Cluster, runNode int, extraArgs ...string,
 ) (string, error) {
+	out, _, err := execCLIExt(ctx, t, c, runNode, extraArgs...)
+	return out, err
+}
+
+func execCLIExt(
+	ctx context.Context, t test.Test, c cluster.Cluster, runNode int, extraArgs ...string,
+) (string, string, error) {
 	args := []string{"./cockroach"}
 	args = append(args, extraArgs...)
 	args = append(args, fmt.Sprintf("--port={pgport:%d}", runNode))
 	args = append(args, fmt.Sprintf("--certs-dir=%s", install.CockroachNodeCertsDir))
 	result, err := c.RunWithDetailsSingleNode(ctx, t.L(), option.WithNodes(c.Node(runNode)), args...)
 	t.L().Printf("%s\n", result.Stdout)
-	return result.Stdout, err
+	return result.Stdout, result.Stderr, err
 }
 
 // Increase the logging verbosity for decommission tests to make life easier

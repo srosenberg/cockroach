@@ -46,7 +46,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -1394,9 +1393,9 @@ func (u *CommonTestUtils) loadTablesForDBs(
 	ctx context.Context, l *logger.Logger, rng *rand.Rand, dbs ...string,
 ) ([][]string, error) {
 	allTables := make([][]string, len(dbs))
-	eg, _ := errgroup.WithContext(ctx)
+	eg := u.t.NewErrorGroup(task.WithContext(ctx), task.Logger(l))
 	for j, dbName := range dbs {
-		eg.Go(func() error {
+		eg.Go(func(ctx context.Context, l *logger.Logger) error {
 			node, db := u.RandomDB(rng, u.roachNodes)
 			l.Printf("loading table information for DB %q via node %d", dbName, node)
 			query := fmt.Sprintf("SELECT table_name FROM [SHOW TABLES FROM %s]", dbName)
@@ -1425,7 +1424,7 @@ func (u *CommonTestUtils) loadTablesForDBs(
 		})
 	}
 
-	if err := eg.Wait(); err != nil {
+	if err := eg.WaitE(); err != nil {
 		return nil, err
 	}
 
@@ -1715,7 +1714,7 @@ func (u *CommonTestUtils) waitForJobSuccess(
 			continue
 		}
 
-		if jobs.Status(status) == jobs.StatusFailed {
+		if jobs.State(status) == jobs.StateFailed {
 			payload := &jobspb.Payload{}
 			if err := protoutil.Unmarshal(payloadBytes, payload); err == nil {
 				lastErr = fmt.Errorf("job %d failed with error: %s", jobID, payload.Error)
@@ -1727,7 +1726,7 @@ func (u *CommonTestUtils) waitForJobSuccess(
 			break
 		}
 
-		if expected, actual := jobs.StatusSucceeded, jobs.Status(status); expected != actual {
+		if expected, actual := jobs.StateSucceeded, jobs.State(status); expected != actual {
 			lastErr = fmt.Errorf("job %d: current status %q, waiting for %q", jobID, actual, expected)
 			l.Printf("%v", lastErr)
 			continue
@@ -1765,9 +1764,9 @@ func (d *BackupRestoreTestDriver) computeTableContents(
 	}
 
 	result := make([]tableContents, len(tables))
-	eg, _ := errgroup.WithContext(ctx)
+	eg := d.t.NewErrorGroup(task.WithContext(ctx), task.Logger(l))
 	for j, table := range tables {
-		eg.Go(func() error {
+		eg.Go(func(ctx context.Context, l *logger.Logger) error {
 			node, db := d.testUtils.RandomDB(rng, d.roachNodes)
 			l.Printf("querying table contents for %s through node %d", table, node)
 			var contents tableContents
@@ -1791,7 +1790,7 @@ func (d *BackupRestoreTestDriver) computeTableContents(
 		})
 	}
 
-	if err := eg.Wait(); err != nil {
+	if err := eg.WaitE(); err != nil {
 		l.ErrorfCtx(ctx, "Error loading system table content %s", err)
 		return nil, err
 	}
@@ -2100,9 +2099,9 @@ func (u *CommonTestUtils) disableJobAdoption(
 	ctx context.Context, l *logger.Logger, nodes option.NodeListOption,
 ) error {
 	l.Printf("disabling job adoption on nodes %v", nodes)
-	eg, _ := errgroup.WithContext(ctx)
+	eg := u.t.NewErrorGroup(task.WithContext(ctx), task.Logger(l))
 	for _, node := range nodes {
-		eg.Go(func() error {
+		eg.Go(func(ctx context.Context, l *logger.Logger) error {
 			l.Printf("node %d: disabling job adoption", node)
 			sentinelFilePath, err := u.sentinelFilePath(ctx, l, node)
 			if err != nil {
@@ -2141,7 +2140,7 @@ func (u *CommonTestUtils) disableJobAdoption(
 		})
 	}
 
-	return eg.Wait()
+	return eg.WaitE()
 }
 
 // enableJobAdoption (re-)enables job adoption on the given nodes.
@@ -2149,9 +2148,9 @@ func (u *CommonTestUtils) enableJobAdoption(
 	ctx context.Context, l *logger.Logger, nodes option.NodeListOption,
 ) error {
 	l.Printf("enabling job adoption on nodes %v", nodes)
-	eg, _ := errgroup.WithContext(ctx)
+	eg := u.t.NewErrorGroup(task.WithContext(ctx), task.Logger(l))
 	for _, node := range nodes {
-		eg.Go(func() error {
+		eg.Go(func(ctx context.Context, l *logger.Logger) error {
 			l.Printf("node %d: enabling job adoption", node)
 			sentinelFilePath, err := u.sentinelFilePath(ctx, l, node)
 			if err != nil {
@@ -2167,7 +2166,7 @@ func (u *CommonTestUtils) enableJobAdoption(
 		})
 	}
 
-	return eg.Wait()
+	return eg.WaitE()
 }
 
 // planAndRunBackups is the function that can be passed to the
@@ -2653,7 +2652,7 @@ func registerBackupMixedVersion(r registry.Registry) {
 		// Uses gs://cockroach-fixtures-us-east1. See:
 		// https://github.com/cockroachdb/cockroach/issues/105968
 		CompatibleClouds:          registry.Clouds(spec.GCE, spec.Local),
-		Suites:                    registry.Suites(registry.Nightly),
+		Suites:                    registry.Suites(registry.MixedVersion, registry.Nightly),
 		TestSelectionOptOutSuites: registry.Suites(registry.Nightly),
 		Randomized:                true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
@@ -2685,7 +2684,6 @@ func registerBackupMixedVersion(r registry.Registry) {
 				// of concurrent steps.
 				mixedversion.DisableMutators(
 					mixedversion.ClusterSettingMutator("kv.expiration_leases_only.enabled"),
-					mixedversion.ClusterSettingMutator("kv.snapshot_receiver.excise.enabled"),
 					mixedversion.ClusterSettingMutator("storage.ingest_split.enabled"),
 					mixedversion.ClusterSettingMutator("storage.sstable.compression_algorithm"),
 				),

@@ -44,6 +44,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/aws"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/azure"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/flagstub"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/local"
 	"github.com/cockroachdb/cockroach/pkg/server/debug/replay"
@@ -334,7 +335,7 @@ func Sync(l *logger.Logger, options vm.ListOptions) (*cloud.Cloud, error) {
 		if !config.Quiet {
 			l.Printf("Refreshing DNS entries...")
 		}
-		if err := gce.SyncDNS(l, vms); err != nil {
+		if err := gce.Infrastructure.SyncDNS(l, vms); err != nil {
 			l.Errorf("failed to update DNS: %v", err)
 		}
 	} else {
@@ -413,7 +414,7 @@ func Run(
 	cmdArray []string,
 	options install.RunOptions,
 ) error {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure), install.TagOption(processTag))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure), install.TagOption(processTag))
 	if err != nil {
 		return err
 	}
@@ -441,7 +442,7 @@ func RunWithDetails(
 	cmdArray []string,
 	options install.RunOptions,
 ) ([]install.RunResultDetails, error) {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure), install.TagOption(processTag))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure), install.TagOption(processTag))
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +479,7 @@ func SQL(
 	database string,
 	cmdArray []string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return err
 	}
@@ -544,7 +545,7 @@ func printSQLResult(l *logger.Logger, i int, r *install.RunResultDetails, args [
 
 // IP gets the ip addresses of the nodes in a cluster.
 func IP(l *logger.Logger, clusterName string, external bool) ([]string, error) {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return nil, err
 	}
@@ -571,7 +572,7 @@ func IP(l *logger.Logger, clusterName string, external bool) ([]string, error) {
 func Status(
 	ctx context.Context, l *logger.Logger, clusterName, processTag string,
 ) ([]install.NodeStatus, error) {
-	c, err := getClusterFromCache(l, clusterName, install.TagOption(processTag))
+	c, err := GetClusterFromCache(l, clusterName, install.TagOption(processTag))
 	if err != nil {
 		return nil, err
 	}
@@ -586,7 +587,7 @@ func Stage(
 	clusterName string,
 	stageOS, stageArch, stageDir, applicationName, version string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -639,17 +640,22 @@ func Reset(l *logger.Logger, clusterName string) error {
 }
 
 // SetupSSH sets up the keys and host keys for the vms in the cluster.
-func SetupSSH(ctx context.Context, l *logger.Logger, clusterName string) error {
+func SetupSSH(ctx context.Context, l *logger.Logger, clusterName string, sync bool) error {
 	if err := LoadClusters(); err != nil {
 		return err
 	}
-	cld, err := Sync(l, vm.ListOptions{})
-	if err != nil {
-		return err
+	var cloudCluster *cloud.Cluster
+	if sync {
+		cld, err := Sync(l, vm.ListOptions{})
+		if err != nil {
+			return err
+		}
+		cloudCluster = cld.Clusters[clusterName]
+	} else {
+		cloudCluster, _ = readSyncedClusters(clusterName)
 	}
 
-	cloudCluster, ok := cld.Clusters[clusterName]
-	if !ok {
+	if cloudCluster == nil {
 		return fmt.Errorf("could not find %s in list of cluster", clusterName)
 	}
 
@@ -674,7 +680,7 @@ func SetupSSH(ctx context.Context, l *logger.Logger, clusterName string) error {
 		return err
 	}
 
-	if err = cloudCluster.PrintDetails(l); err != nil {
+	if err := cloudCluster.PrintDetails(l); err != nil {
 		return err
 	}
 	// Run ssh-keygen -R serially on each new VM in case an IP address has been recycled
@@ -702,7 +708,7 @@ func SetupSSH(ctx context.Context, l *logger.Logger, clusterName string) error {
 	}
 	// Fetch public keys from gcloud to set up ssh access for all users into the
 	// shared ubuntu user.
-	authorizedKeys, err := gce.GetUserAuthorizedKeys()
+	authorizedKeys, err := gce.Infrastructure.GetUserAuthorizedKeys()
 	if err != nil {
 		return errors.Wrap(err, "failed to retrieve authorized keys from gcloud")
 	}
@@ -715,6 +721,8 @@ func Extend(l *logger.Logger, clusterName string, lifetime time.Duration) error 
 	if err := LoadClusters(); err != nil {
 		return err
 	}
+
+	// We force a sync to ensure cluster was not previously extended
 	c, err := getClusterFromCloud(l, clusterName)
 	if err != nil {
 		return err
@@ -724,8 +732,8 @@ func Extend(l *logger.Logger, clusterName string, lifetime time.Duration) error 
 		return err
 	}
 
-	// Reload the clusters and print details.
-	c, err = getClusterFromCloud(l, clusterName)
+	// Save the cluster to the cache and print details.
+	err = saveCluster(l, c)
 	if err != nil {
 		return err
 	}
@@ -767,7 +775,7 @@ func Start(
 	startOpts install.StartOpts,
 	clusterSettingsOpts ...install.ClusterSettingOption,
 ) error {
-	c, err := getClusterFromCache(l, clusterName, clusterSettingsOpts...)
+	c, err := GetClusterFromCache(l, clusterName, clusterSettingsOpts...)
 	if err != nil {
 		return err
 	}
@@ -808,33 +816,63 @@ func updatePrometheusTargets(
 		return err
 	}
 
-	nodeIPPorts := make(map[int]*promhelperclient.NodeInfo)
+	cl := promhelperclient.NewPromClient()
+	nodeIPPorts := make(map[int][]*promhelperclient.NodeInfo)
 	nodeIPPortsMutex := syncutil.RWMutex{}
 	var wg sync.WaitGroup
 	for _, node := range c.Nodes {
-		if _, ok := promhelperclient.SupportedPromProjects[c.VMs[node-1].Project]; ok &&
-			c.VMs[node-1].Provider == gce.ProviderName {
-			wg.Add(1)
-			go func(index int, v vm.VM) {
-				defer wg.Done()
-				// only gce is supported for prometheus
-				desc, err := c.DiscoverService(ctx, install.Node(index), "", install.ServiceTypeUI, 0)
-				if err != nil {
-					l.Errorf("error getting the port for node %d: %v", index, err)
-					return
-				}
-				nodeInfo := fmt.Sprintf("%s:%d", v.PrivateIP, desc.Port)
-				nodeIPPortsMutex.Lock()
-				// ensure atomicity in map update
-				nodeIPPorts[index] = &promhelperclient.NodeInfo{Target: nodeInfo, CustomLabels: createLabels(v)}
-				nodeIPPortsMutex.Unlock()
-			}(int(node), c.VMs[node-1])
+
+		// only gce is supported for prometheus
+		reachability := promhelperclient.ProviderReachability(
+			c.VMs[node-1].Provider,
+			promhelperclient.CloudEnvironment(c.VMs[node-1].Project),
+		)
+		if reachability == promhelperclient.None {
+			continue
 		}
+
+		wg.Add(1)
+		go func(nodeID int, v vm.VM) {
+			defer wg.Done()
+			desc, err := c.DiscoverService(ctx, install.Node(nodeID), "", install.ServiceTypeUI, 0)
+			if err != nil {
+				l.Errorf("error getting the port for node %d: %v", nodeID, err)
+				return
+			}
+			nodeIP := v.PrivateIP
+			if reachability == promhelperclient.Public {
+				nodeIP = v.PublicIP
+			}
+			nodeInfo := fmt.Sprintf("%s:%d", nodeIP, desc.Port)
+			nodeIPPortsMutex.Lock()
+			// ensure atomicity in map update
+			if _, ok := nodeIPPorts[nodeID]; !ok {
+				nodeIPPorts[nodeID] = []*promhelperclient.NodeInfo{
+					{
+						Target:       fmt.Sprintf("%s:%d", nodeIP, vm.NodeExporterPort),
+						CustomLabels: createLabels(nodeID, v, "node_exporter", !c.Secure),
+					},
+					{
+						Target:       fmt.Sprintf("%s:%d", nodeIP, vm.EbpfExporterPort),
+						CustomLabels: createLabels(nodeID, v, "ebpf_exporter", !c.Secure),
+					},
+				}
+			}
+			nodeIPPorts[nodeID] = append(
+				nodeIPPorts[nodeID],
+				&promhelperclient.NodeInfo{
+					Target:       nodeInfo,
+					CustomLabels: createLabels(nodeID, v, "cockroachdb", !c.Secure),
+				},
+			)
+			nodeIPPortsMutex.Unlock()
+		}(int(node), c.VMs[node-1])
+
 	}
 	wg.Wait()
 	if len(nodeIPPorts) > 0 {
-		if err := promhelperclient.DefaultPromClient.UpdatePrometheusTargets(ctx,
-			c.Name, false, nodeIPPorts, !c.Secure, l); err != nil {
+		if err := cl.UpdatePrometheusTargets(ctx,
+			c.Name, false, nodeIPPorts, false, l); err != nil {
 			l.Errorf("creating cluster config failed for the ip:ports %v: %v", nodeIPPorts, err)
 		}
 	}
@@ -845,15 +883,16 @@ func updatePrometheusTargets(
 var regionRegEx = regexp.MustCompile("(^.+[0-9]+)(-[a-f]$)")
 
 // createLabels returns the labels to be populated in the target configuration in prometheus
-func createLabels(v vm.VM) map[string]string {
+func createLabels(nodeID int, v vm.VM, job string, insecure bool) map[string]string {
 	labels := map[string]string{
-		"cluster":  v.Labels["cluster"],
-		"instance": v.Name,
-		"host_ip":  v.PrivateIP,
-		"project":  v.Project,
-		"zone":     v.Zone,
-		"tenant":   install.SystemInterfaceName,
-		"job":      "cockroachdb",
+		"cluster":        v.Labels["cluster"],
+		"instance":       v.Name,
+		"host_ip":        v.PrivateIP,
+		"host_public_ip": v.PublicIP,
+		"project":        v.Project,
+		"zone":           v.Zone,
+		"provider":       v.Provider,
+		"job":            job,
 	}
 	match := regionRegEx.FindStringSubmatch(v.Zone)
 	if len(match) > 1 {
@@ -866,6 +905,29 @@ func createLabels(v vm.VM) map[string]string {
 	if t, ok := v.Labels["test_run_id"]; ok {
 		labels["test_run_id"] = t
 	}
+	switch job {
+	case "cockroachdb":
+		labels["__metrics_path__"] = "/_status/vars"
+		if insecure {
+			labels["__scheme__"] = "http"
+		}
+	case "node_exporter":
+		labels["__metrics_path__"] = vm.NodeExporterMetricsPath
+		// node_exporter is always scraped over http
+		labels["__scheme__"] = "http"
+
+		// Node ID is exposed by cockroachdb metrics, we add it to node_exporter
+		labels["node_id"] = strconv.Itoa(nodeID)
+
+	case "ebpf_exporter":
+		labels["__metrics_path__"] = vm.EbpfExporterMetricsPath
+		// ebpf_exporter is always scraped over http
+		labels["__scheme__"] = "http"
+
+		// Node ID is exposed by cockroachdb metrics, we add it to ebpf_exporter
+		labels["node_id"] = strconv.Itoa(nodeID)
+	}
+
 	return labels
 }
 
@@ -910,7 +972,7 @@ func DefaultStopOpts() StopOpts {
 
 // Stop stops nodes on a cluster.
 func Stop(ctx context.Context, l *logger.Logger, clusterName string, opts StopOpts) error {
-	c, err := getClusterFromCache(l, clusterName, install.TagOption(opts.ProcessTag))
+	c, err := GetClusterFromCache(l, clusterName, install.TagOption(opts.ProcessTag))
 	if err != nil {
 		return err
 	}
@@ -920,7 +982,7 @@ func Stop(ctx context.Context, l *logger.Logger, clusterName string, opts StopOp
 
 // Signal sends a signal to nodes in the cluster.
 func Signal(ctx context.Context, l *logger.Logger, clusterName string, sig int) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -929,7 +991,7 @@ func Signal(ctx context.Context, l *logger.Logger, clusterName string, sig int) 
 
 // Init initializes the cluster.
 func Init(ctx context.Context, l *logger.Logger, clusterName string, opts install.StartOpts) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -938,7 +1000,7 @@ func Init(ctx context.Context, l *logger.Logger, clusterName string, opts instal
 
 // Wipe wipes the nodes in a cluster.
 func Wipe(ctx context.Context, l *logger.Logger, clusterName string, preserveCerts bool) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -947,7 +1009,7 @@ func Wipe(ctx context.Context, l *logger.Logger, clusterName string, preserveCer
 
 // Reformat reformats disks in a cluster to use the specified filesystem.
 func Reformat(ctx context.Context, l *logger.Logger, clusterName string, fs string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -986,7 +1048,7 @@ sudo chmod 777 /mnt/data1
 //
 // The cluster name can include a node selector (e.g. "foo:1-3").
 func Install(ctx context.Context, l *logger.Logger, clusterName string, software []string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1011,7 +1073,7 @@ func Install(ctx context.Context, l *logger.Logger, clusterName string, software
 func Download(
 	ctx context.Context, l *logger.Logger, clusterName string, src, sha, dest string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1021,7 +1083,7 @@ func Download(
 // DistributeCerts distributes certificates to the nodes in a cluster.
 // If the certificates already exist, no action is taken.
 func DistributeCerts(ctx context.Context, l *logger.Logger, clusterName string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1032,7 +1094,7 @@ func DistributeCerts(ctx context.Context, l *logger.Logger, clusterName string) 
 func Put(
 	ctx context.Context, l *logger.Logger, clusterName, src, dest string, useTreeDist bool,
 ) error {
-	c, err := getClusterFromCache(l, clusterName, install.UseTreeDistOption(useTreeDist))
+	c, err := GetClusterFromCache(l, clusterName, install.UseTreeDistOption(useTreeDist))
 	if err != nil {
 		return err
 	}
@@ -1043,7 +1105,7 @@ func Put(
 // If the file is retrieved from multiple nodes the destination
 // file name will be prefixed with the node number.
 func Get(ctx context.Context, l *logger.Logger, clusterName, src, dest string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1063,7 +1125,7 @@ type PGURLOptions struct {
 func PgURL(
 	ctx context.Context, l *logger.Logger, clusterName, certsDir string, opts PGURLOptions,
 ) ([]string, error) {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(opts.Secure), install.PGUrlCertsDirOption(certsDir))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(opts.Secure), install.PGUrlCertsDirOption(certsDir))
 	if err != nil {
 		return nil, err
 	}
@@ -1118,7 +1180,7 @@ func urlGenerator(
 ) ([]string, error) {
 	var urls []string
 	for i, node := range nodes {
-		host := vm.Name(c.Name, int(node)) + "." + gce.DNSDomain()
+		host := vm.Name(c.Name, int(node)) + "." + gce.Infrastructure.DNSDomain()
 
 		// There are no DNS entries for local clusters.
 		if c.IsLocal() {
@@ -1191,7 +1253,7 @@ func AdminURL(
 	path string,
 	usePublicIP, openInBrowser, secure bool,
 ) ([]string, error) {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return nil, err
 	}
@@ -1215,7 +1277,7 @@ func SQLPorts(
 	virtualClusterName string,
 	sqlInstance int,
 ) ([]int, error) {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return nil, err
 	}
@@ -1239,7 +1301,7 @@ func AdminPorts(
 	virtualClusterName string,
 	sqlInstance int,
 ) ([]int, error) {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return nil, err
 	}
@@ -1264,7 +1326,7 @@ type PprofOpts struct {
 
 // Pprof TODO
 func Pprof(ctx context.Context, l *logger.Logger, clusterName string, opts PprofOpts) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1390,6 +1452,25 @@ func Pprof(ctx context.Context, l *logger.Logger, clusterName string, opts Pprof
 	return nil
 }
 
+// Returns a set of cloud providers for the given clusters, found in the local cache.
+// Typically used in conjunction with ListCloud() to avoid listing across all providers.
+func cachedProvidersForClusters(clusterNames ...string) []string {
+	providers := []string{}
+	for _, clusterName := range clusterNames {
+		c, err := GetClusterFromCache(nil, clusterName)
+		if err != nil {
+			continue
+		}
+		// N.B. We can't use c.Clouds() because it may insert a project name.
+		for _, m := range c.VMs {
+			providers = append(providers, m.Provider)
+		}
+	}
+	// Remove dupes, if any.
+	slices.Sort(providers)
+	return slices.Compact(providers)
+}
+
 // Destroy TODO
 func Destroy(
 	l *logger.Logger,
@@ -1449,9 +1530,18 @@ func Destroy(
 				// ListCloud may fail due to a transient provider error, but we may have still
 				// found the cluster(s) we care about. Destroy the cluster(s) we know about
 				// and let the caller retry.
-				cld, _ = cloud.ListCloud(l, vm.ListOptions{IncludeEmptyClusters: true})
+				cld, _ = cloud.ListCloud(l, vm.ListOptions{IncludeEmptyClusters: true, IncludeProviders: cachedProvidersForClusters(name)})
 			}
-			return destroyCluster(ctx, cld, l, name)
+			err := destroyCluster(ctx, cld, l, name)
+			if err != nil {
+				return errors.Wrapf(err, "unable to destroy cluster %s", name)
+			}
+
+			err = deleteCluster(name)
+			if err != nil {
+				return errors.Wrapf(err, "unable to delete cluster %s from local cache", name)
+			}
+			return nil
 		}); err != nil {
 		return err
 	}
@@ -1513,7 +1603,7 @@ func cleanupFailedCreate(l *logger.Logger, clusterName string) error {
 // AddLabels adds (or updates) the given labels to the VMs corresponding to the given cluster.
 // N.B. If a VM contains a label with the same key, its value will be updated.
 func AddLabels(l *logger.Logger, clusterName string, labels map[string]string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1542,7 +1632,7 @@ func AddLabels(l *logger.Logger, clusterName string, labels map[string]string) e
 }
 
 func RemoveLabels(l *logger.Logger, clusterName string, labels []string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1594,13 +1684,14 @@ func Create(
 	if err := LoadClusters(); err != nil {
 		return errors.Wrap(err, "problem loading clusters")
 	}
+	includeProviders := cloud.Providers(opts...)
 
 	if !isLocal {
 		// ListCloud may fail due to a transient provider error, but
 		// we may not even be creating a cluster with that provider.
 		// If the cluster does exist, and we didn't find it, it will
 		// fail on the provider's end.
-		cld, _ := cloud.ListCloud(l, vm.ListOptions{})
+		cld, _ := cloud.ListCloud(l, vm.ListOptions{IncludeProviders: includeProviders})
 		if _, ok := cld.Clusters[clusterName]; ok {
 			return &ClusterAlreadyExistsError{name: clusterName}
 		}
@@ -1642,8 +1733,15 @@ func Create(
 	}
 
 	l.Printf("Creating cluster %s with %d nodes...", clusterName, numNodes)
-	if createErr := cloud.CreateCluster(l, opts); createErr != nil {
+	c, createErr := cloud.CreateCluster(l, opts)
+	if createErr != nil {
 		return createErr
+	}
+
+	// Save the cluster to the cache.
+	err := saveCluster(l, c)
+	if err != nil {
+		return errors.Wrapf(err, "failed to save cluster %s", clusterName)
 	}
 
 	if config.IsLocalClusterName(clusterName) {
@@ -1651,7 +1749,7 @@ func Create(
 		return LoadClusters()
 	}
 	l.Printf("Created cluster %s; setting up SSH...", clusterName)
-	return SetupSSH(ctx, l, clusterName)
+	return SetupSSH(ctx, l, clusterName, false /* sync */)
 }
 
 func Grow(
@@ -1662,7 +1760,7 @@ func Grow(
 		return fmt.Errorf("number of nodes must be in [1..999]")
 	}
 
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1677,7 +1775,12 @@ func Grow(
 		// reload the clusters before returning.
 		err = LoadClusters()
 	default:
-		err = SetupSSH(ctx, l, clusterName)
+		// Save the cluster to the cache.
+		err = saveCluster(l, &c.Cluster)
+		if err != nil {
+			return err
+		}
+		err = SetupSSH(ctx, l, clusterName, false /* sync */)
 	}
 	if err != nil {
 		return err
@@ -1686,7 +1789,7 @@ func Grow(
 	if secure {
 		// Grab the cluster from the cache again to ensure we have the latest
 		// information.
-		c, err = getClusterFromCache(l, clusterName)
+		c, err = GetClusterFromCache(l, clusterName)
 		if err != nil {
 			return err
 		}
@@ -1699,7 +1802,7 @@ func Grow(
 }
 
 func Shrink(ctx context.Context, l *logger.Logger, clusterName string, numNodes int) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1713,8 +1816,9 @@ func Shrink(ctx context.Context, l *logger.Logger, clusterName string, numNodes 
 		// clusters before returning.
 		return LoadClusters()
 	}
-	_, err = Sync(l, vm.ListOptions{})
-	return err
+
+	// Save the cluster to the cache.
+	return saveCluster(l, &c.Cluster)
 }
 
 // GC garbage-collects expired clusters, unused SSH key pairs in AWS, and unused
@@ -1780,7 +1884,7 @@ type LogsOpts struct {
 
 // Logs TODO
 func Logs(l *logger.Logger, clusterName, dest string, logsOpts LogsOpts) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1809,33 +1913,58 @@ func StageURL(
 	return urls, nil
 }
 
+var disabledProviders = func() map[string]struct{} {
+	disabled := make(map[string]struct{})
+	for _, p := range strings.Split(os.Getenv("ROACHPROD_DISABLED_PROVIDERS"), ",") {
+		disabled[strings.TrimSpace(strings.ToLower(p))] = struct{}{}
+	}
+	return disabled
+}()
+
 // InitProviders initializes providers and returns a map that indicates
 // if a provider is active or inactive.
 func InitProviders() map[string]string {
 	providersState := make(map[string]string)
 
-	if err := aws.Init(); err != nil {
-		providersState[aws.ProviderName] = "Inactive - " + err.Error()
-	} else {
-		providersState[aws.ProviderName] = "Active"
-	}
-
-	if err := gce.Init(); err != nil {
-		providersState[gce.ProviderName] = "Inactive - " + err.Error()
-	} else {
-		providersState[gce.ProviderName] = "Active"
-	}
-
-	if err := azure.Init(); err != nil {
-		providersState[azure.ProviderName] = "Inactive - " + err.Error()
-	} else {
-		providersState[azure.ProviderName] = "Active"
-	}
-
-	if err := local.Init(localVMStorage{}); err != nil {
-		providersState[local.ProviderName] = "Inactive - " + err.Error()
-	} else {
-		providersState[local.ProviderName] = "Active"
+	for _, prov := range []struct {
+		name  string
+		init  func() error
+		empty vm.Provider
+	}{
+		{
+			name:  aws.ProviderName,
+			init:  aws.Init,
+			empty: &aws.Provider{},
+		},
+		{
+			name:  gce.ProviderName,
+			init:  gce.Init,
+			empty: &gce.Provider{},
+		},
+		{
+			name:  azure.ProviderName,
+			init:  azure.Init,
+			empty: &azure.Provider{},
+		},
+		{
+			name: local.ProviderName,
+			init: func() error {
+				return local.Init(localVMStorage{})
+			},
+			empty: &local.Provider{},
+		},
+	} {
+		if _, dis := disabledProviders[prov.name]; dis {
+			reason := "disabled via ROACHPROD_DISABLED_PROVIDERS"
+			providersState[prov.name] = "Inactive - " + reason
+			// We need an empty provider that emits errors or we'll
+			// crash as roachprod expects all providers to be present.
+			vm.Providers[prov.name] = flagstub.New(prov.empty, reason)
+		} else if err := prov.init(); err != nil {
+			providersState[prov.name] = "Inactive - " + err.Error()
+		} else {
+			providersState[prov.name] = "Active"
+		}
 	}
 
 	return providersState
@@ -1855,7 +1984,7 @@ func StartGrafana(
 	if (grafanaURL != "" || len(grafanaJSON) > 0) && promCfg != nil {
 		return errors.New("cannot pass grafanaURL or grafanaJSON and a non empty promCfg")
 	}
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1886,7 +2015,7 @@ func StartGrafana(
 			promCfg.WithGrafanaDashboardJSON(str)
 		}
 	}
-	_, err = prometheus.Init(ctx, l, c, arch, *promCfg)
+	_, err = prometheus.Init(ctx, l, c, *promCfg)
 	if err != nil {
 		return err
 	}
@@ -1901,7 +2030,7 @@ func StartGrafana(
 // StopGrafana shuts down prometheus and grafana servers on the last node in
 // the cluster, if they exist.
 func StopGrafana(ctx context.Context, l *logger.Logger, clusterName string, dumpDir string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1919,7 +2048,7 @@ func StopGrafana(ctx context.Context, l *logger.Logger, clusterName string, dump
 func GrafanaURL(
 	ctx context.Context, l *logger.Logger, clusterName string, openInBrowser bool,
 ) (string, error) {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return "", err
 	}
@@ -1955,7 +2084,7 @@ func AddGrafanaAnnotation(
 func PrometheusSnapshot(
 	ctx context.Context, l *logger.Logger, clusterName string, dumpDir string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -1983,7 +2112,7 @@ const SnapshotTTL = 30 * 24 * time.Hour // 30 days
 func CreateSnapshot(
 	ctx context.Context, l *logger.Logger, clusterName string, vsco vm.VolumeSnapshotCreateOpts,
 ) ([]vm.VolumeSnapshot, error) {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return nil, err
 	}
@@ -2115,7 +2244,7 @@ func ApplySnapshots(
 	snapshots []vm.VolumeSnapshot,
 	opts vm.VolumeCreateOpts,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -2253,7 +2382,7 @@ func StartJaeger(
 	secure bool,
 	configureNodes string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return err
 	}
@@ -2311,7 +2440,7 @@ func StartJaeger(
 
 // StopJaeger stops and removes the jaeger container.
 func StopJaeger(ctx context.Context, l *logger.Logger, clusterName string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -2330,7 +2459,7 @@ func StopJaeger(ctx context.Context, l *logger.Logger, clusterName string) error
 func JaegerURL(
 	ctx context.Context, l *logger.Logger, clusterName string, openInBrowser bool,
 ) (string, error) {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return "", err
 	}
@@ -2431,7 +2560,7 @@ func StopOpenTelemetry(ctx context.Context, l *logger.Logger, clusterName string
 func StartSideEyeAgents(
 	ctx context.Context, l *logger.Logger, clusterName string, envName string, apiToken string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -2459,7 +2588,7 @@ func StartSideEyeAgents(
 func UpdateSideEyeEnvironmentName(
 	ctx context.Context, l *logger.Logger, clusterName string, newEnvName string,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -2481,7 +2610,7 @@ func UpdateSideEyeEnvironmentName(
 
 // DestroyDNS destroys the DNS records for the given cluster.
 func DestroyDNS(ctx context.Context, l *logger.Logger, clusterName string) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -2510,7 +2639,7 @@ func StorageCollectionPerformAction(
 	action string,
 	opts vm.VolumeCreateOpts,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}
@@ -2686,7 +2815,7 @@ func CreateLoadBalancer(
 	virtualClusterName string,
 	sqlInstance int,
 ) error {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return err
 	}
@@ -2755,7 +2884,7 @@ func CreateLoadBalancer(
 func LoadBalancerPgURL(
 	ctx context.Context, l *logger.Logger, clusterName, certsDir string, opts PGURLOptions,
 ) (string, error) {
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(opts.Secure), install.PGUrlCertsDirOption(certsDir))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(opts.Secure), install.PGUrlCertsDirOption(certsDir))
 	if err != nil {
 		return "", err
 	}
@@ -2783,7 +2912,7 @@ func LoadBalancerPgURL(
 func LoadBalancerIP(
 	ctx context.Context, l *logger.Logger, clusterName, virtualClusterName string, sqlInstance int,
 ) (string, error) {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return "", err
 	}
@@ -2822,7 +2951,7 @@ func Deploy(
 	if !slices.Contains(supportedApplicationNames, applicationName) {
 		return errors.Errorf("unsupported application name %s, supported names are %v", applicationName, supportedApplicationNames)
 	}
-	c, err := getClusterFromCache(l, clusterName, install.SecureOption(secure))
+	c, err := GetClusterFromCache(l, clusterName, install.SecureOption(secure))
 	if err != nil {
 		return err
 	}
@@ -2950,11 +3079,11 @@ func CaptureSideEyeSnapshot(
 	return snapRes.SnapshotURL, true
 }
 
-// getClusterFromCache finds and returns a SyncedCluster from
+// GetClusterFromCache finds and returns a SyncedCluster from
 // the local cluster cache.
 //
 // The cluster name can include a node selector (e.g. "foo:1-3").
-func getClusterFromCache(
+func GetClusterFromCache(
 	l *logger.Logger, clusterName string, opts ...install.ClusterSettingOption,
 ) (*install.SyncedCluster, error) {
 	if err := LoadClusters(); err != nil {
@@ -2974,7 +3103,7 @@ func getClusterFromCloud(l *logger.Logger, clusterName string) (*cloud.Cluster, 
 	// ListCloud may fail due to a transient provider error, but
 	// we may have still found the cluster we care about. It will
 	// fail below if it can't find the cluster.
-	cld, err := cloud.ListCloud(l, vm.ListOptions{})
+	cld, err := cloud.ListCloud(l, vm.ListOptions{IncludeProviders: cachedProvidersForClusters(clusterName)})
 	c, ok := cld.Clusters[clusterName]
 	if !ok {
 		if err != nil {
@@ -2995,7 +3124,7 @@ func FetchLogs(
 	clusterName, destination string,
 	fetchLogsTimeout time.Duration,
 ) error {
-	c, err := getClusterFromCache(l, clusterName)
+	c, err := GetClusterFromCache(l, clusterName)
 	if err != nil {
 		return err
 	}

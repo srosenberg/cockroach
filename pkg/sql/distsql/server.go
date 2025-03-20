@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra/execopnode"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
+	"github.com/cockroachdb/cockroach/pkg/sql/execversion"
 	"github.com/cockroachdb/cockroach/pkg/sql/faketreeeval"
 	"github.com/cockroachdb/cockroach/pkg/sql/flowinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowflow"
@@ -207,14 +208,15 @@ func (ds *ServerImpl) setupFlow(
 		}
 	}()
 
-	if req.Version < execinfra.MinAcceptedVersion || req.Version > execinfra.Version {
+	if req.Version < execversion.MinAccepted || req.Version > execversion.Latest {
 		err := errors.Errorf(
 			"version mismatch in flow request: %d; this node accepts %d through %d",
-			req.Version, execinfra.MinAcceptedVersion, execinfra.Version,
+			req.Version, execversion.MinAccepted, execversion.Latest,
 		)
 		log.Warningf(ctx, "%v", err)
 		return ctx, nil, nil, err
 	}
+	ctx = execversion.WithVersion(ctx, req.Version)
 
 	const opName = "flow"
 	if parentSpan == nil {
@@ -269,31 +271,36 @@ func (ds *ServerImpl) setupFlow(
 		// this allows us to avoid an unnecessary deserialization of the eval
 		// context proto.
 		evalCtx = localState.EvalContext
-		// We create an eval context variable scoped to this block and reference
-		// it in the onFlowCleanupEnd closure. If the closure referenced
-		// evalCtx, then the pointer would be heap allocated because it is
-		// modified in the other branch of the conditional, and Go's escape
-		// analysis cannot determine that the capture and modification are
-		// mutually exclusive.
-		localEvalCtx := evalCtx
-		// We're about to mutate the evalCtx and we want to restore its original
-		// state once the flow cleans up. Note that we could have made a copy of
-		// the whole evalContext, but that isn't free, so we choose to restore
-		// the original state in order to avoid performance regressions.
-		origTxn := localEvalCtx.Txn
-		onFlowCleanupEnd = func(ctx context.Context) {
-			localEvalCtx.Txn = origTxn
-			reserved.Close(ctx)
-		}
 		if localState.MustUseLeafTxn() {
 			var err error
 			leafTxn, err = makeLeaf(ctx)
 			if err != nil {
 				return nil, nil, nil, err
 			}
+			// We create an eval context variable scoped to this block and
+			// reference it in the onFlowCleanupEnd closure. If the closure
+			// referenced evalCtx, then the pointer would be heap allocated
+			// because it is modified in the other branch of the conditional,
+			// and Go's escape analysis cannot determine that the capture and
+			// modification are mutually exclusive.
+			localEvalCtx := evalCtx
+			// We're about to mutate the evalCtx and we want to restore its
+			// original state once the flow cleans up. Note that we could have
+			// made a copy of the whole evalContext, but that isn't free, so we
+			// choose to restore the original state in order to avoid
+			// performance regressions.
+			origTxn := localEvalCtx.Txn
+			onFlowCleanupEnd = func(ctx context.Context) {
+				localEvalCtx.Txn = origTxn
+				reserved.Close(ctx)
+			}
 			// Update the Txn field early (before f.SetTxn() below) since some
 			// processors capture the field in their constructor (see #41992).
 			localEvalCtx.Txn = leafTxn
+		} else {
+			onFlowCleanupEnd = func(ctx context.Context) {
+				reserved.Close(ctx)
+			}
 		}
 	} else {
 		onFlowCleanupEnd = func(ctx context.Context) {
@@ -338,6 +345,7 @@ func (ds *ServerImpl) setupFlow(
 			Regions:                   &faketreeeval.DummyRegionOperator{},
 			Txn:                       leafTxn,
 			SQLLivenessReader:         ds.ServerConfig.SQLLivenessReader,
+			BlockingSQLLivenessReader: ds.ServerConfig.BlockingSQLLivenessReader,
 			SQLStatsController:        ds.ServerConfig.SQLStatsController,
 			SchemaTelemetryController: ds.ServerConfig.SchemaTelemetryController,
 			IndexUsageStatsController: ds.ServerConfig.IndexUsageStatsController,

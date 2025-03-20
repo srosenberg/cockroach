@@ -678,6 +678,13 @@ func TestReadCommittedLogic_distsql_srfs(
 	runLogicTest(t, "distsql_srfs")
 }
 
+func TestReadCommittedLogic_do(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "do")
+}
+
 func TestReadCommittedLogic_drop_database(
 	t *testing.T,
 ) {
@@ -1154,6 +1161,13 @@ func TestReadCommittedLogic_json_index(
 	runLogicTest(t, "json_index")
 }
 
+func TestReadCommittedLogic_jsonpath(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "jsonpath")
+}
+
 func TestReadCommittedLogic_kv_builtin_functions(
 	t *testing.T,
 ) {
@@ -1614,6 +1628,13 @@ func TestReadCommittedLogic_routine_schema_change(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "routine_schema_change")
+}
+
+func TestReadCommittedLogic_row_level_security(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "row_level_security")
 }
 
 func TestReadCommittedLogic_row_level_ttl(
@@ -2489,6 +2510,13 @@ func TestReadCommittedLogic_values(
 ) {
 	defer leaktest.AfterTest(t)()
 	runLogicTest(t, "values")
+}
+
+func TestReadCommittedLogic_vector_index(
+	t *testing.T,
+) {
+	defer leaktest.AfterTest(t)()
+	runLogicTest(t, "vector_index")
 }
 
 func TestReadCommittedLogic_vectorize_agg(

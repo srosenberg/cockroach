@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/cat"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree/treecmp"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
@@ -85,6 +86,8 @@ func (tc *Catalog) CreateTable(stmt *tree.CreateTable) *Table {
 		tab.multiRegion = true
 		tab.homeRegion = string(stmt.Locality.TableRegion)
 	}
+
+	tab.nextPolicyID = 1
 
 	if isRbr && stmt.PartitionByTable == nil {
 		// Build the table as LOCALITY REGIONAL BY ROW.
@@ -508,6 +511,7 @@ func (tc *Catalog) CreateTableAs(name tree.TableName, columns []cat.Column) *Tab
 
 	tab.Columns = append(tab.Columns, rowid)
 	tab.addPrimaryColumnIndex("rowid")
+	tab.Owner = tc.currentUser
 
 	// Add the new table to the catalog.
 	tc.AddTable(tab)
@@ -883,7 +887,7 @@ func (tt *Table) addIndexWithVersion(
 	idx := &Index{
 		IdxName:      tt.makeIndexName(def.Name, def.Columns, typ),
 		Unique:       typ != nonUniqueIndex,
-		Inverted:     def.Inverted,
+		Typ:          def.Type,
 		IdxZone:      cat.EmptyZone(),
 		table:        tt,
 		version:      version,
@@ -910,8 +914,13 @@ func (tt *Table) addIndexWithVersion(
 	notNullIndex := true
 	for i, colDef := range def.Columns {
 		isLastIndexCol := i == len(def.Columns)-1
-		if def.Inverted && isLastIndexCol {
-			idx.invertedOrd = i
+		if isLastIndexCol {
+			switch def.Type {
+			case idxtype.INVERTED:
+				idx.invertedOrd = i
+			case idxtype.VECTOR:
+				idx.vectorOrd = i
+			}
 		}
 		col := idx.addColumn(tt, colDef, keyCol, isLastIndexCol)
 
@@ -919,7 +928,7 @@ func (tt *Table) addIndexWithVersion(
 			notNullIndex = false
 		}
 
-		if isLastIndexCol && def.Inverted {
+		if isLastIndexCol && def.Type == idxtype.INVERTED {
 			switch tt.Columns[col.InvertedSourceColumnOrdinal()].DatumType().Family() {
 			case types.GeometryFamily:
 				// Don't use the default config because it creates a huge number of spans.
@@ -1064,8 +1073,11 @@ func (tt *Table) addIndexWithVersion(
 
 	// Add storing columns.
 	for _, name := range def.Storing {
-		if def.Inverted {
+		switch def.Type {
+		case idxtype.INVERTED:
 			panic("inverted indexes don't support stored columns")
+		case idxtype.VECTOR:
+			panic("vector indexes don't support stored columns")
 		}
 		// Only add storing columns that weren't added as part of adding implicit
 		// key columns.
@@ -1226,7 +1238,7 @@ func (ti *Index) addColumn(
 		colName = elem.Column
 	}
 
-	if ti.Inverted && isLastIndexCol {
+	if ti.Typ == idxtype.INVERTED && isLastIndexCol {
 		// The last column of an inverted index is special: the index key does
 		// not contain values from the column itself, but contains inverted
 		// index entries derived from that column. Create a virtual column to be
@@ -1309,6 +1321,15 @@ func (ti *Index) addColumnByOrdinal(
 					col.ColName(), srcColType,
 				))
 			}
+		} else if typ.Family() == types.PGVectorFamily {
+			if ti.Typ != idxtype.VECTOR {
+				panic(fmt.Errorf(
+					"column %s of type %s is not allowed in a non-vector index", col.ColName(), typ,
+				))
+			}
+			if typ.Width() == 0 {
+				panic(fmt.Errorf("variable-width vector columns are not allowed in a vector index"))
+			}
 		} else if !colinfo.ColumnTypeIsIndexable(typ) {
 			panic(fmt.Errorf("column %s of type %s is not indexable", col.ColName(), typ))
 		}
@@ -1373,7 +1394,7 @@ func (ti *Index) partitionByListExprToDatums(
 	d := make(tree.Datums, len(vals))
 	for i := range vals {
 		c := tree.CastExpr{Expr: vals[i], Type: ti.Columns[i].DatumType()}
-		cTyped, err := c.TypeCheck(ctx, semaCtx, types.Any)
+		cTyped, err := c.TypeCheck(ctx, semaCtx, types.AnyElement)
 		if err != nil {
 			panic(err)
 		}

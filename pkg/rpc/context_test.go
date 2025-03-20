@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -434,7 +435,7 @@ func TestInternalClientAdapterRunsInterceptors(t *testing.T) {
 	serverCtx.AdvertiseAddr = "127.0.0.1:8888"
 	serverCtx.NodeID.Set(context.Background(), 1)
 
-	_ /* server */, serverInterceptors, err := NewServerEx(ctx, serverCtx)
+	_ /* gRPC server */, _ /* drpc server */, serverInterceptors, err := NewServerEx(ctx, serverCtx)
 	require.NoError(t, err)
 
 	// Pile on one more interceptor to make sure it's called.
@@ -535,7 +536,7 @@ func TestInternalClientAdapterWithClientStreamInterceptors(t *testing.T) {
 	serverCtx.AdvertiseAddr = "127.0.0.1:8888"
 	serverCtx.NodeID.Set(context.Background(), 1)
 
-	_ /* server */, serverInterceptors, err := NewServerEx(ctx, serverCtx)
+	_ /* gRPC server */, _ /* drpc server */, serverInterceptors, err := NewServerEx(ctx, serverCtx)
 	require.NoError(t, err)
 	var clientInterceptors ClientInterceptorInfo
 	var s *testClientStream
@@ -598,7 +599,7 @@ func TestInternalClientAdapterWithServerStreamInterceptors(t *testing.T) {
 	serverCtx.AdvertiseAddr = "127.0.0.1:8888"
 	serverCtx.NodeID.Set(context.Background(), 1)
 
-	_ /* server */, serverInterceptors, err := NewServerEx(ctx, serverCtx)
+	_ /* gRPC server */, _ /* drpc server */, serverInterceptors, err := NewServerEx(ctx, serverCtx)
 	require.NoError(t, err)
 
 	const int1Name = "interceptor 1"
@@ -736,7 +737,7 @@ func BenchmarkInternalClientAdapter(b *testing.B) {
 	serverCtx.AdvertiseAddr = "127.0.0.1:8888"
 	serverCtx.NodeID.Set(context.Background(), 1)
 
-	_, interceptors, err := NewServerEx(ctx, serverCtx)
+	_ /* gRPC server */, _ /* drpc server */, interceptors, err := NewServerEx(ctx, serverCtx)
 	require.NoError(b, err)
 
 	internal := &internalServer{}
@@ -2342,4 +2343,38 @@ func BenchmarkGRPCPing(b *testing.B) {
 			}
 		})
 	}
+}
+
+func TestMetricsInterceptor(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	ctx := context.Background()
+
+	stopper := stop.NewStopper()
+	defer stopper.Stop(context.Background())
+	stopper.SetTracer(tracing.NewTracer())
+
+	clock := timeutil.NewManualTime(timeutil.Unix(0, 1))
+	maxOffset := time.Duration(0)
+
+	serverCtx := newTestContext(uuid.MakeV4(), clock, maxOffset, stopper)
+	serverCtx.AdvertiseAddr = "127.0.0.1:8888"
+	serverCtx.NodeID.Set(context.Background(), 1)
+
+	var interceptor RequestMetricsInterceptor = func(
+		ctx context.Context,
+		req interface{},
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (interface{}, error) {
+		return nil, nil
+	}
+
+	_, _, serverInterceptors, err := NewServerEx(ctx, serverCtx, WithMetricsServerInterceptor(interceptor))
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(serverInterceptors.UnaryInterceptors), 2)
+	// make sure that the RequestMetricsInterceptor is the second registered
+	// interceptor.
+	require.Equal(t,
+		reflect.ValueOf(interceptor).Pointer(),
+		reflect.ValueOf(serverInterceptors.UnaryInterceptors[1]).Pointer())
 }

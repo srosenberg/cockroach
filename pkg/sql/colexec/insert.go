@@ -201,7 +201,7 @@ func (v *vectorInserter) Next() coldata.Batch {
 }
 
 func (v *vectorInserter) checkMutationInput(ctx context.Context, b coldata.Batch) error {
-	checks := v.desc.EnforcedCheckConstraints()
+	checks := v.desc.EnforcedCheckValidators()
 	colIdx := 0
 	for i, ch := range checks {
 		if !v.checkOrds.Contains(i) {
@@ -211,7 +211,7 @@ func (v *vectorInserter) checkMutationInput(ctx context.Context, b coldata.Batch
 		bools := vec.Bool()
 		nulls := vec.Nulls()
 		for r := 0; r < b.Length(); r++ {
-			if !bools[r] && !nulls.NullAt(r) {
+			if ch.IsCheckFailed(bools[r], nulls.NullAt(r)) {
 				return row.CheckFailed(ctx, v.flowCtx.EvalCtx, v.semaCtx, v.flowCtx.EvalCtx.SessionData(), v.desc, ch)
 			}
 		}

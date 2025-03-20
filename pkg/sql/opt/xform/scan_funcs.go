@@ -39,10 +39,11 @@ import (
 func (c *CustomFuncs) GenerateIndexScans(
 	grp memo.RelExpr, required *physical.Required, scanPrivate *memo.ScanPrivate,
 ) {
-	// Iterate over all non-inverted and non-partial secondary indexes.
+	// Iterate over all non-inverted and non-vector secondary indexes.
 	var pkCols opt.ColSet
 	var iter scanIndexIter
-	iter.Init(c.e.evalCtx, c.e, c.e.mem, &c.im, scanPrivate, nil /* filters */, rejectPrimaryIndex|rejectInvertedIndexes)
+	reject := rejectPrimaryIndex | rejectInvertedIndexes | rejectVectorIndexes
+	iter.Init(c.e.evalCtx, c.e, c.e.mem, &c.im, scanPrivate, nil /* filters */, reject)
 	iter.ForEach(func(index cat.Index, filters memo.FiltersExpr, indexCols opt.ColSet, isCovering bool, constProj memo.ProjectionsExpr) {
 		// The iterator only produces pseudo-partial indexes (the predicate is
 		// true) because no filters are passed to iter.Init to imply a partial
@@ -504,7 +505,7 @@ func (c *CustomFuncs) IsRegionalByRowTableScanOrSelect(input memo.RelExpr) bool 
 	if !ok {
 		return false
 	}
-	table := scanExpr.Memo().Metadata().Table(scanExpr.Table)
+	table := c.e.mem.Metadata().Table(scanExpr.Table)
 	return table.IsRegionalByRow()
 }
 
@@ -523,7 +524,7 @@ func (c *CustomFuncs) IsSelectFromRemoteTableRowsOnly(input memo.RelExpr) bool {
 	if c.e.evalCtx.BoundedStaleness() {
 		return false
 	}
-	table := scanExpr.Memo().Metadata().Table(scanExpr.Table)
+	table := c.e.mem.Metadata().Table(scanExpr.Table)
 	if table.IsRegionalByRow() {
 		tabMeta := c.e.mem.Metadata().TableMeta(scanExpr.Table)
 		index := table.Index(scanExpr.Index)

@@ -1,3 +1,6 @@
+# We've seen this test hit a timeout in fakedist configs under race.
+skip under race
+
 statement ok
 CREATE TABLE t (x INT PRIMARY KEY, y INT NOT NULL, z INT NOT NULL, w INT, INDEX i (x), INDEX i2 (z))
 
@@ -582,6 +585,7 @@ CREATE TABLE t (x INT PRIMARY KEY, y INT NOT NULL)
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t ALTER PRIMARY KEY USING COLUMNS (y)
@@ -600,6 +604,7 @@ CREATE TABLE t (x INT PRIMARY KEY, y INT NOT NULL)
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t ALTER PRIMARY KEY USING COLUMNS (y)
@@ -693,6 +698,7 @@ CREATE TABLE t (x INT NOT NULL)
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t ADD COLUMN y INT
@@ -767,7 +773,8 @@ statement ok
 CREATE TABLE t (x INT PRIMARY KEY, y INT NOT NULL, FAMILY (x), FAMILY (y))
 
 statement ok
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT "t_pkey"
@@ -786,6 +793,7 @@ CREATE TABLE t (x INT PRIMARY KEY, y INT NOT NULL, FAMILY (x), FAMILY (y))
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT "t_pkey"
@@ -816,7 +824,8 @@ statement ok
 CREATE TABLE t (x INT PRIMARY KEY, y INT NOT NULL)
 
 statement ok
-BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -829,6 +838,7 @@ ROLLBACK
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -841,6 +851,7 @@ ROLLBACK
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -853,6 +864,7 @@ ROLLBACK
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -868,6 +880,7 @@ ROLLBACK
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -880,6 +893,7 @@ ROLLBACK
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -892,6 +906,7 @@ ROLLBACK
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t DROP CONSTRAINT t_pkey
@@ -915,6 +930,7 @@ CREATE TABLE t2 (x INT)
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 ALTER TABLE t1 DROP CONSTRAINT t1_pkey
@@ -946,6 +962,7 @@ DROP TABLE IF EXISTS t CASCADE
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 CREATE TABLE t (x INT NOT NULL, y INT, FAMILY (x, y), INDEX (y))
@@ -983,6 +1000,7 @@ DROP TABLE IF EXISTS t
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 CREATE TABLE t (x INT NOT NULL, y INT, FAMILY (x, y), INDEX (y))
@@ -1021,6 +1039,7 @@ skip_on_retry
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 
 statement ok
 CREATE TABLE t (
@@ -1867,6 +1886,7 @@ CREATE TABLE t_90836(a INT NOT NULL, b INT NOT NULL, CONSTRAINT "constraint" PRI
 
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SET LOCAL autocommit_before_ddl = false;
 ALTER TABLE t_90836 DROP CONSTRAINT "constraint";
 ALTER TABLE t_90836 ADD CONSTRAINT "constraint" PRIMARY KEY (b);
 COMMIT;
@@ -1986,7 +2006,7 @@ CREATE TABLE tab_122871 (
   PRIMARY KEY (col0_18 DESC)
 );
 
-statement error column col0_4 is of type tsvector and thus is not indexable
+statement error column col0_4 has type tsvector, which is not indexable
 ALTER TABLE tab_122871 ALTER PRIMARY KEY USING COLUMNS (col0_4);
 
 subtest end

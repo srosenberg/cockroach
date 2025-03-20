@@ -118,6 +118,12 @@ func (a tenantAuthorizer) authorize(
 	case "/cockroach.server.serverpb.Status/Ranges":
 		return a.authRanges(tenID)
 
+	case "/cockroach.server.serverpb.Status/NetworkConnectivity":
+		return a.capabilitiesAuthorizer.HasProcessDebugCapability(ctx, tenID)
+
+	case "/cockroach.server.serverpb.Status/Gossip":
+		return a.capabilitiesAuthorizer.HasNodeStatusCapability(ctx, tenID)
+
 	case "/cockroach.server.serverpb.Status/TransactionContentionEvents":
 		return a.authTenant(tenID)
 
@@ -294,6 +300,8 @@ var gossipSubscriptionPatternAllowlist = []string{
 	"cluster-id",
 	"node:.*",
 	"store:.*",
+	// This "system-db" exception can be removed once we fully remove
+	// gossip.KeyDeprecatedSystemConfig from the gossip network.
 	"system-db",
 }
 

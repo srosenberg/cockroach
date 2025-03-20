@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descbuilder"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/funcdesc"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/multiregion"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/nstree"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemadesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
@@ -179,6 +180,13 @@ func (s *TestState) HasAdminRole(ctx context.Context) (bool, error) {
 // HasOwnership implements the scbuild.AuthorizationAccessor interface.
 func (s *TestState) HasOwnership(
 	ctx context.Context, privilegeObject privilege.Object,
+) (bool, error) {
+	return true, nil
+}
+
+// UserHasOwnership implements the scbuild.AuthorizationAccessor interface.
+func (s *TestState) UserHasOwnership(
+	context.Context, privilege.Object, username.SQLUsername,
 ) (bool, error) {
 	return true, nil
 }
@@ -1106,35 +1114,34 @@ func (s *TestState) UpdateSchemaChangeJob(
 	oldProgress := jobspb.Progress{
 		Progress:       nil,
 		ModifiedMicros: 0,
-		RunningStatus:  "",
+		StatusMessage:  "",
 		Details:        jobspb.WrapProgressDetails(scJob.Progress),
 		TraceID:        0,
 	}
 	oldPayload := jobspb.Payload{
-		Description:                  scJob.Description,
-		Statement:                    scJob.Statements,
-		UsernameProto:                scJob.Username.EncodeProto(),
-		StartedMicros:                0,
-		FinishedMicros:               0,
-		DescriptorIDs:                scJob.DescriptorIDs,
-		Error:                        "",
-		ResumeErrors:                 nil,
-		CleanupErrors:                nil,
-		FinalResumeError:             nil,
-		Noncancelable:                scJob.NonCancelable,
-		Details:                      jobspb.WrapPayloadDetails(scJob.Details),
-		PauseReason:                  "",
-		RetriableExecutionFailureLog: nil,
+		Description:      scJob.Description,
+		Statement:        scJob.Statements,
+		UsernameProto:    scJob.Username.EncodeProto(),
+		StartedMicros:    0,
+		FinishedMicros:   0,
+		DescriptorIDs:    scJob.DescriptorIDs,
+		Error:            "",
+		ResumeErrors:     nil,
+		CleanupErrors:    nil,
+		FinalResumeError: nil,
+		Noncancelable:    scJob.NonCancelable,
+		Details:          jobspb.WrapPayloadDetails(scJob.Details),
+		PauseReason:      "",
 	}
 	oldJobMetadata := jobs.JobMetadata{
 		ID:       scJob.JobID,
-		Status:   jobs.StatusRunning,
+		State:    jobs.StateRunning,
 		Payload:  &oldPayload,
 		Progress: &oldProgress,
 	}
 	updateProgress := func(newProgress *jobspb.Progress) {
 		scJob.Progress = *newProgress.GetNewSchemaChange()
-		s.LogSideEffectf("update progress of schema change job #%d: %q", scJob.JobID, newProgress.RunningStatus)
+		s.LogSideEffectf("update progress of schema change job #%d: %q", scJob.JobID, newProgress.StatusMessage)
 	}
 	updatePayload := func(newPayload *jobspb.Payload) {
 		if newPayload.Noncancelable {
@@ -1575,6 +1582,13 @@ func (s *TestState) NodesStatusServer() *serverpb.OptionalNodesStatusServer {
 
 func (s *TestState) GetRegions(ctx context.Context) (*serverpb.RegionsResponse, error) {
 	return &serverpb.RegionsResponse{Regions: map[string]*serverpb.RegionsResponse_Region{}}, nil
+}
+
+// SynthesizeRegionConfig implements the scbuildstmt.SynthesizeRegionConfig interface.
+func (s *TestState) SynthesizeRegionConfig(
+	ctx context.Context, dbID descpb.ID, opts ...multiregion.SynthesizeRegionConfigOption,
+) (multiregion.RegionConfig, error) {
+	return multiregion.RegionConfig{}, nil
 }
 
 func (s *TestState) GetDefaultZoneConfig() *zonepb.ZoneConfig {

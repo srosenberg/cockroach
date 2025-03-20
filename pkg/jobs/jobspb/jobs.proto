@@ -21,6 +21,7 @@ import "util/hlc/timestamp.proto";
 import "clusterversion/cluster_version.proto";
 import "google/protobuf/timestamp.proto";
 import "util/tracing/tracingpb/recorded_span.proto";
+import "sql/catalog/externalcatalog/externalpb/external.proto";
 
 enum EncryptionMode {
   Passphrase = 0;
@@ -71,9 +72,8 @@ message EncryptionInfo {
 }
 
 message StreamIngestionDetails {
-  // StreamAddress locates the stream. It enables the client to find the
-  // addresses of the stream's partitions.
-  string stream_address = 1;
+	// SourceClusterConnUri is the user-provided address of the source cluster.
+  string source_cluster_conn_uri = 1;
 
   uint64 stream_id = 4 [(gogoproto.customname) = "StreamID"];
 
@@ -162,8 +162,9 @@ message StreamIngestionProgress {
   // Checkpoint stores a set of resolved spans denoting completed ingestion progress
   StreamIngestionCheckpoint checkpoint = 4 [(gogoproto.nullable) = false];
 
-  // StreamAddresses are the source cluster addresses read from the latest topology.
-  repeated string stream_addresses = 5;
+	// PartitionPgUris are the source cluster addresses read from the latest
+	// topology.
+  repeated string partition_conn_uris = 5;
 
   reserved 3;
 
@@ -210,9 +211,8 @@ message HistoryRetentionProgress {
 }
 
 message LogicalReplicationDetails {
-  // SourceClusterConnStr is the user-provided address of the source
-  // cluster.
-  string source_cluster_conn_str = 1;
+	// SourceClusterConnUri is the user-provided address of the source cluster.
+  string source_cluster_conn_uri = 1;
 
   // TableNames is the original list of source table names given by the user.
   repeated string table_names = 2;
@@ -272,10 +272,27 @@ message LogicalReplicationDetails {
   }
 
   Discard discard = 11;
-
+  
+  // CreateTable is true if the job should create the table(s) in the
+  // destination.
   bool create_table = 12;
+  
+  // IngestedExternalCatalog is the catalog written to the destination cluster
+  // when CreateTable is true.
+  sql.catalog.externalcatalog.externalpb.ExternalCatalog ingested_external_catalog = 13  [(gogoproto.nullable) = false];
+  
+  // ReverseStreamCommand is CREATE LDR command the coordinator will issue once
+  // the offline initial scan completes, but before the tables are made public.
+  string reverse_stream_command = 14;
+  
+  // ParentID is set on the reverse stream job in automatic bidirectional
+  // replication, and is equal to the job ID that issued the reverse stream
+  // command.
+  int64 parent_id = 15 [(gogoproto.customname) = "ParentID"];
 
-  // Next ID: 12.
+  string command = 16;
+
+  // Next ID: 17.
 }
 
 message LogicalReplicationProgress {
@@ -289,8 +306,13 @@ message LogicalReplicationProgress {
   // Checkpoint stores a set of resolved spans denoting completed ingestion progress
   StreamIngestionCheckpoint checkpoint = 6 [(gogoproto.nullable) = false];
 
-  // StreamAddresses are the source cluster addresses read from the latest topology.
-  repeated string stream_addresses = 8;
+	// PartitionConnUris are the source cluster addresses read from the latest
+	// topology.
+  repeated string partition_conn_uris = 8;
+
+  bool published_new_tables = 9;
+
+  bool started_reverse_stream = 10;
 }
 
 message StreamReplicationDetails {
@@ -352,7 +374,7 @@ message BackupDetails {
   // sub-paths of it based on date and time, etc. The actual path -- which is
   // derived from this destination -- is then captured in the field "URI" below.
   message Destination {
-    // To is either a backup path, path, or a collection path if subdir is set.
+    // To is a collection path 
     repeated string to = 1;
     // Subdir is the path within the collection path in to to backup to.
     string subdir = 2;
@@ -438,7 +460,7 @@ message BackupDetails {
 
   roachpb.Locality execution_locality = 24 [(gogoproto.nullable) = false];
 
-  // IncldeAllSecondaryTenants indicates whether a full tenant backup
+  // IncludeAllSecondaryTenants indicates whether a full tenant backup
   // should also include a tenant backup of all existing secondary
   // tenants.
   bool include_all_secondary_tenants = 25;
@@ -448,7 +470,15 @@ message BackupDetails {
   // time of a backup failure due to a KMS error.
   bool updates_cluster_monitoring_metrics = 26;
 
-  // NEXT ID: 27;
+  // Compact is set if the job is a compaction job. In that case, the StartTime
+  // and EndTime describe the time range of the compaction. StartTime will be
+  // the start time of the first backup to be compacted and EndTime will be the
+  // end time of the last backup to be compacted.
+  // NB: If Compact is set, the job is not a regular backup job and only a limited
+  //  set of fields are set meaningfully.
+  bool compact = 27;
+
+  // NEXT ID: 28;
 }
 
 message BackupProgress {
@@ -1166,6 +1196,23 @@ message ResolvedSpans {
   Stats stats = 2 [(gogoproto.nullable) = false];
 }
 
+// TimestampSpansMap is a map from timestamps to lists of spans.
+//
+// You should create a go map and call NewTimestampSpansMap on it
+// instead of creating one directly.
+//
+// NB: This can't be a protobuf map because that requires the key
+// to be integral/string, but the language guide notes that this
+// structure is equivalent on the wire to a map:
+// https://protobuf.dev/programming-guides/proto3/#backwards.
+message TimestampSpansMap {
+  message Entry {
+    util.hlc.Timestamp timestamp = 1 [(gogoproto.nullable) = false];
+    repeated roachpb.Span spans = 2 [(gogoproto.nullable) = false];
+  }
+  repeated Entry entries = 1 [(gogoproto.nullable) = false];
+}
+
 message ChangefeedProgress {
   reserved 1;
 
@@ -1174,13 +1221,22 @@ message ChangefeedProgress {
   // some spans are significantly behind the rest, such as during backfills or
   // if specific spans are having issues progressing.  On restart, the
   // changefeed will forward the specified spans to the specified timestamp.
+  // TODO(#139734): Delete this nested message type.
   message Checkpoint {
+    option deprecated = true;
     repeated roachpb.Span spans = 1 [(gogoproto.nullable) = false];
     util.hlc.Timestamp timestamp = 2 [(gogoproto.nullable) = false];
+
+    // NOTE: When adding fields to this message, make sure to also update IsEmpty.
   }
 
   reserved 2;
-  Checkpoint checkpoint = 4;
+  // Checkpoint is the deprecated span-level checkpoint for a
+  // changefeed. It consists of a list of spans and a single timestamp
+  // representing the minimum resolved timestamp of the spans.
+  // It is now deprecated in favor of SpanLevelCheckpoint.
+  // TODO(#139734): Delete this field and mark field number as reserved.
+  Checkpoint checkpoint = 4 [deprecated=true];
 
   // ProtectedTimestampRecord is the ID of the protected timestamp record
   // corresponding to this job. While the job ought to clean up the record
@@ -1196,6 +1252,16 @@ message ChangefeedProgress {
     (gogoproto.customtype) = "github.com/cockroachdb/cockroach/pkg/util/uuid.UUID",
     (gogoproto.nullable) = false
   ];
+
+  // SpanLevelCheckpoint is the span-level checkpoint for a changefeed.
+  // It consists of a map from resolved timestamps to lists of spans
+  // with that resolved timestamp.
+  //
+  // On restart, the changefeed can restore the progress of spans in the
+  // checkpoint to its corresponding resolved timestamp, which will be higher
+  // than the overall resolved timestamp and thus allow us to do less work.
+  // This is especially useful during backfills or if some spans are lagging.
+  TimestampSpansMap span_level_checkpoint = 5;
 }
 
 // CreateStatsDetails are used for the CreateStats job, which is triggered
@@ -1401,6 +1467,14 @@ message ImportRollbackDetails {
   ];
 }
 
+message SqlActivityFlushDetails {
+
+}
+
+message SqlActivityFlushProgress {
+
+}
+
 message ImportRollbackProgress {}
 
 message Payload {
@@ -1471,17 +1545,15 @@ message Payload {
     LogicalReplicationDetails logical_replication_details = 48;
     UpdateTableMetadataCacheDetails update_table_metadata_cache_details = 49;
     StandbyReadTSPollerDetails standby_read_ts_poller_details = 50;
+    SqlActivityFlushDetails sql_activity_flush_details = 51;
   }
   reserved 26;
   // PauseReason is used to describe the reason that the job is currently paused
   // or has been requested to be paused.
   string pause_reason = 28;
-  // RetriableExecutionFailureLog stores a history of retriable execution
-  // failures. These failures may occur in either the RUNNING or REVERTING
-  // status. A finite number of these entries will be kept, as governed by
-  // the jobs.execution_errors.max_entries cluster setting.
-  repeated RetriableExecutionFailure retriable_execution_failure_log = 32;
 
+  reserved 32;
+  
   // CreationClusterID is populated at creation with the ClusterID, in case a
   // job resuming later, needs to use this information, e.g. to determine if it
   // has been restored into a different cluster, which might mean it should
@@ -1507,7 +1579,11 @@ message Progress {
     util.hlc.Timestamp high_water = 3;
   }
   int64 modified_micros = 2;
-  string running_status = 4;
+
+  // StatusMessage contains the human readible status of a job (e.g. "running
+  // initial scan"), which is distinct from the state of a job (e.g. PAUSED).
+  // The status of a job is also stored in the system.job_status table.
+  string status_message = 4;
 
   //                ------ COMPLIANCE NOTE ------
   // If you're updating this `Progress` proto, consider its impact on compliance.
@@ -1550,6 +1626,7 @@ message Progress {
     LogicalReplicationProgress LogicalReplication = 36;
     UpdateTableMetadataCacheProgress table_metadata_cache = 37;
     StandbyReadTSPollerProgress standby_read_ts_poller = 38;
+    SqlActivityFlushProgress sql_activity_flush = 39;
   }
 
   uint64 trace_id = 21 [(gogoproto.nullable) = false, (gogoproto.customname) = "TraceID", (gogoproto.customtype) = "github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb.TraceID"];
@@ -1592,6 +1669,7 @@ enum Type {
   AUTO_CREATE_PARTIAL_STATS = 28 [(gogoproto.enumvalue_customname) = "TypeAutoCreatePartialStats"];
   UPDATE_TABLE_METADATA_CACHE = 29 [(gogoproto.enumvalue_customname) = "TypeUpdateTableMetadataCache"];
   STANDBY_READ_TS_POLLER = 30 [(gogoproto.enumvalue_customname) = "TypeStandbyReadTSPoller"];
+  SQL_ACTIVITY_FLUSH = 31 [(gogoproto.enumvalue_customname) = "TypeSQLActivityFlush"];
 }
 
 message Job {

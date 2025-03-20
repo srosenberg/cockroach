@@ -42,7 +42,7 @@ func TestStoreLiveness(t *testing.T) {
 			manual := timeutil.NewManualTime(timeutil.Unix(1, 0))
 			clock := hlc.NewClockForTesting(manual)
 			sender := testMessageSender{}
-			sm := NewSupportManager(storeID, engine, Options{}, settings, stopper, clock, &sender, nil)
+			sm := NewSupportManager(storeID, engine, Options{}, settings, stopper, clock, nil, &sender, nil)
 			require.NoError(t, sm.onRestart(ctx))
 			datadriven.RunTest(
 				t, path, func(t *testing.T, d *datadriven.TestData) string {
@@ -64,7 +64,7 @@ func TestStoreLiveness(t *testing.T) {
 					case "send-heartbeats":
 						now := parseTimestamp(t, d, "now")
 						manual.AdvanceTo(now.GoTime())
-						sm.options.LivenessInterval = parseDuration(t, d, "liveness-interval")
+						sm.options.SupportDuration = parseDuration(t, d, "support-duration")
 						sm.maybeAddStores(ctx)
 						sm.sendHeartbeats(ctx)
 						heartbeats := sender.drainSentMessages()
@@ -91,7 +91,7 @@ func TestStoreLiveness(t *testing.T) {
 						gracePeriod := parseDuration(t, d, "grace-period")
 						o := Options{SupportWithdrawalGracePeriod: gracePeriod}
 						sm = NewSupportManager(
-							storeID, engine, o, settings, stopper, clock, &sender, nil,
+							storeID, engine, o, settings, stopper, clock, nil, &sender, nil,
 						)
 						manual.AdvanceTo(now.GoTime())
 						require.NoError(t, sm.onRestart(ctx))
@@ -100,7 +100,7 @@ func TestStoreLiveness(t *testing.T) {
 					case "error-on-write":
 						var errorOnWrite bool
 						d.ScanArgs(t, "on", &errorOnWrite)
-						engine.errorOnWrite = errorOnWrite
+						engine.SetErrorOnWrite(errorOnWrite)
 						return ""
 
 					case "debug-requester-state":

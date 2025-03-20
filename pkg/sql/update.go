@@ -25,7 +25,7 @@ var updateNodePool = sync.Pool{
 }
 
 type updateNode struct {
-	source planNode
+	singleInputPlanNode
 
 	// columns is set if this UPDATE is returning any rows, to be
 	// consumed by a renderNode upstream. This occurs when there is a
@@ -108,7 +108,7 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 		}
 
 		// Advance one individual row.
-		if next, err := u.source.Next(params); !next {
+		if next, err := u.input.Next(params); !next {
 			lastBatch = true
 			if err != nil {
 				return false, err
@@ -116,9 +116,9 @@ func (u *updateNode) BatchedNext(params runParams) (bool, error) {
 			break
 		}
 
-		// Process the update for the current source row, potentially
+		// Process the update for the current input row, potentially
 		// accumulating the result row for later.
-		if err := u.processSourceRow(params, u.source.Values()); err != nil {
+		if err := u.processSourceRow(params, u.input.Values()); err != nil {
 			return false, err
 		}
 
@@ -167,11 +167,15 @@ func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 	// stored columns in the table, that is, excluding the RHS assignment
 	// expressions.
 	oldValues := sourceVals[:len(u.run.tu.ru.FetchCols)]
+	sourceVals = sourceVals[len(oldValues):]
 
 	// The update values follow the fetch values and their order corresponds to the order of ru.UpdateCols.
-	numFetchCols := len(u.run.tu.ru.FetchCols)
-	numUpdateCols := len(u.run.tu.ru.UpdateCols)
-	updateValues := sourceVals[numFetchCols : numFetchCols+numUpdateCols]
+	updateValues := sourceVals[:len(u.run.tu.ru.UpdateCols)]
+	sourceVals = sourceVals[len(updateValues):]
+
+	// The passthrough values follow the update values.
+	passthroughValues := sourceVals[:u.run.numPassthrough]
+	sourceVals = sourceVals[len(passthroughValues):]
 
 	// Verify the schema constraints. For consistency with INSERT/UPSERT
 	// and compatibility with PostgreSQL, we must do this before
@@ -184,28 +188,34 @@ func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 	// constraints itself, or else inspect boolean columns from the input that
 	// contain the results of evaluation.
 	if !u.run.checkOrds.Empty() {
-		checkVals := sourceVals[len(u.run.tu.ru.FetchCols)+len(u.run.tu.ru.UpdateCols)+u.run.numPassthrough:]
 		if err := checkMutationInput(
 			params.ctx, params.EvalContext(), &params.p.semaCtx, params.p.SessionData(),
-			u.run.tu.tableDesc(), u.run.checkOrds, checkVals,
+			u.run.tu.tableDesc(), u.run.checkOrds, sourceVals[:u.run.checkOrds.Len()],
 		); err != nil {
 			return err
 		}
+		sourceVals = sourceVals[u.run.checkOrds.Len():]
 	}
 
 	// Create a set of partial index IDs to not add entries or remove entries
-	// from.
+	// from. Put values are followed by del values.
 	var pm row.PartialIndexUpdateHelper
 	if n := len(u.run.tu.tableDesc().PartialIndexes()); n > 0 {
-		offset := len(u.run.tu.ru.FetchCols) + len(u.run.tu.ru.UpdateCols) + u.run.checkOrds.Len() + u.run.numPassthrough
-		partialIndexVals := sourceVals[offset:]
-		partialIndexPutVals := partialIndexVals[:n]
-		partialIndexDelVals := partialIndexVals[n : n*2]
-
-		err := pm.Init(partialIndexPutVals, partialIndexDelVals, u.run.tu.tableDesc())
+		err := pm.Init(sourceVals[:n], sourceVals[n:n*2], u.run.tu.tableDesc())
 		if err != nil {
 			return err
 		}
+		sourceVals = sourceVals[n*2:]
+	}
+
+	// Keep track of the vector index partitions to update, as well as the
+	// quantized vectors. This information is passed to tableInserter.row below.
+	// Order of column values is put partitions, quantized vectors, followed by
+	// del partitions
+	var vh row.VectorIndexUpdateHelper
+	if n := len(u.run.tu.tableDesc().VectorIndexes()); n > 0 {
+		vh.InitForPut(sourceVals[:n], sourceVals[n:n*2], u.run.tu.tableDesc())
+		vh.InitForDel(sourceVals[n*2:n*3], u.run.tu.tableDesc())
 	}
 
 	// Error out the update if the enforce_home_region session setting is on and
@@ -215,7 +225,7 @@ func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 	}
 
 	// Queue the insert in the KV batch.
-	newValues, err := u.run.tu.rowForUpdate(params.ctx, oldValues, updateValues, pm, u.run.traceKV)
+	newValues, err := u.run.tu.rowForUpdate(params.ctx, oldValues, updateValues, pm, vh, u.run.traceKV)
 	if err != nil {
 		return err
 	}
@@ -243,15 +253,9 @@ func (u *updateNode) processSourceRow(params runParams, sourceVals tree.Datums) 
 		// At this point we've extracted all the RETURNING values that are part
 		// of the target table. We must now extract the columns in the RETURNING
 		// clause that refer to other tables (from the FROM clause of the update).
-		if u.run.numPassthrough > 0 {
-			passthroughBegin := len(u.run.tu.ru.FetchCols) + len(u.run.tu.ru.UpdateCols)
-			passthroughEnd := passthroughBegin + u.run.numPassthrough
-			passthroughValues := sourceVals[passthroughBegin:passthroughEnd]
-
-			for i := 0; i < u.run.numPassthrough; i++ {
-				largestRetIdx++
-				resultValues[largestRetIdx] = passthroughValues[i]
-			}
+		for i := 0; i < u.run.numPassthrough; i++ {
+			largestRetIdx++
+			resultValues[largestRetIdx] = passthroughValues[i]
 		}
 
 		if _, err := u.run.tu.rows.AddRow(params.ctx, resultValues); err != nil {
@@ -269,7 +273,7 @@ func (u *updateNode) BatchedCount() int { return u.run.tu.lastBatchSize }
 func (u *updateNode) BatchedValues(rowIdx int) tree.Datums { return u.run.tu.rows.At(rowIdx) }
 
 func (u *updateNode) Close(ctx context.Context) {
-	u.source.Close(ctx)
+	u.input.Close(ctx)
 	u.run.tu.close(ctx)
 	*u = updateNode{}
 	updateNodePool.Put(u)

@@ -40,6 +40,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/rpc"
+	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/storage"
@@ -173,6 +174,67 @@ func (c *atomicConnectionClass) get() rpc.ConnectionClass {
 // set updates the current value of the ConnectionClass.
 func (c *atomicConnectionClass) set(cc rpc.ConnectionClass) {
 	atomic.StoreUint32((*uint32)(c), uint32(cc))
+}
+
+// leaderlessWatcher is a lightweight implementation of the signaller interface
+// that is used to signal when a replica doesn't know who the leader is for an
+// extended period of time. This is used to signal that the range in
+// unavailable.
+type leaderlessWatcher struct {
+	mu struct {
+		syncutil.RWMutex
+
+		// leaderlessTimestamp records the timestamp captured when the replica
+		// didn't know who the leader was. This is reset on every tick if the
+		// replica knows who the leader is.
+		leaderlessTimestamp time.Time
+
+		// unavailable is set to true if the replica is leaderless for a long time
+		// (longer than ReplicaLeaderlessUnavailableThreshold).
+		unavailable bool
+	}
+
+	// err is the error returned when the replica is leaderless for a long time.
+	err error
+
+	// closedChannel is an already closed channel. Requests will use it to know
+	// that the replica is leaderless, and can be considered unavailable. This
+	// is primarily due to implementation details of the request path, where
+	// the request grabs a signaller in signallerForBatch() and then checks if
+	// the channel is closed to determine if the replica is available.
+	closedChannel chan struct{}
+}
+
+// NewLeaderlessWatcher initializes a new leaderlessWatcher with the default
+// values.
+func NewLeaderlessWatcher(r *Replica) *leaderlessWatcher {
+	closedCh := make(chan struct{})
+	close(closedCh)
+	return &leaderlessWatcher{
+		err: r.replicaUnavailableError(
+			errors.Errorf("replica has been leaderless for %s",
+				ReplicaLeaderlessUnavailableThreshold.Get(&r.store.cfg.Settings.SV))),
+		closedChannel: closedCh,
+	}
+}
+
+func (lw *leaderlessWatcher) Err() error {
+	return lw.err
+}
+
+func (lw *leaderlessWatcher) C() <-chan struct{} {
+	return lw.closedChannel
+}
+
+func (lw *leaderlessWatcher) IsUnavailable() bool {
+	lw.mu.RLock()
+	defer lw.mu.RUnlock()
+	return lw.mu.unavailable
+}
+
+func (lw *leaderlessWatcher) resetLocked() {
+	lw.mu.leaderlessTimestamp = time.Time{}
+	lw.mu.unavailable = false
 }
 
 // ReplicaMutex is an RWMutex. It has its own type to make it easier to look for
@@ -523,6 +585,19 @@ type Replica struct {
 		// laggingFollowersOnQuiesce is the set of dead replicas that are not
 		// up-to-date with the rest of the quiescent Raft group. Nil if !quiescent.
 		laggingFollowersOnQuiesce laggingReplicaSet
+		// asleep is the same as quiescent but wrt store liveness quiescence.
+		// Similarly to regular quiescence, store liveness quiescense helps the
+		// replica not tick in Raft. Unlike regular quiescence, store liveness
+		// quiescence allows only followers to quiesce (not the leader), and as a
+		// result, uses much simpler rules to do so:
+		// - A follower quiesces if it supports a fortified leader and hasn't
+		//   received a Raft message in a given number of ticks.
+		// - A follower unquiesces if it receives any Raft message or if store
+		//   liveness has withdrawn support for the store on which the leader lives.
+		// To avoid confusion, we use the terms asleep and awake for store liveness
+		// quiescence, instead of quiesced and unquiesced, but otherwise, the
+		// concept is the same.
+		asleep bool
 		// mergeComplete is non-nil if a merge is in-progress, in which case any
 		// requests should be held until the completion of the merge is signaled by
 		// the closing of the channel.
@@ -837,6 +912,10 @@ type Replica struct {
 		// lastProposalAtTicks tracks the time of the last proposal, in ticks.
 		lastProposalAtTicks int64
 
+		// lastMessageAtTicks tracks the time of the last received message, in
+		// ticks.
+		lastMessageAtTicks int64
+
 		// Counts Raft messages refused due to queue congestion.
 		droppedMessages int
 
@@ -917,7 +996,15 @@ type Replica struct {
 		// raftTracer is used to trace raft messages that are sent with a
 		// tracing context.
 		raftTracer rafttrace.RaftTracer
+
+		// lastTickTimestamp records the timestamp captured before the last tick of
+		// this replica.
+		lastTickTimestamp hlc.ClockTimestamp
 	}
+
+	// LeaderlessWatcher is used to signal when a replica is leaderless for a long
+	// time.
+	LeaderlessWatcher *leaderlessWatcher
 
 	// The raft log truncations that are pending. Access is protected by its own
 	// mutex. All implementation details should be considered hidden except to
@@ -1166,6 +1253,13 @@ func (r *Replica) IsQuiescent() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.mu.quiescent
+}
+
+// IsAsleep returns whether the replica is asleep or not.
+func (r *Replica) IsAsleep() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.mu.asleep
 }
 
 // DescAndSpanConfig returns the authoritative range descriptor as well
@@ -1685,11 +1779,20 @@ func (r *Replica) raftBasicStatusRLocked() raft.BasicStatus {
 	return raft.BasicStatus{}
 }
 
-func (r *Replica) raftLeadSupportStatusRLocked() raft.LeadSupportStatus {
+func (r *Replica) raftSupportingFortifiedLeaderRLocked() bool {
 	if rg := r.mu.internalRaftGroup; rg != nil {
-		return rg.LeadSupportStatus()
+		return rg.SupportingFortifiedLeader()
 	}
-	return raft.LeadSupportStatus{}
+	return false
+}
+
+// RACv2Status returns the status of the RACv2 range controller of this replica.
+// Returns an empty struct if there is no RACv2 range controller, i.e. this
+// replica is not the leader or is not running RACv2.
+func (r *Replica) RACv2Status() serverpb.RACStatus {
+	r.raftMu.Lock()
+	defer r.raftMu.Unlock()
+	return r.flowControlV2.StatusRaftMuLocked()
 }
 
 // State returns a copy of the internal state of the Replica, along with some

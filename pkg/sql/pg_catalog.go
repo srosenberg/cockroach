@@ -41,6 +41,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/cast"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catconstants"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/semenumpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree/treecmp"
@@ -60,9 +61,10 @@ import (
 )
 
 var (
-	oidZero   = tree.NewDOid(0)
-	zeroVal   = tree.DZero
-	negOneVal = tree.NewDInt(-1)
+	oidZero        = tree.NewDOid(0)
+	regProcOidZero = tree.NewDOidWithTypeAndName(0, types.RegProc, "-")
+	zeroVal        = tree.DZero
+	negOneVal      = tree.NewDInt(-1)
 
 	passwdStarString = tree.NewDString("********")
 )
@@ -495,7 +497,7 @@ https://www.postgresql.org/docs/12/catalog-pg-attribute.html`,
 		// Add a dropped entry for any attribute numbers in the middle that are
 		// missing, assuming there are any numeric gaps in the number of columns
 		// observed.
-		missingColumnType := types.Any
+		missingColumnType := types.AnyElement
 		if populatedColumns.Len() != maxPGAttributeNum {
 			for colOrdinal := 1; colOrdinal <= maxPGAttributeNum; colOrdinal++ {
 				if populatedColumns.Contains(colOrdinal) {
@@ -792,13 +794,13 @@ https://www.postgresql.org/docs/9.5/catalog-pg-class.html`,
 			tree.DNull,      // relacl
 			relOptions,      // reloptions
 			// These columns were automatically created by pg_catalog_test's missing column generator.
-			tree.DNull,                 // relforcerowsecurity
+			tree.MakeDBool(tree.DBool(table.IsRowLevelSecurityForced())), // relforcerowsecurity
 			tree.DNull,                 // relispartition
 			tree.DNull,                 // relispopulated
 			tree.NewDString(replIdent), // relreplident
 			tree.DNull,                 // relrewrite
-			tree.DNull,                 // relrowsecurity
-			tree.DNull,                 // relpartbound
+			tree.MakeDBool(tree.DBool(table.IsRowLevelSecurityEnabled())), // relrowsecurity
+			tree.DNull, // relpartbound
 			// These columns were automatically created by pg_catalog_test's missing column generator.
 			tree.DNull, // relminmxid
 		); err != nil {
@@ -815,7 +817,7 @@ https://www.postgresql.org/docs/9.5/catalog-pg-class.html`,
 		// Indexes.
 		return catalog.ForEachIndex(table, catalog.IndexOpts{}, func(index catalog.Index) error {
 			indexType := forwardIndexOid
-			if index.GetType() == descpb.IndexDescriptor_INVERTED {
+			if index.GetType() == idxtype.INVERTED {
 				indexType = invertedIndexOid
 			}
 			ownerOid, err := getOwnerOID(ctx, p, table)
@@ -852,12 +854,12 @@ https://www.postgresql.org/docs/9.5/catalog-pg-class.html`,
 				tree.DNull,      // relacl
 				tree.DNull,      // reloptions
 				// These columns were automatically created by pg_catalog_test's missing column generator.
-				tree.DNull,           // relforcerowsecurity
+				tree.DBoolFalse,      // relforcerowsecurity
 				tree.DNull,           // relispartition
 				tree.DNull,           // relispopulated
 				tree.NewDString("n"), // relreplident
 				tree.DNull,           // relrewrite
-				tree.DNull,           // relrowsecurity
+				tree.DBoolFalse,      // relrowsecurity
 				tree.DNull,           // relpartbound
 				// These columns were automatically created by pg_catalog_test's missing column generator.
 				tree.DNull, // relminmxid
@@ -951,6 +953,13 @@ func populateTableConstraints(
 	namespaceOid := schemaOid(sc.GetID())
 	tblOid := tableOid(table.GetID())
 	for _, c := range table.AllConstraints() {
+		// Ignore constraints that are being dropped. When a column is dropped alongside
+		// a constraint, the DSC may insert a placeholder name into the constraint,
+		// which can interfere with column name lookups in this function.
+		if c.GetConstraintValidity() == descpb.ConstraintValidity_Dropping {
+			continue
+		}
+
 		conoid := tree.DNull
 		contype := tree.DNull
 		conindid := oidZero
@@ -2604,7 +2613,7 @@ func addPgProcBuiltinRow(name string, addRow func(...tree.Datum) error) error {
 			variadicType = tree.NewDOid(v.VarType.Oid())
 		case tree.HomogeneousType:
 			argmodes = getVariadicStringArray()
-			variadicType = tree.NewDOid(types.Any.Oid())
+			variadicType = tree.NewDOid(types.AnyElement.Oid())
 		default:
 			argmodes = tree.DNull
 			variadicType = oidZero
@@ -3523,12 +3532,12 @@ func addPGClassRowForCompositeType(
 		zeroVal,                         // relfrozenxid
 		tree.DNull,                      // relacl
 		tree.DNull,                      // reloptions
-		tree.DNull,                      // relforcerowsecurity
+		tree.DBoolFalse,                 // relforcerowsecurity
 		tree.DNull,                      // relispartition
 		tree.DNull,                      // relispopulated
 		tree.NewDString("n"),            // relreplident (compositite types are views)
 		tree.DNull,                      // relrewrite
-		tree.DNull,                      // relrowsecurity
+		tree.DBoolFalse,                 // relrowsecurity
 		tree.DNull,                      // relpartbound
 		tree.DNull,                      // relminmxid
 	)
@@ -4226,14 +4235,94 @@ var pgCatalogStatProgressBasebackupTable = virtualSchemaTable{
 	unimplemented: true,
 }
 
-var pgCatalogPolicyTable = virtualSchemaTable{
-	comment: "pg_policy was created for compatibility and is currently unimplemented",
-	schema:  vtable.PgCatalogPolicy,
-	populate: func(ctx context.Context, p *planner, _ catalog.DatabaseDescriptor, addRow func(...tree.Datum) error) error {
+var pgCatalogPolicyTable = makeAllRelationsVirtualTableWithDescriptorIDIndex(
+	`stores row-level security policies for tables
+https://www.postgresql.org/docs/17/catalog-pg-policy.html`,
+	vtable.PgCatalogPolicy,
+	virtualCurrentDB, false, /* includesIndexEntries */
+	func(ctx context.Context, p *planner, h oidHasher, db catalog.DatabaseDescriptor, sc catalog.SchemaDescriptor,
+		table catalog.TableDescriptor, _ simpleSchemaResolver, addRow func(...tree.Datum) error,
+	) error {
+		for _, policy := range table.GetPolicies() {
+			// get the policy command and convert it to postgres equivalent
+			var cmd string
+
+			switch policy.Command {
+			case catpb.PolicyCommand_ALL:
+				cmd = "*"
+			case catpb.PolicyCommand_SELECT:
+				cmd = "r"
+			case catpb.PolicyCommand_INSERT:
+				cmd = "a"
+			case catpb.PolicyCommand_UPDATE:
+				cmd = "w"
+			case catpb.PolicyCommand_DELETE:
+				cmd = "d"
+			default:
+				return errors.AssertionFailedf("unexpected policy command: %s", policy.Command.String())
+			}
+
+			// loop through role names and get all the role oids
+			h := makeOidHasher()
+			treeRoleOids := tree.NewDArray(types.Oid)
+			for _, roleName := range policy.RoleNames {
+				if roleName == "public" {
+					if err := treeRoleOids.Append(tree.NewDOid(oid.Oid(0))); err != nil {
+						return err
+					}
+					continue
+				}
+
+				sqlUsername, err := username.MakeSQLUsernameFromPreNormalizedStringChecked(roleName)
+				if err != nil {
+					return err
+				}
+
+				if err = treeRoleOids.Append(h.UserOid(sqlUsername)); err != nil {
+					return err
+				}
+			}
+
+			// get the using expression
+			usingExpr := tree.DNull
+			if len(policy.UsingExpr) != 0 {
+				if formattedUsingExpr, err := schemaexpr.FormatExprForDisplay(
+					ctx, table, policy.UsingExpr, p.EvalContext(), p.SemaCtx(), p.SessionData(), tree.FmtParsable,
+				); err != nil {
+					return err
+				} else {
+					usingExpr = tree.NewDString(formattedUsingExpr)
+				}
+			}
+
+			// get the check expression
+			checkExpr := tree.DNull
+			if len(policy.WithCheckExpr) != 0 {
+				if formattedCheckExpr, err := schemaexpr.FormatExprForDisplay(
+					ctx, table, policy.WithCheckExpr, p.EvalContext(), p.SemaCtx(), p.SessionData(), tree.FmtParsable,
+				); err != nil {
+					return err
+				} else {
+					checkExpr = tree.NewDString(formattedCheckExpr)
+				}
+			}
+
+			if err := addRow(
+				tree.NewDOid(oid.Oid(policy.ID)),                           // oid
+				tree.NewDName(policy.Name),                                 // polname
+				tableOid(table.GetID()),                                    // polrelid
+				tree.NewDString(cmd),                                       // polcmd
+				tree.MakeDBool(policy.Type == catpb.PolicyType_PERMISSIVE), // polpermissive
+				treeRoleOids,                                               // polroles
+				usingExpr,                                                  // polqual
+				checkExpr,                                                  // polwithcheck
+			); err != nil {
+				return err
+			}
+		}
 		return nil
 	},
-	unimplemented: true,
-}
+	nil)
 
 var pgCatalogStatArchiverTable = virtualSchemaTable{
 	comment: "pg_stat_archiver was created for compatibility and is currently unimplemented",
@@ -4807,6 +4896,7 @@ var datumToTypeCategory = map[types.Family]*tree.DString{
 	types.GeographyFamily:   typCategoryUserDefined,
 	types.GeometryFamily:    typCategoryUserDefined,
 	types.JsonFamily:        typCategoryUserDefined,
+	types.JsonpathFamily:    typCategoryUserDefined,
 	types.DecimalFamily:     typCategoryNumeric,
 	types.StringFamily:      typCategoryString,
 	types.TimestampFamily:   typCategoryDateTime,
@@ -4916,28 +5006,27 @@ https://www.postgresql.org/docs/9.6/catalog-pg-aggregate.html`,
 								}
 							}
 						}
-						regprocForZeroOid := tree.NewDOidWithTypeAndName(0, types.RegProc, "-")
 						err := addRow(
 							tree.NewDOid(overload.Oid).AsRegProc(name), // aggfnoid
-							aggregateKind,     // aggkind
-							aggNumDirectArgs,  // aggnumdirectargs
-							regprocForZeroOid, // aggtransfn
-							regprocForZeroOid, // aggfinalfn
-							regprocForZeroOid, // aggcombinefn
-							regprocForZeroOid, // aggserialfn
-							regprocForZeroOid, // aggdeserialfn
-							regprocForZeroOid, // aggmtransfn
-							regprocForZeroOid, // aggminvtransfn
-							regprocForZeroOid, // aggmfinalfn
-							tree.DBoolFalse,   // aggfinalextra
-							tree.DBoolFalse,   // aggmfinalextra
-							sortOperatorOid,   // aggsortop
-							tree.DNull,        // aggtranstype
-							tree.DNull,        // aggtransspace
-							tree.DNull,        // aggmtranstype
-							tree.DNull,        // aggmtransspace
-							tree.DNull,        // agginitval
-							tree.DNull,        // aggminitval
+							aggregateKind,    // aggkind
+							aggNumDirectArgs, // aggnumdirectargs
+							regProcOidZero,   // aggtransfn
+							regProcOidZero,   // aggfinalfn
+							regProcOidZero,   // aggcombinefn
+							regProcOidZero,   // aggserialfn
+							regProcOidZero,   // aggdeserialfn
+							regProcOidZero,   // aggmtransfn
+							regProcOidZero,   // aggminvtransfn
+							regProcOidZero,   // aggmfinalfn
+							tree.DBoolFalse,  // aggfinalextra
+							tree.DBoolFalse,  // aggmfinalextra
+							sortOperatorOid,  // aggsortop
+							tree.DNull,       // aggtranstype
+							tree.DNull,       // aggtransspace
+							tree.DNull,       // aggmtranstype
+							tree.DNull,       // aggmtransspace
+							tree.DNull,       // agginitval
+							tree.DNull,       // aggminitval
 							// These columns were automatically created by pg_catalog_test's missing column generator.
 							tree.DNull, // aggfinalmodify
 							tree.DNull, // aggmfinalmodify
@@ -5162,7 +5251,7 @@ func (h oidHasher) UniqueConstraintOid(
 func (h oidHasher) RegProc(name string) tree.Datum {
 	_, overloads := builtinsregistry.GetBuiltinProperties(name)
 	if len(overloads) == 0 {
-		return tree.DNull
+		return regProcOidZero
 	}
 	return tree.NewDOid(overloads[0].Oid).AsRegProc(name)
 }

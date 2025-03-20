@@ -7,6 +7,7 @@
 package memo
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/isolation"
@@ -159,6 +160,7 @@ type Memo struct {
 	intervalStyle                              duration.IntervalStyle
 	propagateInputOrdering                     bool
 	disallowFullTableScans                     bool
+	avoidFullTableScansInMutations             bool
 	largeFullScanRows                          float64
 	txnRowsReadErr                             int64
 	nullOrderedLast                            bool
@@ -198,6 +200,12 @@ type Memo struct {
 	useConditionalHoistFix                     bool
 	pushLimitIntoProjectFilteredScan           bool
 	unsafeAllowTriggersModifyingCascades       bool
+	legacyVarcharTyping                        bool
+	preferBoundedCardinality                   bool
+	minRowCount                                float64
+	checkInputMinRowCount                      float64
+	planLookupJoinsWithReverseScans            bool
+	internal                                   bool
 
 	// txnIsoLevel is the isolation level under which the plan was created. This
 	// affects the planning of some locking operations, so it must be included in
@@ -230,8 +238,9 @@ type Memo struct {
 // IsStale method for more details).
 func (m *Memo) Init(ctx context.Context, evalCtx *eval.Context) {
 	// This initialization pattern ensures that fields are not unwittingly
-	// reused. Field reuse must be explicit.
+	// reused. Field reuse must be explicitpkg/sql/opt/memo/memo.go.
 	*m = Memo{
+		//nolint metadata is being reused.
 		metadata:                                   m.metadata,
 		reorderJoinsLimit:                          int(evalCtx.SessionData().ReorderJoinsLimit),
 		zigzagJoinEnabled:                          evalCtx.SessionData().ZigzagJoinEnabled,
@@ -248,6 +257,7 @@ func (m *Memo) Init(ctx context.Context, evalCtx *eval.Context) {
 		intervalStyle:                              evalCtx.SessionData().GetIntervalStyle(),
 		propagateInputOrdering:                     evalCtx.SessionData().PropagateInputOrdering,
 		disallowFullTableScans:                     evalCtx.SessionData().DisallowFullTableScans,
+		avoidFullTableScansInMutations:             evalCtx.SessionData().AvoidFullTableScansInMutations,
 		largeFullScanRows:                          evalCtx.SessionData().LargeFullScanRows,
 		txnRowsReadErr:                             evalCtx.SessionData().TxnRowsReadErr,
 		nullOrderedLast:                            evalCtx.SessionData().NullOrderedLast,
@@ -287,6 +297,12 @@ func (m *Memo) Init(ctx context.Context, evalCtx *eval.Context) {
 		useConditionalHoistFix:                     evalCtx.SessionData().OptimizerUseConditionalHoistFix,
 		pushLimitIntoProjectFilteredScan:           evalCtx.SessionData().OptimizerPushLimitIntoProjectFilteredScan,
 		unsafeAllowTriggersModifyingCascades:       evalCtx.SessionData().UnsafeAllowTriggersModifyingCascades,
+		legacyVarcharTyping:                        evalCtx.SessionData().LegacyVarcharTyping,
+		preferBoundedCardinality:                   evalCtx.SessionData().OptimizerPreferBoundedCardinality,
+		minRowCount:                                evalCtx.SessionData().OptimizerMinRowCount,
+		checkInputMinRowCount:                      evalCtx.SessionData().OptimizerCheckInputMinRowCount,
+		planLookupJoinsWithReverseScans:            evalCtx.SessionData().OptimizerPlanLookupJoinsWithReverseScans,
+		internal:                                   evalCtx.SessionData().Internal,
 		txnIsoLevel:                                evalCtx.TxnIsoLevel,
 	}
 	m.metadata.Init()
@@ -415,6 +431,7 @@ func (m *Memo) IsStale(
 		m.intervalStyle != evalCtx.SessionData().GetIntervalStyle() ||
 		m.propagateInputOrdering != evalCtx.SessionData().PropagateInputOrdering ||
 		m.disallowFullTableScans != evalCtx.SessionData().DisallowFullTableScans ||
+		m.avoidFullTableScansInMutations != evalCtx.SessionData().AvoidFullTableScansInMutations ||
 		m.largeFullScanRows != evalCtx.SessionData().LargeFullScanRows ||
 		m.txnRowsReadErr != evalCtx.SessionData().TxnRowsReadErr ||
 		m.nullOrderedLast != evalCtx.SessionData().NullOrderedLast ||
@@ -454,6 +471,12 @@ func (m *Memo) IsStale(
 		m.useConditionalHoistFix != evalCtx.SessionData().OptimizerUseConditionalHoistFix ||
 		m.pushLimitIntoProjectFilteredScan != evalCtx.SessionData().OptimizerPushLimitIntoProjectFilteredScan ||
 		m.unsafeAllowTriggersModifyingCascades != evalCtx.SessionData().UnsafeAllowTriggersModifyingCascades ||
+		m.legacyVarcharTyping != evalCtx.SessionData().LegacyVarcharTyping ||
+		m.preferBoundedCardinality != evalCtx.SessionData().OptimizerPreferBoundedCardinality ||
+		m.minRowCount != evalCtx.SessionData().OptimizerMinRowCount ||
+		m.checkInputMinRowCount != evalCtx.SessionData().OptimizerCheckInputMinRowCount ||
+		m.planLookupJoinsWithReverseScans != evalCtx.SessionData().OptimizerPlanLookupJoinsWithReverseScans ||
+		m.internal != evalCtx.SessionData().Internal ||
 		m.txnIsoLevel != evalCtx.TxnIsoLevel {
 		return true, nil
 	}
@@ -461,10 +484,8 @@ func (m *Memo) IsStale(
 	// Memo is stale if the fingerprint of any object in the memo's metadata has
 	// changed, or if the current user no longer has sufficient privilege to
 	// access the object.
-	if depsUpToDate, err := m.Metadata().CheckDependencies(ctx, evalCtx, catalog); err != nil {
+	if depsUpToDate, err := m.Metadata().CheckDependencies(ctx, evalCtx, catalog); err != nil || !depsUpToDate {
 		return true, err
-	} else if !depsUpToDate {
-		return true, nil
 	}
 	return false, nil
 }
@@ -499,7 +520,7 @@ func (m *Memo) SetBestProps(
 				redact.Safe(e.Cost()),
 				required.String(),
 				provided.String(), // Call String() so provided doesn't escape.
-				cost,
+				cost.C,
 			))
 		}
 		return
@@ -532,7 +553,7 @@ func (m *Memo) OptimizationCost() Cost {
 	// This cpuCostFactor is the same as cpuCostFactor in the coster.
 	// TODO(mgartner): Package these constants up in a shared location.
 	const cpuCostFactor = 0.01
-	return Cost(m.Metadata().NumTables()) * 1000 * cpuCostFactor
+	return Cost{C: float64(m.Metadata().NumTables()) * 1000 * cpuCostFactor}
 }
 
 // NextRank returns a new rank that can be assigned to a scalar expression.
@@ -626,9 +647,27 @@ func (m *Memo) DisableCheckExpr() {
 	m.disableCheckExpr = true
 }
 
-// EvalContext returns the eval.Context of the current SQL request.
-func (m *Memo) EvalContext() *eval.Context {
-	return m.logPropsBuilder.evalCtx
+// String prints the current expression tree stored in the memo. It should only
+// be used for testing and debugging.
+func (m *Memo) String() string {
+	return m.FormatExpr(m.rootExpr)
+}
+
+// FormatExpr prints the given expression for testing and debugging.
+func (m *Memo) FormatExpr(expr opt.Expr) string {
+	if expr == nil {
+		return ""
+	}
+	f := MakeExprFmtCtxBuffer(
+		context.Background(),
+		&bytes.Buffer{},
+		ExprFmtHideQualifications,
+		false, /* redactableValues */
+		m,
+		nil, /* catalog */
+	)
+	f.FormatExpr(expr)
+	return f.Buffer.String()
 }
 
 // ValuesContainer lets ValuesExpr and LiteralValuesExpr share code.

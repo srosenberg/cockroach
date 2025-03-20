@@ -27,6 +27,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/batcheval"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/isolation"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/lock"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
@@ -38,6 +39,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptutil"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/raftutil"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/stateloader"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvtestutils"
+	"github.com/cockroachdb/cockroach/pkg/raft"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/server"
@@ -58,6 +61,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/testcluster"
 	"github.com/cockroachdb/cockroach/pkg/util/caller"
+	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
@@ -865,7 +869,7 @@ func TestTxnReadWithinUncertaintyIntervalAfterLeaseTransfer(t *testing.T) {
 	assert.True(t, txn.ObservedTimestamps[0].Timestamp.ToTimestamp().Less(writeTs))
 
 	if t.Failed() {
-		t.Logf("writeTs=%s, txn=%+v", writeTs, txn)
+		t.Logf("writeTs=%s, txn=%+v, obsTs=%+v", writeTs, txn, txn.ObservedTimestamps)
 		t.FailNow()
 	}
 
@@ -2726,6 +2730,142 @@ func TestChangeReplicasGeneration(t *testing.T) {
 	assert.EqualValues(t, repl.Desc().Generation, oldGeneration+3, "\nold: %+v\nnew: %+v", oldDesc, newDesc)
 }
 
+// TestLossQuorumCauseLeaderlessWatcherToSignalUnavailable checks that if a range
+// lost its quorum, the remaining replicas in that range will have their
+// leaderlessWatcher indicate that the range is unavailable. Also, it checks
+// that when the range regains quorum, the leaderlessWatcher will indicate that
+// the range is available.
+func TestLossQuorumCauseLeaderWatcherToSignalUnavailable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	ctx := context.Background()
+	manualClock := hlc.NewHybridManualClock()
+
+	stickyVFSRegistry := fs.NewStickyRegistry()
+	lisReg := listenerutil.NewListenerRegistry()
+	defer lisReg.Close()
+
+	// Perform a basic test setup with two nodes.
+	const numServers int = 2
+	st := cluster.MakeTestingClusterSettings()
+
+	// Set `kv.replica_raft.leaderless_unavailable_threshold` to 10 seconds.
+	threshold := time.Second * 10
+	kvserver.ReplicaLeaderlessUnavailableThreshold.Override(ctx, &st.SV, threshold)
+
+	stickyServerArgs := make(map[int]base.TestServerArgs)
+	for i := 0; i < numServers; i++ {
+		stickyServerArgs[i] = base.TestServerArgs{
+			Settings: st,
+			StoreSpecs: []base.StoreSpec{
+				{
+					InMemory:    true,
+					StickyVFSID: strconv.FormatInt(int64(i), 10),
+				},
+			},
+			Knobs: base.TestingKnobs{
+				Server: &server.TestingKnobs{
+					StickyVFSRegistry: stickyVFSRegistry,
+				},
+			},
+		}
+	}
+
+	tc := testcluster.StartTestCluster(t, numServers,
+		base.TestClusterArgs{
+			ReplicationMode:     base.ReplicationManual,
+			ReusableListenerReg: lisReg,
+			ServerArgsPerNode:   stickyServerArgs,
+		})
+
+	defer tc.Stopper().Stop(ctx)
+
+	key := tc.ScratchRange(t)
+	tc.AddVotersOrFatal(t, key, tc.Targets(1)...)
+	desc, err := tc.LookupRange(key)
+	require.NoError(t, err)
+
+	// Randomly stop server index 0 or 1.
+	stoppedNodeInx := rand.Intn(2)
+	aliveNodeIdx := 1 - stoppedNodeInx
+	tc.StopServer(stoppedNodeInx)
+	repl := tc.GetFirstStoreFromServer(t, aliveNodeIdx).LookupReplica(roachpb.RKey(key))
+
+	// The range is available initially.
+	require.False(t, repl.LeaderlessWatcher.IsUnavailable())
+
+	// Wait until the remaining replica becomes leaderless.
+	testutils.SucceedsSoon(t, func() error {
+		if repl.RaftStatus().Lead != raft.None {
+			return errors.New("Leader still exists")
+		}
+		return nil
+	})
+
+	// Increment the clock by the leaderlessWatcher unavailable threshold.
+	manualClock.Increment(threshold.Nanoseconds())
+
+	// Wait for the leaderlessWatcher to indicate that the range is unavailable.
+	testutils.SucceedsSoon(t, func() error {
+		tc.GetFirstStoreFromServer(t, aliveNodeIdx).LookupReplica(roachpb.RKey(key))
+		if !repl.LeaderlessWatcher.IsUnavailable() {
+			return errors.New("range is still available")
+		}
+		return nil
+	})
+
+	sendPutRequestWithTimeout := func(repl *kvserver.Replica, timeout time.Duration) (*kvpb.Error, error) {
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		ba := &kvpb.BatchRequest{}
+		ba.RangeID = desc.RangeID
+		ba.Timestamp = repl.Clock().Now()
+		ba.Add(putArgs(key, []byte("foo")))
+		_, pErr := repl.Send(ctx, ba)
+		return pErr, ctx.Err()
+	}
+
+	// Requests should immediately return an error indicating that the range is
+	// unavailable.
+	pErr, ctxErr := sendPutRequestWithTimeout(repl, 2*time.Second)
+	require.NoError(t, ctxErr)
+	require.Regexp(t, "replica has been leaderless for 10s", pErr)
+	require.True(t, errors.HasType(pErr.GoError(), (*kvpb.ReplicaUnavailableError)(nil)),
+		"expected ReplicaUnavailableError, got %v", err)
+
+	// At this point we know that the replica is considered unavailable. Regain
+	// the quorum and check that the leaderlessWatcher indicates that the range is
+	// available.
+	require.NoError(t, tc.RestartServer(stoppedNodeInx))
+
+	testutils.SucceedsSoon(t, func() error {
+		repl = tc.GetFirstStoreFromServer(t, aliveNodeIdx).LookupReplica(roachpb.RKey(key))
+		tc.GetFirstStoreFromServer(t, aliveNodeIdx).LookupReplica(roachpb.RKey(key))
+		if repl.LeaderlessWatcher.IsUnavailable() {
+			return errors.New("range is still unavailable")
+		}
+		return nil
+	})
+
+	// Requests should now succeed. We need to try both replicas to avoid
+	// NotLeaseHolderErrors.
+	testutils.SucceedsSoon(t, func() error {
+		for i := range numServers {
+			repl := tc.GetFirstStoreFromServer(t, i).LookupReplica(roachpb.RKey(key))
+			pErr, ctxErr = sendPutRequestWithTimeout(repl, 2*time.Second)
+			if ctxErr == nil && pErr == nil {
+				return nil
+			}
+		}
+		// If we reach this point, we know that the request failed, return the
+		// error.
+		if ctxErr != nil {
+			return ctxErr
+		}
+		return pErr.GoError()
+	})
+}
+
 func TestClearRange(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
@@ -4264,7 +4404,7 @@ func TestStrictGCEnforcement(t *testing.T) {
 				l, _ := r.GetLease()
 				require.NoError(
 					t,
-					spanconfigptsreader.TestingRefreshPTSState(ctx, t, ptsReader, l.Start.ToTimestamp().Next()),
+					spanconfigptsreader.TestingRefreshPTSState(ctx, ptsReader, l.Start.ToTimestamp().Next()),
 				)
 				require.NoError(t, r.ReadProtectedTimestampsForTesting(ctx))
 			}
@@ -4275,7 +4415,7 @@ func TestStrictGCEnforcement(t *testing.T) {
 				_, r := getFirstStoreReplica(t, tc.Server(i), tableKey)
 				require.NoError(
 					t,
-					spanconfigptsreader.TestingRefreshPTSState(ctx, t, ptsReader, asOf),
+					spanconfigptsreader.TestingRefreshPTSState(ctx, ptsReader, asOf),
 				)
 				require.NoError(t, r.ReadProtectedTimestampsForTesting(ctx))
 			}
@@ -4597,7 +4737,7 @@ func TestDiscoverIntentAcrossLeaseTransferAwayAndBack(t *testing.T) {
 	// Transfer the lease to Server 1. Do so non-cooperatively instead of using
 	// a lease transfer, because the cooperative lease transfer would get stuck
 	// acquiring latches, which are held by txn2.
-	_, err = tc.MoveRangeLeaseNonCooperatively(ctx, rangeDesc, tc.Target(1), manual)
+	_, err = tc.MoveRangeLeaseNonCooperatively(t, ctx, rangeDesc, tc.Target(1), manual)
 	require.NoError(t, err)
 
 	// Send an arbitrary request to the range to update the range descriptor
@@ -5615,4 +5755,258 @@ func BenchmarkEmptyRebalance(b *testing.B) {
 		}
 		b.StopTimer()
 	})
+}
+
+func TestLeaseTransferReplicatesLocks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	require.NoError(t, log.SetVModule("cmd_lease=2"))
+
+	// Test Setup:
+	//
+	// txn1: holding lock on key k1
+	// txn2: waiting on lock on key k1
+	//
+	// Test Mutation:
+	//
+	// Lease transfer on leaseholder of range containing k1.
+	//
+	// Test Assertion:
+	//
+	// txn2 is never unblocked (from the perspective of the client).
+	ctx := context.Background()
+	st := cluster.MakeClusterSettings()
+	concurrency.UnreplicatedLockReliability.Override(ctx, &st.SV, true)
+	tc := testcluster.StartTestCluster(t, 3, base.TestClusterArgs{
+		ServerArgs: base.TestServerArgs{
+			Settings: st,
+		},
+	})
+	defer tc.Stopper().Stop(ctx)
+
+	scratch := tc.ScratchRange(t)
+	k1 := append(scratch[:len(scratch):len(scratch)], uuid.MakeV4().String()...)
+	// Write a value for the key because at the moment we don't create locks for
+	// non-existent keys.
+	require.NoError(t, tc.Server(1).DB().Put(ctx, k1, "value"))
+
+	desc, err := tc.LookupRange(scratch)
+	require.NoError(t, err)
+
+	// Start with the lease on store 1.
+	t.Logf("transfering to s1")
+	require.NoError(t, tc.TransferRangeLease(desc, tc.Target(0)))
+	t.Logf("done transfering to s1")
+
+	// Txn 1:
+	// - Acquire lock and block until we are are sure txn2 has returned.
+	txn2Started := make(chan struct{})
+	txn2StartedOnce := sync.OnceFunc(func() { close(txn2Started) })
+	txn2Done := make(chan struct{})
+	txn1HasLock := make(chan struct{})
+
+	g := ctxgroup.WithContext(ctx)
+	g.Go(func() error {
+		return tc.Server(1).DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			_, err := txn.GetForUpdate(ctx, k1, kvpb.BestEffort)
+			if err != nil {
+				return err
+			}
+			close(txn1HasLock)
+			t.Log("txn1: lock acquired, waiting for txn2 cancellation")
+			<-txn2Done
+			t.Log("txn1: done")
+			return nil
+		})
+	})
+
+	// Txn 2:
+	// - Block on txn 1. If it ever unblocks. We lost the lock.
+	txn2Context, txn2Cancel := context.WithCancel(context.Background())
+	g.Go(func() error {
+		defer close(txn2Done)
+		<-txn1HasLock
+		t.Log("txn2: tnx1 lock acquisition observed, starting txn")
+		err := tc.Server(1).DB().Txn(txn2Context, func(ctx context.Context, txn *kv.Txn) error {
+			txn2StartedOnce()
+			_, err := txn.GetForUpdate(ctx, k1, kvpb.BestEffort)
+			if err != nil {
+				return err
+			}
+			// We should never get here.
+			t.Error("txn2: unexpectedly unblocked!")
+			return nil
+		})
+
+		if errors.Is(err, context.Canceled) {
+			return nil
+		} else if err != nil {
+			t.Logf("txn2: unexpected err: %s", err)
+			return err
+		} else {
+			return nil
+		}
+	})
+
+	// Move lease to to store 2 once txn1 and txn2 have both started (txn2 waits
+	// on tx1 to start).
+	<-txn2Started
+
+	t.Log("transfering lease from s1 -> s2")
+	require.NoError(t, tc.TransferRangeLease(desc, tc.Target(1)))
+	time.Sleep(250 * time.Millisecond)
+	t.Log("cancelling txn2")
+	txn2Cancel()
+	require.NoError(t, g.Wait())
+}
+
+func TestMergeReplicatesLocks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	// Test Setup:
+	//
+	// txn1: holding lock on key k1
+	// txn2: waiting on lock on key k1
+	//
+	// Test Mutation:
+	//
+	// Merge range holding k1.
+	//
+	// Test Assertion:
+	//
+	// txn2 is never unblocked (from the perspective of the client).
+	//
+	var (
+		lhsKey     = "a"
+		splitPoint = "b"
+		rhsKey     = "c"
+
+		ctx = context.Background()
+		st  = cluster.MakeClusterSettings()
+	)
+	concurrency.UnreplicatedLockReliability.Override(ctx, &st.SV, true)
+
+	for _, b := range []bool{true, false} {
+		name := "lhs-lock"
+		lockKeySuffix := lhsKey
+		if b {
+			name = "rhs-lock"
+			lockKeySuffix = rhsKey
+		}
+		t.Run(name, func(t *testing.T) {
+			tc := testcluster.StartTestCluster(t, 3, base.TestClusterArgs{
+				ServerArgs: base.TestServerArgs{
+					Settings: st,
+				},
+			})
+
+			sql := tc.ServerConn(0)
+			defer tc.Stopper().Stop(ctx)
+			scratch := tc.ScratchRange(t)
+			mkKey := func(s string) roachpb.Key {
+				prefix := scratch.Clone()
+				return append(prefix[:len(prefix):len(prefix)], s...)
+			}
+
+			lockKey := mkKey(lockKeySuffix)
+			splitKey := mkKey(splitPoint)
+			tc.SplitRangeOrFatal(t, splitKey)
+			// Write a value for the key because at the moment we don't create locks for
+			// non-existent keys.
+			require.NoError(t, tc.Server(1).DB().Put(ctx, lockKey, "value"))
+			// Txn 1:
+			// - Acquire lock and block until we are are sure txn2 has returned.
+			txn2Started := make(chan struct{})
+			txn2StartedOnce := sync.OnceFunc(func() { close(txn2Started) })
+			txn2Done := make(chan struct{})
+			txn1HasLock := make(chan struct{})
+			g := ctxgroup.WithContext(ctx)
+			g.Go(func() error {
+				return tc.Server(1).DB().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+					_, err := txn.GetForUpdate(ctx, lockKey, kvpb.BestEffort)
+					if err != nil {
+						return err
+					}
+					close(txn1HasLock)
+					t.Log("txn1: lock acquired, waiting for txn2 cancellation")
+					<-txn2Done
+					t.Log("txn1: done")
+					return nil
+				})
+			})
+			// Txn 2:
+			// - Block on txn 1. If it ever unblocks. We lost the lock.
+			txn2Context, txn2Cancel := context.WithCancel(context.Background())
+			g.Go(func() error {
+				defer close(txn2Done)
+				<-txn1HasLock
+				t.Log("txn2: tnx1 lock acquisition observed, starting txn")
+				err := tc.Server(1).DB().Txn(txn2Context, func(ctx context.Context, txn *kv.Txn) error {
+					txn2StartedOnce()
+					_, err := txn.GetForUpdate(ctx, lockKey, kvpb.BestEffort)
+					if err != nil {
+						return err
+					}
+					// We should never get here.
+					t.Error("txn2: unexpectedly unblocked!")
+					return nil
+				})
+				if errors.Is(err, context.Canceled) {
+					return nil
+				} else if err != nil {
+					t.Logf("txn2: unexpected err: %s", err)
+					return err
+				} else {
+					return nil
+				}
+			})
+			<-txn2Started
+			t.Log("merging ranges")
+			_, err := tc.MergeRanges(scratch)
+			require.NoError(t, err)
+			time.Sleep(250 * time.Millisecond)
+			t.Log("cancelling txn2")
+			txn2Cancel()
+			require.NoError(t, g.Wait())
+			failures := kvtestutils.CheckConsistency(ctx, sql, roachpb.Span{
+				Key:    keys.ScratchRangeMin,
+				EndKey: keys.ScratchRangeMax,
+			})
+			for _, err := range failures {
+				t.Errorf("consistency failure: %s", err.Error())
+			}
+		})
+	}
+}
+
+// BenchmarkLeaderTickWithLeaderLeases benchmarks the performance of the replica
+// tick when the replica is the leader and running leader leases.
+func BenchmarkLeaderTickWithLeaderLeases(b *testing.B) {
+	defer leaktest.AfterTest(b)()
+	defer log.Scope(b).Close(b)
+	ctx := context.Background()
+	st := cluster.MakeTestingClusterSettings()
+	kvserver.OverrideDefaultLeaseType(ctx, &st.SV, roachpb.LeaseLeader)
+
+	// Create a cluster with one node to make sure that this is the leader.
+	cluster := testcluster.StartTestCluster(b, 1, base.TestClusterArgs{
+		ServerArgs: base.TestServerArgs{
+			Settings: st,
+		},
+	})
+	defer cluster.Stopper().Stop(ctx)
+
+	// Set up a replica to be ticked, and wait for the lease to get upgraded.
+	keyA := cluster.ScratchRange(b)
+	desc := cluster.LookupRangeOrFatal(b, keyA)
+	cluster.MaybeWaitForLeaseUpgrade(ctx, b, desc)
+	store := cluster.GetFirstStoreFromServer(b, 0)
+	repl := store.LookupReplica(desc.StartKey)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		store.ProcessTick(ctx, repl.RangeID)
+	}
 }

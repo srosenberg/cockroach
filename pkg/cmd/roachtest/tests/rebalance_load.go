@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/mixedversion"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -26,13 +27,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sync/errgroup"
 )
 
 const (
 	// storeToRangeFactor is the number of ranges to create per store in the
 	// cluster.
-	storeToRangeFactor = 5
+	storeToRangeFactor = 10
 	// meanCPUTolerance is the tolerance applied when checking normalized (0-100)
 	// CPU percent utilization of stores against the mean. In multi-store tests,
 	// the same CPU utilization will be reported for stores on the same node. The
@@ -53,6 +53,14 @@ const (
 	// stableDuration is the duration which the cluster's load must remain
 	// balanced for to pass.
 	stableDuration = time.Minute
+	// leaseOnlyRebalanceDuration is the duration for which the cluster's load
+	// must balance within in order to pass the lease transfer only rebalancing
+	// variation.
+	leaseOnlyRebalanceDuration = 10 * time.Minute
+	// leaseAndReplicaRebalanceDuration is the duration for which the cluster's
+	// load must balance within in order to pass the replica and lease
+	// rebalancing variation.
+	leaseAndReplicaRebalanceDuration = 15 * time.Minute
 )
 
 func registerRebalanceLoad(r registry.Registry) {
@@ -96,6 +104,7 @@ func registerRebalanceLoad(r registry.Registry) {
 				),
 				// Only use the latest version of each release to work around #127029.
 				mixedversion.AlwaysUseLatestPredecessors,
+				mixedversion.MinimumSupportedVersion("v23.2.0"),
 			)
 			mvt.OnStartup("maybe enable split/scatter on tenant",
 				func(ctx context.Context, l *logger.Logger, r *rand.Rand, h *mixedversion.Helper) error {
@@ -132,7 +141,7 @@ func registerRebalanceLoad(r registry.Registry) {
 					concurrency = 32
 					fmt.Printf("lowering concurrency to %d in local testing\n", concurrency)
 				}
-				rebalanceLoadRun(ctx, t, c, "leases", 10*time.Minute, concurrency, false /* mixedVersion */)
+				rebalanceLoadRun(ctx, t, c, "leases", leaseOnlyRebalanceDuration, concurrency, false /* mixedVersion */)
 			},
 		},
 	)
@@ -142,14 +151,14 @@ func registerRebalanceLoad(r registry.Registry) {
 			Owner:            registry.OwnerKV,
 			Cluster:          r.MakeClusterSpec(4), // the last node is just used to generate load
 			CompatibleClouds: registry.AllExceptAWS,
-			Suites:           registry.Suites(registry.Nightly),
+			Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
 			Randomized:       true,
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 				if c.IsLocal() {
 					concurrency = 32
 					fmt.Printf("lowering concurrency to %d in local testing\n", concurrency)
 				}
-				rebalanceLoadRun(ctx, t, c, "leases", 10*time.Minute, concurrency, true /* mixedVersion */)
+				rebalanceLoadRun(ctx, t, c, "leases", leaseOnlyRebalanceDuration, concurrency, true /* mixedVersion */)
 			},
 		},
 	)
@@ -167,7 +176,7 @@ func registerRebalanceLoad(r registry.Registry) {
 					fmt.Printf("lowering concurrency to %d in local testing\n", concurrency)
 				}
 				rebalanceLoadRun(
-					ctx, t, c, "leases and replicas", 10*time.Minute, concurrency, false, /* mixedVersion */
+					ctx, t, c, "leases and replicas", leaseAndReplicaRebalanceDuration, concurrency, false, /* mixedVersion */
 				)
 			},
 		},
@@ -178,7 +187,7 @@ func registerRebalanceLoad(r registry.Registry) {
 			Owner:            registry.OwnerKV,
 			Cluster:          r.MakeClusterSpec(7), // the last node is just used to generate load
 			CompatibleClouds: registry.AllExceptAWS,
-			Suites:           registry.Suites(registry.Nightly),
+			Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
 			Randomized:       true,
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 				if c.IsLocal() {
@@ -186,7 +195,7 @@ func registerRebalanceLoad(r registry.Registry) {
 					t.L().Printf("lowering concurrency to %d in local testing", concurrency)
 				}
 				rebalanceLoadRun(
-					ctx, t, c, "leases and replicas", 10*time.Minute, concurrency, true, /* mixedVersion */
+					ctx, t, c, "leases and replicas", leaseAndReplicaRebalanceDuration, concurrency, true, /* mixedVersion */
 				)
 			},
 		},
@@ -211,7 +220,7 @@ func registerRebalanceLoad(r registry.Registry) {
 					t.Fatal("cannot run multi-store in local mode")
 				}
 				rebalanceLoadRun(
-					ctx, t, c, "leases and replicas", 10*time.Minute, concurrency, false, /* mixedVersion */
+					ctx, t, c, "leases and replicas", leaseAndReplicaRebalanceDuration, concurrency, false, /* mixedVersion */
 				)
 			},
 		},
@@ -242,15 +251,13 @@ func rebalanceByLoad(
 
 	require.NoError(t, roachtestutil.WaitFor3XReplication(ctx, l, db))
 
-	var m *errgroup.Group
-	m, ctx = errgroup.WithContext(ctx)
-
 	// Enable us to exit out of workload early when we achieve the desired CPU
 	// balance. This drastically shortens the duration of the test in the
 	// common case.
 	ctx, cancel := context.WithCancel(ctx)
+	m := t.NewErrorGroup(task.WithContext(ctx))
 
-	m.Go(func() error {
+	m.Go(func(ctx context.Context, l *logger.Logger) error {
 		l.Printf("starting load generator")
 		err := c.RunE(ctx, option.WithNodes(appNode), fmt.Sprintf(
 			"./cockroach workload run kv --read-percent=95 --tolerate-errors --concurrency=%d "+
@@ -263,9 +270,9 @@ func rebalanceByLoad(
 			return nil
 		}
 		return err
-	})
+	}, task.Name("load-generator"))
 
-	m.Go(func() error {
+	m.Go(func(ctx context.Context, l *logger.Logger) error {
 		l.Printf("checking for CPU balance")
 
 		storeCPUFn, err := makeStoreCPUFn(ctx, t, l, c, numNodes, numStores)
@@ -305,8 +312,8 @@ func rebalanceByLoad(
 			}
 		}
 		return errors.Errorf("CPU not evenly balanced after timeout: %s", reason)
-	})
-	return m.Wait()
+	}, task.Name("cpu-balance"))
+	return m.WaitE()
 }
 
 // makeStoreCPUFn returns a function which can be called to gather the CPU of
