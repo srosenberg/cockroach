@@ -23,11 +23,7 @@ fi
 BAZEL_BIN=$(bazel info bazel-bin --config=$CROSSCONFIG)
 EXECROOT=$(bazel info execution_root --config=$CROSSCONFIG)
 
-set +x
-export COCKROACH_DEV_LICENSE=$(gcloud secrets versions access 1 --secret=cockroach-dev-license)
-set -x
-
-bazel build --config=$CROSSCONFIG $(./build/github/engflow-args.sh) \
+bazel build --config=$CROSSCONFIG \
       --bes_keywords integration-test-artifact-build \
       --jobs 100 \
       //pkg/cmd/cockroach-short \
