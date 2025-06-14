@@ -1285,7 +1285,7 @@ func registerTPCC(r registry.Registry) {
 		Owner:     registry.OwnerKV,
 		Benchmark: true,
 		Cluster: spec.MakeClusterSpec(
-			84,
+			103,
 			spec.WorkloadNodeCount(3),
 			spec.WorkloadNodeCPU(32),
 			spec.AWSMachineType(AWSMachineTypeC5d9xLarge),
@@ -1305,6 +1305,7 @@ func registerTPCC(r registry.Registry) {
 				optimized:         true,
 				LoadWarehousesGCE: 140000,
 				LoadWarehousesAWS: 140000,
+				dryRun: false,
 			})
 		},
 	})
@@ -1316,6 +1317,8 @@ func registerTPCC(r registry.Registry) {
 			82,
 			spec.WorkloadNodeCount(1),
 			spec.WorkloadNodeCPU(32),
+			// N.B. CPU count is dependent on the cloud; it's 36 for c5d.9xlarge.
+			spec.CPU(32),
 			spec.AWSMachineType(AWSMachineTypeC5d9xLarge),
 			spec.GCEMachineType(GCEMAchineTypeN2std32),
 			spec.Mem(spec.Standard),
@@ -1786,7 +1789,11 @@ func (s tpccBenchSpec) EstimatedMax(cloud spec.Cloud) int {
 }
 
 func (s tpccBenchSpec) LoadWarehouses(cloud spec.Cloud) int {
-	return valueForCloud(cloud, s.LoadWarehousesGCE, s.LoadWarehousesAWS, s.LoadWarehousesAzure, s.EstimatedMaxIBM)
+	return valueForCloud(cloud, s.LoadWarehousesGCE, s.LoadWarehousesAWS, s.LoadWarehousesAzure, s.LoadWarehousesIBM)
+}
+
+func (s tpccPublishedOptions) LoadWarehouses(cloud spec.Cloud) int {
+       return valueForCloud(cloud, s.LoadWarehousesGCE, s.LoadWarehousesAWS, 0, 0)
 }
 
 // partitions returns the number of partitions specified to the load generator.
@@ -2383,6 +2390,7 @@ type tpccPublishedOptions struct {
 	skipRamp          bool
 	duration          time.Duration
 	optimized         bool
+	dryRun		bool
 	LoadWarehousesGCE int
 	LoadWarehousesAWS int
 }
@@ -2402,7 +2410,6 @@ func runTPCCPublished(
 	crdbNodeCount := len(crdbNodes)
 
 	t.L().Printf("Step 1 - Set up the environment")
-	c.Put(ctx, t.Cockroach(), "./cockroach", c.All())
 	settings := install.MakeClusterSettings()
 	settings.NumRacks = crdbNodeCount
 	startOpts := option.DefaultStartOpts()
@@ -2413,27 +2420,29 @@ func runTPCCPublished(
 	}
 
 	// Configure prometheus for cluster and workloadnode for system metrics
-	var promCfg *prometheus.Config
-	var cleanupFunc func()
-	workloadInstances := []workloadInstance{
-		{
-			nodes:          crdbNodes,
-			prometheusPort: 2112,
-		},
-	}
-	promCfg, cleanupFunc = setupPrometheusForRoachtest(ctx, t, c, promCfg, workloadInstances)
-	defer cleanupFunc()
-	if promCfg == nil {
-		t.Fatal("Failed to configure prometheus for system metrics")
-	}
+	/*	var promCfg *prometheus.Config
+		var cleanupFunc func()
+		workloadInstances := []workloadInstance{
+			{
+				nodes:          crdbNodes,
+				prometheusPort: 2112,
+			},
+		}
+		promCfg, cleanupFunc = setupPrometheusForRoachtest(ctx, t, c, promCfg, workloadInstances)
+		defer cleanupFunc()
+		if promCfg == nil {
+			t.Fatal("Failed to configure prometheus for system metrics")
+		}
+	*/
 
 	t.L().Printf("Step 2. Start CockroachDB")
-	c.Start(ctx, t.L(), startOpts, settings, crdbNodes)
+	if !opts.dryRun {
+		c.Start(ctx, t.L(), startOpts, settings, crdbNodes)
+	}
 
 	if !t.SkipInit() {
-
 		t.L().Printf("Step 3. Configure the cluster")
-		{
+		if !opts.dryRun {
 			db := c.Conn(ctx, t.L(), 1)
 			// Temporarily set this high to allow the partitioning to finish fast.
 			_, _ = db.ExecContext(ctx, `SET CLUSTER SETTING kv.snapshot_rebalance.max_rate = '256 MiB'`)
@@ -2468,7 +2477,9 @@ func runTPCCPublished(
 				cmd = tpccImportCmd("", opts.warehouses, "--checks=false", "{pgurl:1}")
 			}
 			t.L().Printf("Step 4. Import the TPC-C dataset\n  (%s)", cmd)
-			c.Run(ctx, option.WithNodes(c.Node(1)), cmd)
+			if !opts.dryRun {
+				c.Run(ctx, option.WithNodes(c.Node(1)), cmd)
+			}
 		}
 		// Partitioning is done by the init step, run a short workload to make sure
 		// all ranges are set up correctly. This may not be strictly necessary.
@@ -2487,59 +2498,62 @@ func runTPCCPublished(
 				crdbNodes,
 			)
 			t.L().Printf("Step 7 - Allocate partitions\n (%s)", cmd)
-			c.Run(ctx, option.WithNodes(c.Node(1)), cmd)
+			if !opts.dryRun {
+				c.Run(ctx, option.WithNodes(c.Node(1)), cmd)
+			}
 			t.L().Printf("Waiting for stable ranges")
-
-			// TODO(baptist): Replace the next 2 steps with replication reports once
-			// they are available.
-			func() {
-				db := c.Conn(ctx, t.L(), 1)
-				defer db.Close()
-				for {
-					var n int
-					require.NoError(t,
-						db.QueryRowContext(
-							ctx,
-							"SELECT count(1) FROM crdb_internal.ranges WHERE array_length(replicas, 1) < 3",
-						).Scan(&n))
-					if n == 0 {
-						t.L().Printf("All ranges fully upreplicated")
-						break
-					}
-					time.Sleep(10 * time.Second)
-				}
-			}()
-			for {
-				// Run all the queries in parallel to find the total pending count.
-				found := make(chan int)
-				for _, nodeID := range crdbNodes {
-					t.Go(func(ctx context.Context, l *logger.Logger) error {
-						db := c.Conn(ctx, l, nodeID)
-						defer db.Close()
+			if !opts.dryRun {
+				// TODO(baptist): Replace the next 2 steps with replication reports once
+				// they are available.
+				func() {
+					db := c.Conn(ctx, t.L(), 1)
+					defer db.Close()
+					for {
 						var n int
 						require.NoError(t,
 							db.QueryRowContext(
 								ctx,
-								"SELECT value FROM crdb_internal.node_metrics WHERE name = 'queue.replicate.pending'",
+								"SELECT count(1) FROM crdb_internal.ranges WHERE array_length(replicas, 1) < 3",
 							).Scan(&n))
-						found <- n
-						return nil
-					}, task.Name(fmt.Sprintf("check-replication-pending-%d", nodeID)))
+						if n == 0 {
+							t.L().Printf("All ranges fully upreplicated")
+							break
+						}
+						time.Sleep(10 * time.Second)
+					}
+				}()
+				for {
+					// Run all the queries in parallel to find the total pending count.
+					found := make(chan int)
+					for _, nodeID := range crdbNodes {
+						t.Go(func(ctx context.Context, l *logger.Logger) error {
+							db := c.Conn(ctx, l, nodeID)
+							defer db.Close()
+							var n int
+							require.NoError(t,
+								db.QueryRowContext(
+									ctx,
+									"SELECT value FROM crdb_internal.node_metrics WHERE name = 'queue.replicate.pending'",
+								).Scan(&n))
+							found <- n
+							return nil
+						}, task.Name(fmt.Sprintf("check-replication-pending-%d", nodeID)))
+					}
+					var total int
+					// Wait until they have all completed.
+					for range crdbNodes {
+						total += <-found
+					}
+					if total == 0 {
+						t.L().Printf("All ranges in final locations")
+						break
+					}
+					t.L().Printf("Waiting for ranges to move: %d", total)
+					time.Sleep(60 * time.Second)
 				}
-				var total int
-				// Wait until they have all completed.
-				for range crdbNodes {
-					total += <-found
-				}
-				if total == 0 {
-					t.L().Printf("All ranges in final locations")
-					break
-				}
-				t.L().Printf("Waiting for ranges to move: %d", total)
-				time.Sleep(60 * time.Second)
 			}
 		}
-		{
+		if !opts.dryRun {
 			// Reset settings that aren't needed anymore and could impact performance.
 			db := c.Conn(ctx, t.L(), 1)
 			_, _ = db.ExecContext(ctx, `RESET CLUSTER SETTING kv.snapshot_rebalance.max_rate`)
@@ -2580,15 +2594,24 @@ func runTPCCPublished(
 
 	precision := int(math.Max(1.0, float64(opts.warehouses/50)))
 	initStepSize := precision
-	s := search.NewLineSearcher(1, opts.warehouses, opts.LoadWarehousesGCE, initStepSize, precision)
+	max := opts.warehouses
+	start := opts.LoadWarehouses(c.Cloud())
+	if start == 0 || start > max {
+		start =  max
+		t.L().Printf("WARN: LoadWarehouses%s(%d) is either undefined or > max=%d; will use max", c.Cloud(), start, max)
+	}
+
+	s := search.NewLineSearcher(1, max, start, initStepSize, precision)
 	iteration := 0
 	totalWarehouses := opts.warehouses
 	res, err := s.Search(func(warehouses int) (bool, error) {
 		iteration++
 		t.L().Printf("initializing cluster for %d warehouses (search attempt: %d)", warehouses, iteration)
 
-		restart(ctx)
-		time.Sleep(15 * time.Second)
+		if !opts.dryRun {
+			restart(ctx)
+			time.Sleep(15 * time.Second)
+		}
 
 		rampTime := 8 * time.Minute
 		if opts.skipRamp {
@@ -2628,34 +2651,39 @@ func runTPCCPublished(
 				}
 				cmd += cmdSuffix
 				t.L().Printf("running %s", cmd)
-				err := c.RunE(ctx, option.WithNodes(c.Node(w.node)), cmd)
-				if err != nil {
-					// This will let the line search continue at a lower warehouse
-					// count.
-					return errors.Wrapf(err, "error running tpcc load generator")
+				if !opts.dryRun {
+					err := c.RunE(ctx, option.WithNodes(c.Node(w.node)), cmd)
+					if err != nil {
+						// This will let the line search continue at a lower warehouse
+						// count.
+						return errors.Wrapf(err, "error running tpcc load generator")
+					}
+					roachtestHistogramsPath := filepath.Join(resultsDir, fmt.Sprintf("%d.%d-stats.json", warehouses, wIdx))
+					if err := c.Get(
+						ctx, t.L(), histogramsPath, roachtestHistogramsPath, c.Node(w.node),
+					); err != nil {
+						// This will let the line search continue. The reason we do this
+						// is because it's conceivable that we made it here, but a VM just
+						// froze up on us. The next search iteration will handle this state.
+						return err
+					}
+					snapshots, err := histogram.DecodeSnapshots(roachtestHistogramsPath)
+					if err != nil {
+						// If we got this far, and can't decode data, it's not a case of
+						// overload but something that deserves failing the whole test.
+						t.Fatal(err)
+					}
+					result := tpcc.NewResultWithSnapshots(warehouses, 0, snapshots)
+					resultChan <- result
 				}
-				roachtestHistogramsPath := filepath.Join(resultsDir, fmt.Sprintf("%d.%d-stats.json", warehouses, wIdx))
-				if err := c.Get(
-					ctx, t.L(), histogramsPath, roachtestHistogramsPath, c.Node(w.node),
-				); err != nil {
-					// This will let the line search continue. The reason we do this
-					// is because it's conceivable that we made it here, but a VM just
-					// froze up on us. The next search iteration will handle this state.
-					return err
-				}
-				snapshots, err := histogram.DecodeSnapshots(roachtestHistogramsPath)
-				if err != nil {
-					// If we got this far, and can't decode data, it's not a case of
-					// overload but something that deserves failing the whole test.
-					t.Fatal(err)
-				}
-				result := tpcc.NewResultWithSnapshots(warehouses, 0, snapshots)
-				resultChan <- result
 				return nil
 			})
 		}
 		failErr := m.WaitE()
 		close(resultChan)
+		if opts.dryRun {
+			return true, nil
+		}
 
 		t.L().Printf("Step 9 - Analyze the results")
 		var res *tpcc.Result
@@ -2704,7 +2732,9 @@ func runTPCCPublished(
 		// The last iteration may have been a failing run that overloaded
 		// nodes to the point of them crashing. Make roachtest happy by
 		// restarting the cluster so that it can run consistency checks.
-		restart(ctx)
+		if !opts.dryRun {
+			restart(ctx)
+		}
 		ttycolor.Stdout(ttycolor.Green)
 		t.L().Printf("------\nRUN PASSED with MAX WAREHOUSES = %d\n------\n\n", res)
 		ttycolor.Stdout(ttycolor.Reset)

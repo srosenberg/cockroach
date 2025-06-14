@@ -497,8 +497,7 @@ func (w *tpcc) Hooks() workload.Hooks {
 			}
 
 			if w.waitFraction > 0 && w.activeWorkers != w.activeWarehouses*NumWorkersPerWarehouse && len(w.affinityPartitions) == 0 {
-				return errors.Errorf(`--wait > 0 and --warehouses=%d and affinity_partitions=0 requires --active-workers=%d`,
-					w.activeWarehouses, w.warehouses*NumWorkersPerWarehouse)
+				fmt.Printf("WARN: --wait > 0 and --warehouses=%d and affinity_partitions=0 requires --active-workers=%d; are you running multiple workload nodes?\n", w.activeWarehouses, w.warehouses*NumWorkersPerWarehouse)
 			}
 
 			if w.queryTraceFile != `` && w.workers != 1 {
