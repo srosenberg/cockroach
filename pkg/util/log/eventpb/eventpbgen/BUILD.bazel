@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "gen.go",
         ":log-channels",  # keep
+	"libfuzzer_shim.go",
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/util/log/eventpb/eventpbgen",
     visibility = ["//visibility:private"],

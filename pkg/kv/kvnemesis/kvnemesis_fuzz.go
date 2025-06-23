@@ -10,6 +10,7 @@ import (
 	gosql "database/sql"
 	"math/rand"
 	"os"
+	"fmt"
 	"testing"
 	"time"
 
@@ -232,7 +233,7 @@ type tBridge struct {
 	ll logLogger
 }
 
-func newTBridge(t testing.TB) *tBridge {
+func newTBridge(t TestFataler) *tBridge {
 	// NB: we're not using t.TempDir() because we want these to survive
 	// on failure.
 	td, err := os.MkdirTemp(datapathutils.DebuggableTempDir(), "kvnemesis")
@@ -427,9 +428,6 @@ func FuzzKVNemesisSingleNode(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		if len(data) < 3000 {
-			t.Skip()
-		}
 		testKVNemesisImpl(t, kvnemesisTestCfg{
 			numNodes:                     1,
 			numSteps:                     numStep,
@@ -440,6 +438,120 @@ func FuzzKVNemesisSingleNode(f *testing.F) {
 			assertRaftApply:              true,
 		})
 	})
+}
+
+type TestLogger interface {
+	Helper()
+	Log(args ...interface{})
+	Logf(format string, args ...interface{})
+}
+
+// TestFataler is the minimal interface of testing.T that is used by
+// StartServer.
+type TestFataler interface {
+	TestLogger
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
+	FailNow()
+	Failed() bool
+	Cleanup(f func())
+}
+
+
+type testImpl struct{
+	failed bool
+}
+
+
+func (t *testImpl) Fatal(args ...interface{}) {
+        panic(fmt.Sprintf("%+v\n", args))
+}
+
+// Fatalf is like Fatal, but takes a format string.
+func (t *testImpl) Fatalf(format string, args ...interface{}) {
+        panic(fmt.Sprintf(format, args))
+}
+
+// FailNow implements the TestingT interface.
+func (t *testImpl) FailNow() {
+        panic("failNow")
+}
+
+// Error implements the TestingT interface
+func (t *testImpl) Error(args ...interface{}) {
+	fmt.Printf("error %+v\n", args)
+	t.failed = true
+}
+
+// Errorf implements the TestingT interface.
+func (t *testImpl) Errorf(format string, args ...interface{}) {
+	fmt.Printf("error %s\n", fmt.Sprintf(format, args))
+	t.failed = true
+}
+
+func (t *testImpl) Cleanup(f func()) {}
+
+func (t *testImpl) Fail() {
+	t.failed = true
+}
+
+func (t *testImpl) Failed() bool {
+	return t.failed
+}
+
+func (t *testImpl) Helper() {}
+
+func (t *testImpl) Logf(format string, args ...any) {
+	fmt.Printf("%s\n", fmt.Sprintf(format, args))
+}
+
+func (t *testImpl) Log(args ...any) {
+	fmt.Printf("%+v\n", args)
+}
+
+func (t *testImpl) Name() string {
+	return "Fuzz"
+}
+
+func (t *testImpl) Setenv(key, value string) {
+	return
+}
+
+func (t *testImpl) Skip(args ...any) {
+	return
+}
+
+func (t *testImpl) SkipNow() {
+	return
+}
+
+func (t *testImpl) Skipf(format string, args ...any) {
+	return
+}
+
+func (t *testImpl) Skipped() bool {
+	return false
+}
+
+func (t *testImpl) TempDir() string {
+	return ""
+}
+
+func Fuzz(data []byte) {
+	t := &testImpl{}
+	defer log.Scope(t).Close(t)
+	numStep     := 10
+	concurrency := 1
+	testKVNemesisImpl(t, kvnemesisTestCfg{
+                        numNodes:                     1,
+                        numSteps:                     numStep,
+                        concurrency:                  concurrency,
+                        randSource:                   randutil.NewFuzzRandSource(data),
+                        invalidLeaseAppliedIndexProb: 0.2,
+                        injectReproposalErrorProb:    0.2,
+                        assertRaftApply:              true,
+                })
 }
 
 func TestKVNemesisMultiNode_LeaderLeases(t *testing.T) {
@@ -458,14 +570,14 @@ func TestKVNemesisMultiNode_LeaderLeases(t *testing.T) {
 	})
 }
 
-func testKVNemesisImpl(t testing.TB, cfg kvnemesisTestCfg) {
-	skip.UnderRace(t)
+func testKVNemesisImpl(t TestFataler, cfg kvnemesisTestCfg) {
+//	skip.UnderRace(t)
 
 	if !buildutil.CrdbTestBuild {
 		// `kvpb.RequestHeader` and `MVCCValueHeader` have a KVNemesisSeq field
 		// that is zero-sized outside test builds. We could revisit that should
 		// a need arise to run kvnemesis against production binaries.
-		skip.IgnoreLint(t, "kvnemesis must be run with the crdb_test build tag")
+		//skip.IgnoreLint(t, "kvnemesis must be run with the crdb_test build tag")
 	}
 
 	// Can set a seed here for determinism. This works best when the seed was
@@ -538,7 +650,7 @@ func TestRunReproductionSteps(t *testing.T) {
 	// Paste a repro as printed by kvnemesis here.
 }
 
-func dumpRaftLogsOnFailure(t testing.TB, dir string, srvs []serverutils.TestServerInterface) {
+func dumpRaftLogsOnFailure(t TestFataler, dir string, srvs []serverutils.TestServerInterface) {
 	if !t.Failed() {
 		return
 	}
@@ -552,4 +664,8 @@ func dumpRaftLogsOnFailure(t testing.TB, dir string, srvs []serverutils.TestServ
 			return nil
 		}))
 	}
+}
+
+func main() {
+
 }

@@ -18,6 +18,7 @@ go_library(
         "uniquifier.go",
         "utils.go",
         "validator.go",
+	"libfuzzer_shim.go",
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/opt/optgen/cmd/optgen",
     visibility = ["//visibility:private"],

@@ -2,7 +2,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
     name = "generate-visitors_lib",
-    srcs = ["generate_visitor.go"],
+    srcs = ["generate_visitor.go","libfuzzer_shim.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scop/generate-visitors",
     visibility = ["//visibility:private"],
     deps = [

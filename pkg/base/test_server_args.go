@@ -316,8 +316,8 @@ type DefaultTestTenantOptions struct {
 type testBehavior int16
 
 const (
-	ttEnabled testBehavior = 1 << iota
-	ttDisabled
+	ttDisabled testBehavior = 1 << iota
+	ttEnabled
 	ttSharedProcess
 	ttExternalProcess
 )

@@ -24,6 +24,7 @@ go_library(
         "exprs_gen.go",
         "main.go",
         "ops_gen.go",
+	"libfuzzer_shim.go",
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/opt/optgen/cmd/langgen",
     visibility = ["//visibility:private"],

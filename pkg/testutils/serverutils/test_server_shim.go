@@ -87,6 +87,7 @@ func ShouldStartDefaultTestTenant(
 	t TestLogger, baseArg base.DefaultTestTenantOptions,
 ) (retval base.DefaultTestTenantOptions) {
 	// Explicit case for disabling the default test tenant.
+	return base.TODOTestTenantDisabled
 	if baseArg.TestTenantAlwaysDisabled() {
 		if issueNum, label := baseArg.IssueRef(); issueNum != 0 {
 			t.Logf("cluster virtualization disabled due to issue: #%d (expected label: %s)", issueNum, label)

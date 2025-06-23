@@ -7,6 +7,7 @@ go_library(
         "expr.go",
         "op.go",
         "string_set.go",
+	"libfuzzer_shim.go",
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/sem/tree/evalgen",
     visibility = ["//visibility:private"],

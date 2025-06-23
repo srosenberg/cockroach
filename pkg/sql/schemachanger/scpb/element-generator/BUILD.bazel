@@ -2,7 +2,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
 
 go_library(
     name = "element-generator_lib",
-    srcs = ["element_generator.go"],
+    srcs = ["element_generator.go","libfuzzer_shim.go"],
     importpath = "github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scpb/element-generator",
     visibility = ["//visibility:private"],
     deps = ["//pkg/cli/exit"],
