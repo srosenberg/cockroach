@@ -3001,7 +3001,8 @@ func (c *clusterImpl) Cloud() spec.Cloud {
 }
 
 func (c *clusterImpl) IsLocal() bool {
-	return config.IsLocalClusterName(c.name)
+	return true
+	// return config.IsLocalClusterName(c.name)
 }
 
 func (c *clusterImpl) IsSecure() bool {
