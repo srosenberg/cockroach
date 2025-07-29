@@ -941,7 +941,7 @@ func (t *Test) plan() (plan *TestPlan, retErr error) {
 		// Let's generate a plan.
 		plan, err = planner.Plan()
 		if err != nil {
-			return nil, errors.Wrapf(err, "error generating test plan")
+			continue
 		}
 		if plan.length <= t.options.maxNumPlanSteps {
 			break

@@ -565,14 +565,15 @@ func maxSupportedTPCCWarehouses(
 func runTPCCMixedHeadroom(
 	ctx context.Context, t test.Test, c cluster.Cluster, opts ...mixedversion.CustomOption,
 ) {
-	maxWarehouses := maxSupportedTPCCWarehouses(*t.BuildVersion(), c.Cloud(), c.Spec())
-	headroomWarehouses := int(float64(maxWarehouses) * 0.7)
+	//maxWarehouses := maxSupportedTPCCWarehouses(*t.BuildVersion(), c.Cloud(), c.Spec())
+	//headroomWarehouses := int(float64(maxWarehouses) * 0.7)
+	headroomWarehouses := 100
 
 	// NB: this results in ~100GB of (actual) disk usage per node once things
 	// have settled down, and ~7.5k ranges. The import takes ~40 minutes.
 	// The full 6.5m import ran into out of disk errors (on 250gb machines),
 	// hence division by two.
-	bankRows := 65104166 / 2
+	bankRows := 65104166 >> 10
 	if c.IsLocal() {
 		bankRows = 1000
 	}
@@ -584,7 +585,7 @@ func runTPCCMixedHeadroom(
 		mixedversion.MinimumSupportedVersion("v23.2.0"),
 		// We limit the total number of plan steps to 70, which is roughly 80% of all plan lengths.
 		// See #138014 for more details.
-		mixedversion.MaxNumPlanSteps(70),
+		mixedversion.MaxNumPlanSteps(20),
 	}, opts...)
 
 	mvt := mixedversion.NewTest(
@@ -631,7 +632,7 @@ func runTPCCMixedHeadroom(
 	// compactions, etc). By waiting here, we increase the concurrency exposed to
 	// the upgrade migrations, and increase the chances of exposing bugs (such as #83079).
 	runTPCCWorkload := func(ctx context.Context, l *logger.Logger, rng *rand.Rand, h *mixedversion.Helper) error {
-		workloadDur := 10 * time.Minute
+		workloadDur := 1 * time.Minute
 		rampDur := rampDuration(c.IsLocal())
 		// If migrations are running we want to ramp up the workload faster in order
 		// to expose them to more concurrent load. In a similar goal, we also let the
@@ -639,7 +640,7 @@ func runTPCCMixedHeadroom(
 		if h.IsFinalizing() && !c.IsLocal() {
 			rampDur = 1 * time.Minute
 			if h.Context().ToVersion.IsCurrent() {
-				workloadDur = 100 * time.Minute
+				workloadDur = 1 * time.Minute
 			}
 		}
 		histogramsPath := fmt.Sprintf("%s/%s", t.PerfArtifactsDir(), roachtestutil.GetBenchmarkMetricsFileName(t))

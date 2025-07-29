@@ -6,6 +6,7 @@
 package mixedversion
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"slices"
@@ -469,8 +470,18 @@ func (p *testPlanner) Plan() (*TestPlan, error) {
 		}
 	}
 
-	testPlan.assignIDs()
-	return testPlan, nil
+	err := testPlan.assignIDs()
+	return testPlan, err
+}
+
+func isFromFailureRegistry(name string) bool {
+	fr := failures.GetFailureRegistry()
+	for _, failure := range fr.List("") {
+		if name == failure {
+			return true
+		}
+	}
+	return false
 }
 
 // nonUpgradeContext builds a mixed-version context to be used during
@@ -1600,12 +1611,14 @@ func mutationApplicationOrder(mutations []mutation) []mutation {
 // assigns them a unique numeric ID. These IDs are not necessary for
 // correctness, but are nice to have when debugging failures and
 // matching output from a step to where it happens in the test plan.
-func (plan *TestPlan) assignIDs() {
+func (plan *TestPlan) assignIDs() error {
 	var currentID int
 	nextID := func() int {
 		currentID++
 		return currentID
 	}
+
+	var foundRF, foundPanic bool
 
 	plan.mapSingleSteps(func(ss *singleStep, _ bool) []testStep {
 		stepID := nextID()
@@ -1621,12 +1634,25 @@ func (plan *TestPlan) assignIDs() {
 		if plan.startTenantID == 0 && isStartTenant {
 			plan.startTenantID = stepID
 		}
+		if replicationStep, ok := ss.impl.(alterReplicationFactorStep); ok {
+			if replicationStep.rf == 5 {
+				foundRF = true
+			}
+		}
+		if _, ok := ss.impl.(panicNodeStep); ok {
+			foundPanic = true
+		}
 
 		ss.ID = stepID
 		return []testStep{ss}
 	})
 	// Record the length, which corresponds to the last stepID assigned.
 	plan.length = currentID
+
+	if !(foundRF && foundPanic) {
+		return errors.New("invalid plan")
+	}
+	return nil
 }
 
 // allUpgrades returns a list of all upgrades encoded in this test
