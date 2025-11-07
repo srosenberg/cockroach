@@ -1235,14 +1235,15 @@ tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
 			// with the existing list to make this process idempotent.
 			cmd := `
 set -e
-tmp="$(tempfile -d ~/.ssh -p 'roachprod' )"
+tmp="$(mktemp -p "${HOME}/.ssh" roachprod.XXXXXX)"
 on_exit() {
     rm -f "${tmp}"
 }
 trap on_exit EXIT
 for i in {1..20}; do
-  ssh-keyscan -T 60 -t rsa ` + strings.Join(scanIPs, " ") + ` > "${tmp}"
-  if [[ "$(wc < ${tmp} -l)" -eq "` + fmt.Sprint(len(scanIPs)) + `" ]]; then
+	# N.B. newer versions of ssh-keyscan may return commented lines, so we skip them.
+  ssh-keyscan -T 60 -t rsa ` + strings.Join(scanIPs, " ") + ` | awk '!/^#/' > "${tmp}"
+  if [[ "$(awk '{print $1}' "$tmp" | sort -u | wc -l)" -eq "` + fmt.Sprint(len(scanIPs)) + `" ]]; then
     [[ -f .ssh/known_hosts ]] && cat .ssh/known_hosts >> "${tmp}"
     sort -u < "${tmp}"
     exit 0

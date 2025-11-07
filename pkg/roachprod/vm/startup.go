@@ -272,8 +272,8 @@ EOF
 	CORE_PATTERN="|/bin/gzip_core.sh %e %p %h %t"
 	echo "$CORE_PATTERN" > /proc/sys/kernel/core_pattern
 	sed -i'~' 's/enabled=1/enabled=0/' /etc/default/apport
-	sed -i'~' '/.*kernel\\.core_pattern.*/c\\' /etc/sysctl.conf
-	echo "kernel.core_pattern=$CORE_PATTERN" >> /etc/sysctl.conf
+	mkdir -p /etc/sysctl.d
+	printf 'kernel.core_pattern=%s\n' "$CORE_PATTERN" > /etc/sysctl.d/99-corepattern.conf
 
 	sysctl --system  # reload sysctl settings
 fi`
@@ -322,11 +322,17 @@ const startupScriptTail = `
 echo "startup script ending: $(date -u)"
 `
 
+// N.B. When VMName isn't set, e.g., in case of GCE, fallback to "hostname -s".
+// Otherwise, starting with Ubuntu 24.04, /etc/hostname is no longer created by default, and
+// systemd-hostnamed will set the hostname according to DHCP, which assumes the following form:
+// $CLUSTER-0001.$ZONE.c.$PROJECT.internal
 const startupScriptHostname = `
 # set hostname according to the name used by roachprod. There's host
 # validation logic that relies on this -- see comment on cluster_synced.go
 {{ if .VMName }}
-sudo hostnamectl set-hostname {{.VMName}}
+sudo hostnamectl set-hostname "{{.VMName}}"
+{{ else }}
+sudo hostnamectl set-hostname "$(hostname -s)"
 {{ end }}`
 
 const startupScriptKeepalives = `

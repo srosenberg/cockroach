@@ -1437,7 +1437,7 @@ func (p *Provider) computeInstanceArgs(
 	// Check if an image was specified.
 	// If an image is specified, we use the provider's project.
 	image := providerOpts.Image
-	imageProject := project
+	imageProject := DefaultImageProjectAMD64
 
 	// By default, we use the startup script that contains both the image baking
 	// and runtime logics. This may be overridden if we end up using a pre-baked image.
