@@ -236,6 +236,46 @@ var (
     metric appears in the DB Console on the Host CPU Percent graph.`,
 	}
 
+	metaEffectivePsAll = metric.Metadata{
+		Name:        "sys.cpu.parallelism.all",
+		Help:        "",
+		Measurement: "CPU Time",
+		Unit:        metric.Unit_PERCENT,
+		Essential:   true,
+		Category:    metric.Metadata_HARDWARE,
+		HowToUse:    ``,
+	}
+
+	metaEffectivePsUser = metric.Metadata{
+		Name:        "sys.cpu.parallelism.user",
+		Help:        "",
+		Measurement: "CPU Time",
+		Unit:        metric.Unit_PERCENT,
+		Essential:   true,
+		Category:    metric.Metadata_HARDWARE,
+		HowToUse:    ``,
+	}
+
+	metaPsAll = metric.Metadata{
+		Name:        "sys.cpu.active.all",
+		Help:        "",
+		Measurement: "CPU Time",
+		Unit:        metric.Unit_CONST,
+		Essential:   true,
+		Category:    metric.Metadata_HARDWARE,
+		HowToUse:    ``,
+	}
+
+	metaPsUser = metric.Metadata{
+		Name:        "sys.cpu.active.user",
+		Help:        "",
+		Measurement: "CPU Time",
+		Unit:        metric.Unit_CONST,
+		Essential:   true,
+		Category:    metric.Metadata_HARDWARE,
+		HowToUse:    ``,
+	}
+
 	metaRSSBytes = metric.Metadata{
 		Name:        "sys.rss",
 		Help:        "Current process RSS",
@@ -535,6 +575,10 @@ const runtimeMetricGCStopTotal = "/sched/pauses/stopping/gc:seconds"
 // Compare only with other /cpu/classes metrics.
 const runtimeMetricGCAssist = "/cpu/classes/gc/mark/assist:cpu-seconds"
 
+const runtimeMetricCPUClassesTotal = "/cpu/classes/total:cpu-seconds"
+const runtimeMetricCPUClassesUser = "/cpu/classes/user:cpu-seconds"
+const runtimeMetricCPUClassesIdle = "/cpu/classes/idle:cpu-seconds"
+
 // Distribution of individual non-GC-related stop-the-world
 // pause latencies. This is the time from deciding to stop the
 // world until the world is started again. Some of this time
@@ -619,6 +663,9 @@ var runtimeMetrics = []string{
 	runtimeMetricNonGCPauseTotal,
 	runtimeMetricGCStopTotal,
 	runtimeMetricNonGCStopTotal,
+	runtimeMetricCPUClassesTotal,
+	runtimeMetricCPUClassesUser,
+	runtimeMetricCPUClassesIdle,
 }
 
 // GoRuntimeSampler are a collection of metrics to sample from golang's runtime environment and
@@ -767,6 +814,11 @@ type RuntimeStatSampler struct {
 		disk        DiskStats
 		net         netCounters
 		runnableSum float64
+
+		// NEW: last values of /cpu/classes/* (in seconds).
+		cpuClassesTotal float64
+		cpuClassesUser  float64
+		cpuClassesIdle  float64
 	}
 
 	initialDiskCounters DiskStats
@@ -840,6 +892,13 @@ type RuntimeStatSampler struct {
 	// Uptime and build.
 	Uptime         *metric.Counter
 	BuildTimestamp *metric.Gauge
+
+	// average number of Ps doing any Go work (user + GC/runtime) during the last sampling interval.
+	GoEffectivePsAll *metric.GaugeFloat64
+	// average number of Ps running user Go code during the interval.
+	GoEffectivePsUser         *metric.GaugeFloat64
+	GoEffectivePsAllFraction  *metric.GaugeFloat64
+	GoEffectivePsUserFraction *metric.GaugeFloat64
 }
 
 // NewRuntimeStatSampler constructs a new RuntimeStatSampler object.
@@ -935,10 +994,15 @@ func NewRuntimeStatSampler(ctx context.Context, clock hlc.WallClock) *RuntimeSta
 		HostNetSendTCPTimeouts:         metric.NewCounter(metaHostNetSendTCPTimeouts),
 		HostNetSendTCPSlowStartRetrans: metric.NewCounter(metaHostNetSendTCPSlowStartRetrans),
 		HostNetSendTCPLossProbes:       metric.NewCounter(metaHostNetSendTCPLossProbes),
-		FDOpen:                         metric.NewGauge(metaFDOpen),
-		FDSoftLimit:                    metric.NewGauge(metaFDSoftLimit),
-		Uptime:                         metric.NewCounter(metaUptime),
-		BuildTimestamp:                 buildTimestamp,
+		GoEffectivePsAllFraction:       metric.NewGaugeFloat64(metaEffectivePsAll),
+		GoEffectivePsUserFraction:      metric.NewGaugeFloat64(metaEffectivePsUser),
+		GoEffectivePsAll:               metric.NewGaugeFloat64(metaPsAll),
+		GoEffectivePsUser:              metric.NewGaugeFloat64(metaPsUser),
+
+		FDOpen:         metric.NewGauge(metaFDOpen),
+		FDSoftLimit:    metric.NewGauge(metaFDSoftLimit),
+		Uptime:         metric.NewCounter(metaUptime),
+		BuildTimestamp: buildTimestamp,
 	}
 
 	rsr.last.disk = rsr.initialDiskCounters
@@ -1090,6 +1154,10 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(ctx context.Context, cs *CGoMem
 	// if calculated later using downsampled time series data.
 	now := rsr.clock.Now().UnixNano()
 	dur := float64(now - rsr.last.now)
+	cpuClassesTotal := rsr.goRuntimeSampler.float64(runtimeMetricCPUClassesTotal)
+	cpuClassesUser := rsr.goRuntimeSampler.float64(runtimeMetricCPUClassesUser)
+	cpuClassesIdle := rsr.goRuntimeSampler.float64(runtimeMetricCPUClassesIdle)
+
 	// hostUtime.{User,Sys} are in milliseconds, convert to nanoseconds.
 	procUtime := userTimeMillis * 1e6
 	procStime := sysTimeMillis * 1e6
@@ -1101,6 +1169,9 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(ctx context.Context, cs *CGoMem
 	hostNiceTime := int64(cpuUsage.Nice * 1.e9)
 
 	var procUrate, procSrate, hostUrate, hostSrate, hostIrqrate, hostSoftIrqrate, hostNiceRate float64
+	var avgActivePsAllFraction float64
+	var avgActivePsUserFraction float64
+
 	if rsr.last.now != 0 { // We cannot compute these rates on the first iteration.
 		procUrate = float64(procUtime-rsr.last.procUtime) / dur
 		procSrate = float64(procStime-rsr.last.procStime) / dur
@@ -1109,6 +1180,47 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(ctx context.Context, cs *CGoMem
 		hostIrqrate = float64(hostIrqtime-rsr.last.hostIrqtime) / dur
 		hostSoftIrqrate = float64(hostSoftIrqtime-rsr.last.hostSoftIrqtime) / dur
 		hostNiceRate = float64(hostNiceTime-rsr.last.hostNiceTime) / dur
+		// dur is nanoseconds; convert to seconds for comparing with cpu-seconds.
+		dtSec := dur / 1e9
+		if dtSec > 0 {
+			dTotal := cpuClassesTotal - rsr.last.cpuClassesTotal
+			dUser := cpuClassesUser - rsr.last.cpuClassesUser
+			dIdle := cpuClassesIdle - rsr.last.cpuClassesIdle
+
+			log.Ops.Infof(ctx, "dTotal=%.2f, dUser=%.2f, dIdle=%.2f, dtSec=%.2f", dTotal, dUser, dIdle, dtSec)
+
+			// Be defensive about negative deltas if metrics reset for some reason.
+			if dTotal < 0 {
+				dTotal = 0
+			}
+			if dUser < 0 {
+				dUser = 0
+			}
+			if dIdle < 0 {
+				dIdle = 0
+			}
+
+			if dTotal > 0 {
+				idleFrac := dIdle / dTotal
+				userFrac := dUser / dTotal
+
+				if idleFrac < 0 {
+					idleFrac = 0
+				}
+				if idleFrac > 1 {
+					idleFrac = 1
+				}
+				if userFrac < 0 {
+					userFrac = 0
+				}
+				if userFrac > 1 {
+					userFrac = 1
+				}
+
+				avgActivePsAllFraction = 1 - idleFrac
+				avgActivePsUserFraction = userFrac
+			}
+		}
 	}
 
 	combinedNormalizedProcPerc := (procSrate + procUrate) / cpuCapacity
@@ -1141,6 +1253,9 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(ctx context.Context, cs *CGoMem
 	rsr.last.hostNiceTime = hostNiceTime
 	rsr.last.gcPauseTime = gcPauseTotalNs
 	rsr.last.runnableSum = runnableSum
+	rsr.last.cpuClassesTotal = cpuClassesTotal
+	rsr.last.cpuClassesUser = cpuClassesUser
+	rsr.last.cpuClassesIdle = cpuClassesIdle
 
 	// Log summary of statistics to console.
 	osStackBytes := rsr.goRuntimeSampler.uint64(runtimeMetricMemStackOSBytes)
@@ -1211,6 +1326,9 @@ func (rsr *RuntimeStatSampler) SampleEnvironment(ctx context.Context, cs *CGoMem
 	rsr.CPUCombinedPercentNorm.Update(combinedNormalizedProcPerc)
 	rsr.CPUNowNS.Update(now)
 	rsr.HostCPUCombinedPercentNorm.Update(combinedNormalizedHostPerc)
+	
+	rsr.GoEffectivePsAllFraction.Update(avgActivePsAllFraction)
+	rsr.GoEffectivePsUserFraction.Update(avgActivePsUserFraction)
 
 	rsr.FDOpen.Update(int64(fds.Open))
 	rsr.FDSoftLimit.Update(int64(fds.SoftLimit))
