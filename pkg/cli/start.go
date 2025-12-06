@@ -28,8 +28,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cli/exit"
 	"github.com/cockroachdb/cockroach/pkg/docs"
 	"github.com/cockroachdb/cockroach/pkg/geo/geos"
+	"github.com/cockroachdb/cockroach/pkg/keys"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/kvcoord"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/rpc"
+	"github.com/cockroachdb/cockroach/pkg/rpc/rpcpb"
 	"github.com/cockroachdb/cockroach/pkg/security/clientsecopts"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/server"
@@ -59,7 +64,9 @@ import (
 	"github.com/cockroachdb/logtags"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
+	"github.com/gogo/protobuf/proto"
 	"github.com/spf13/cobra"
+	"google.golang.org/grpc"
 )
 
 // debugTSImportFile is the path to a file (containing data coming from
@@ -357,6 +364,101 @@ func runStartJoin(cmd *cobra.Command, args []string) error {
 	return runStart(cmd, args, false /*startSingleNode*/)
 }
 
+type myClientStream struct {
+	grpc.ClientStream
+}
+
+func (d myClientStream) SendMsg(m interface{}) error {
+	if br, ok := m.(*kvpb.BatchRequest); ok {
+		for _, ru := range br.Requests {
+			fmt.Printf("Request(stream): %v\n", ru.GetInner())
+		}
+	} else {
+		msg := m.(proto.Message)
+		fmt.Printf("Message(stream): %s\n", proto.MessageName(msg))
+	}
+
+	return d.ClientStream.SendMsg(m)
+}
+
+func (d myClientStream) RecvMsg(m interface{}) error {
+	return d.ClientStream.RecvMsg(m)
+}
+
+type interceptingTransport struct {
+	defaultTransport kvcoord.Transport
+	replicas         kvcoord.ReplicaSlice
+}
+
+type interceptedResp struct {
+	br  *kvpb.BatchResponse
+	err error
+}
+
+func (t interceptingTransport) IsExhausted() bool {
+	return t.defaultTransport.IsExhausted()
+}
+
+func (t interceptingTransport) NextInternalClient(
+	ctx context.Context,
+) (rpc.RestrictedInternalClient, error) {
+	return t.defaultTransport.NextInternalClient(ctx)
+}
+
+func (t interceptingTransport) NextReplica() roachpb.ReplicaDescriptor {
+	return t.defaultTransport.NextReplica()
+}
+
+func (t interceptingTransport) SkipReplica() {
+	t.defaultTransport.SkipReplica()
+}
+
+func (t interceptingTransport) MoveToFront(descriptor roachpb.ReplicaDescriptor) bool {
+	return t.defaultTransport.MoveToFront(descriptor)
+}
+
+func (t interceptingTransport) Reset() {
+	t.defaultTransport.Reset()
+}
+
+func (t interceptingTransport) Release() {
+	t.defaultTransport.Release()
+}
+
+// SendNext implements the kvcoord.Transport interface.
+func (t *interceptingTransport) SendNext(
+	ctx context.Context, ba *kvpb.BatchRequest,
+) (*kvpb.BatchResponse, error) {
+	for _, ru := range ba.Requests {
+		if gcr, ok := ru.GetInner().(*kvpb.GCRequest); ok {
+			span := gcr.Header().Span()
+			var b strings.Builder
+
+			fmt.Fprintf(&b,
+				"GCRequest threshold=%s|span=%s,%s|nodes=",
+				gcr.Threshold,
+				keys.PrettyPrint(nil, span.Key),
+				keys.PrettyPrint(nil, span.EndKey),
+			)
+			for _, r := range t.replicas {
+				// r.Desc is a roachpb.ReplicaDescriptor
+				fmt.Fprintf(&b, "n%d,", r.NodeID)
+			}
+			fmt.Fprintf(&b, "|keys=")
+			for _, k := range gcr.Keys {
+				fmt.Fprintf(&b, "%sts=%s,",
+					keys.PrettyPrint(nil, k.Key),
+					k.Timestamp)
+			}
+			log.Dev.Infof(ctx, "%s", b.String())
+		}
+	}
+	resp := &interceptedResp{}
+	resp.br, resp.err = t.defaultTransport.SendNext(ctx, ba)
+
+	return resp.br, resp.err
+}
+
 // runStart starts the cockroach node using --store as the list of
 // storage devices ("stores") on this machine and --join as the list
 // of other active nodes used to join this node to the cockroach
@@ -374,6 +476,61 @@ func runStart(cmd *cobra.Command, args []string, startSingleNode bool) error {
 	const serverType redact.SafeString = "node"
 
 	newServerFn := func(_ context.Context, serverCfg server.Config, stopper *stop.Stopper) (serverctl.ServerStartupInterface, error) {
+		var serverKnobs *server.TestingKnobs
+
+		if knobs := serverCfg.TestingKnobs.Server; knobs != nil {
+			serverKnobs = knobs.(*server.TestingKnobs)
+		} else {
+			serverKnobs = &server.TestingKnobs{}
+		}
+		serverKnobs.ContextTestingKnobs = rpc.ContextTestingKnobs{}
+
+		serverKnobs.ContextTestingKnobs.UnaryClientInterceptor = func(target string, class rpcpb.ConnectionClass) grpc.UnaryClientInterceptor {
+			return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+				//if br, ok := req.(*kvpb.BatchRequest); ok {
+				//	for _, ru := range br.Requests {
+				//		fmt.Printf("Request: %v\n", ru.GetInner())
+				//	}
+				//} else if ping, ok := req.(*rpc.PingRequest); ok {
+				//	fmt.Printf("Request: %v\n", ping)
+				//} else {
+				//	fmt.Printf("Method: %s\n", method)
+				//}
+				return invoker(ctx, method, req, reply, cc, opts...)
+			}
+		}
+		//serverKnobs.ContextTestingKnobs.StreamClientInterceptor =
+		//	func(target string, class rpcpb.ConnectionClass) grpc.StreamClientInterceptor {
+		//		return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		//			cs, err := streamer(ctx, desc, cc, method, opts...)
+		//			if err != nil {
+		//				return nil, err
+		//			}
+		//			fmt.Printf("Calling %s from %s\n", method, target)
+		//			return &myClientStream{
+		//				ClientStream: cs,
+		//			}, nil
+		//		}
+		//	}
+		serverCfg.TestingKnobs.Server = serverKnobs
+
+		var dsKnobs *kvcoord.ClientTestingKnobs
+		if k := serverCfg.TestingKnobs.KVClient; k != nil {
+			dsKnobs = k.(*kvcoord.ClientTestingKnobs)
+		} else {
+			dsKnobs = &kvcoord.ClientTestingKnobs{}
+		}
+
+		dsKnobs.TransportFactory = func(factory kvcoord.TransportFactory) kvcoord.TransportFactory {
+			return func(options kvcoord.SendOptions, slice kvcoord.ReplicaSlice) kvcoord.Transport {
+				defaultTransport := factory(options, slice)
+				intercepted := &interceptingTransport{defaultTransport: defaultTransport, replicas: slice}
+				return intercepted
+			}
+		}
+
+		serverCfg.TestingKnobs.KVClient = dsKnobs
+
 		// Beware of not writing simply 'return server.NewServer()'. This is
 		// because it would cause the serverctl.ServerStartupInterface reference to
 		// always be non-nil, even if NewServer returns a nil pointer (and
