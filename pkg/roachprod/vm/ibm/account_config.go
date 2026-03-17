@@ -47,6 +47,7 @@ var (
 	supportedRegions = []string{
 		"br-sao",
 		"ca-tor",
+		"us-south",
 	}
 )
 

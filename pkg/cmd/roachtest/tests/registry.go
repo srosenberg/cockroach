@@ -81,6 +81,7 @@ func RegisterTests(r registry.Registry) {
 	registerInvariantCheckDetection(r)
 	registerJasyncSQL(r)
 	registerJepsen(r)
+	registerJepsenBank(r)
 	registerJobs(r)
 	registerJobsMixedVersions(r)
 	registerKerberosConnectionStressTest(r)

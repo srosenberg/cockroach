@@ -1392,6 +1392,11 @@ func (o *ProviderOpts) machineTypeSupportsLocalSSD() bool {
 	return err == nil && len(info.AllowedLocalSSDCount) > 0
 }
 
+// isC4MachineType returns true if the machine type is a C4 instance.
+func isC4MachineType(machineType string) bool {
+	return strings.HasPrefix(strings.ToLower(machineType), "c4-")
+}
+
 // autoStorageType returns "pd-ssd" if the machine type supports it, otherwise
 // returns "hyperdisk-balanced".
 func autoStorageType(machineType string) string {
@@ -1747,6 +1752,9 @@ func (p *Provider) computeInstanceArgs(
 	}
 
 	args = append(args, "--machine-type", providerOpts.MachineType)
+	if isC4MachineType(providerOpts.MachineType) {
+		args = append(args, "--performance-monitoring-unit", "standard")
+	}
 	if platform := providerOpts.minCPUPlatform(); platform != "" {
 		l.Printf("Requesting platform %q for machine type %q; if you get an insufficient capacity error, "+
 			"disable using --gce-min-cpu-platform=any", platform, providerOpts.MachineType)

@@ -54,6 +54,7 @@ go_test(
         "mutators_test.go",
         "planner_test.go",
         "runner_test.go",
+        "upgrade_path_exhaustive_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":mixedversion"],

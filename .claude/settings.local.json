@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(find /Users/srosenberg/workspace/go/src/github.com/cockroachdb/cockroach -path \"*/lib/pq\" -type d 2>/dev/null | head -3)",
+      "Bash(./dev build pkg/cmd/roachtest:roachtest_test 2>&1)",
+      "Bash(./dev generate bazel 2>&1 | tail -20)",
+      "Bash(./dev build pkg/cmd/roachtest 2>&1 | tail -5 && ./bin/roachtest list jepsen-bank 2>&1)",
+      "Bash(crlfmt -diff /Users/srosenberg/workspace/go/src/github.com/cockroachdb/cockroach/pkg/cmd/roachtest/tests/jepsen_bank.go)",
+      "Bash(crlfmt -w /Users/srosenberg/workspace/go/src/github.com/cockroachdb/cockroach/pkg/cmd/roachtest/tests/jepsen_bank.go)",
+      "Bash(find /Users/srosenberg/workspace/go/src/github.com/cockroachdb/cockroach/pkg/cmd/roachtest -name \"*.go\" -type f -exec grep -l \"task\\\\|Tasker\\\\|Monitor\" {} \\\\; | head -5)",
+      "Bash(find /Users/srosenberg/workspace/go/src/github.com/cockroachdb/cockroach/pkg/cmd/roachtest/operations -type f -name \"*.go\" | sort | xargs -I {} basename {})",
+      "Bash(gh pr view 161178 --json title,body,commits,files,additions,deletions)",
+      "Bash(gh pr diff 161178)",
+      "Bash(gh issue:*)",
+      "Bash(gh pr:*)",
+      "Bash(find /Users/srosenberg/workspace/go/src/github.com/cockroachdb/cockroach -type d -name \"*import*\" 2>/dev/null | head -20)"
+    ]
+  },
+  "disabledMcpjsonServers": [
+    "gopls-mcp"
+  ]
+}

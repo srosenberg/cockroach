@@ -237,16 +237,16 @@ func (w *worker) run(ctx context.Context) error {
 	// but don't account for them in the histogram.
 	start := timeutil.Now()
 	_, onTxnStartDuration, err := tx.run(context.Background(), warehouseID)
+	if err != nil {
+		w.counters[txInfo.name].error.Inc()
+		return errors.Wrapf(err, "error printed in %s", txInfo.name)
+	}
 	if ctx.Err() == nil {
 		elapsed := timeutil.Since(start)
 		// NB: this histogram *should* be named along the lines of
 		// `txInfo.name+"_success"` but we already rely on the names and shouldn't
 		// change them now.
 		w.hists.Get(txInfo.name).Record(elapsed - onTxnStartDuration)
-	}
-	if err != nil {
-		w.counters[txInfo.name].error.Inc()
-		return errors.Wrapf(err, "error printed in %s", txInfo.name)
 	}
 
 	w.counters[txInfo.name].success.Inc()

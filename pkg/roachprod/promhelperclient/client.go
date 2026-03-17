@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/azure"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/ibm"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/ovh"
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
 	"github.com/cockroachdb/errors"
 	"gopkg.in/yaml.v2"
@@ -87,6 +88,9 @@ var (
 			Default: Public,
 		},
 		ibm.ProviderName: {
+			Default: Public,
+		},
+		ovh.ProviderName: {
 			Default: Public,
 		},
 	}

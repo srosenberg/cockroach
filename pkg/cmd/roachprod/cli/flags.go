@@ -177,15 +177,18 @@ func initCreateCmdFlags(createCmd *cobra.Command) {
 			"quotes, gce label name only allows hyphens (-), underscores (_), lowercase characters, numbers and "+
 			"international characters. Examples: usage=cloud-report-2021, namewithspaceinvalue='s o s'")
 
-	// Allow each Provider to inject additional configuration flags
+	// Allow each Provider to inject additional configuration flags.
+	// Flags are registered for all providers (including inactive ones) so that
+	// users see helpful errors rather than "unknown flag" when credentials are
+	// missing.
 	for _, providerName := range vm.AllProviderNames() {
 		provider := vm.Providers[providerName]
-		if provider.Active() {
-			providerOptsContainer[providerName].ConfigureCreateFlags(createCmd.Flags())
-			// createCmd only accepts a single GCE project, as opposed to all the other
-			// commands.
-			provider.ConfigureProviderFlags(createCmd.Flags(), vm.SingleProject)
+		if opts := providerOptsContainer[providerName]; opts != nil {
+			opts.ConfigureCreateFlags(createCmd.Flags())
 		}
+		// createCmd only accepts a single GCE project, as opposed to all the other
+		// commands.
+		provider.ConfigureProviderFlags(createCmd.Flags(), vm.SingleProject)
 	}
 }
 

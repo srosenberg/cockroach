@@ -190,9 +190,11 @@ func (p *provider) ProjectActive(project string) bool {
 	return false
 }
 
-// CreateProviderFlags is part of the vm.Provider interface.
+// CreateProviderOpts is part of the vm.Provider interface. It delegates to the
+// wrapped provider so that CLI flags are registered even when the provider is
+// inactive (e.g., missing credentials).
 func (p *provider) CreateProviderOpts() vm.ProviderOpts {
-	return nil
+	return p.delegate.CreateProviderOpts()
 }
 
 // String is part of the vm.Provider interface.

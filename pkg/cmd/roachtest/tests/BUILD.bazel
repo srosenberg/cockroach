@@ -99,6 +99,7 @@ go_library(
         "java_helpers.go",
         "javascript_helpers.go",
         "jepsen.go",
+        "jepsen_bank.go",
         "jobs.go",
         "jobs_util.go",
         "kerberos_connection_stress.go",

@@ -4266,6 +4266,16 @@ def go_deps():
         ],
     )
     go_repository(
+        name = "com_github_gophercloud_gophercloud_v2",
+        build_file_proto_mode = "disable_global",
+        importpath = "github.com/gophercloud/gophercloud/v2",
+        sha256 = "f3e8d132d4bc69a9c839bdb4d9ea3e7f48cac9843515c0b19b1b6b670a37a7d6",
+        strip_prefix = "github.com/gophercloud/gophercloud/v2@v2.10.0",
+        urls = [
+            "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/gophercloud/gophercloud/v2/com_github_gophercloud_gophercloud_v2-v2.10.0.zip",
+        ],
+    )
+    go_repository(
         name = "com_github_gopherjs_gopherjs",
         build_file_proto_mode = "disable_global",
         importpath = "github.com/gopherjs/gopherjs",

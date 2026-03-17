@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "ovh",
+    srcs = [
+        "provider.go",
+        "provider_flags.go",
+        "startup.go",
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/roachprod/vm/ovh",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/roachprod/config",
+        "//pkg/roachprod/logger",
+        "//pkg/roachprod/vm",
+        "//pkg/roachprod/vm/flagstub",
+        "//pkg/util/syncutil",
+        "//pkg/util/timeutil",
+        "@com_github_cockroachdb_errors//:errors",
+        "@com_github_gophercloud_gophercloud_v2//:gophercloud",
+        "@com_github_gophercloud_gophercloud_v2//openstack",
+        "@com_github_gophercloud_gophercloud_v2//openstack/compute/v2/flavors",
+        "@com_github_gophercloud_gophercloud_v2//openstack/compute/v2/keypairs",
+        "@com_github_gophercloud_gophercloud_v2//openstack/compute/v2/servers",
+        "@com_github_gophercloud_gophercloud_v2//openstack/image/v2/images",
+        "@com_github_spf13_pflag//:pflag",
+        "@org_golang_x_sync//errgroup",
+    ],
+)

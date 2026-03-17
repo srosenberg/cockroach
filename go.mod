@@ -374,6 +374,7 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
+	github.com/gophercloud/gophercloud/v2 v2.10.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/goware/modvendor v0.5.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect

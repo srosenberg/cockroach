@@ -592,6 +592,7 @@ DISTDIR_FILES = {
     "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/googleapis/gnostic/com_github_googleapis_gnostic-v0.5.5.zip": "50fab68c592e8c8038b48b3c7b68d8f56297a58da28194ace2a43a9866c4025b",
     "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/googleapis/google-cloud-go-testing/com_github_googleapis_google_cloud_go_testing-v0.0.0-20200911160855-bcd43fbb19e8.zip": "af70a872c8b0107e2fc7b32a9562e15be885793454df61dc6aae3c774387ca7d",
     "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/gophercloud/gophercloud/com_github_gophercloud_gophercloud-v0.20.0.zip": "aca35069a500cfa1694c16908985bfc88bd52e455a2ad3d901399352240c7424",
+    "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/gophercloud/gophercloud/v2/com_github_gophercloud_gophercloud_v2-v2.10.0.zip": "f3e8d132d4bc69a9c839bdb4d9ea3e7f48cac9843515c0b19b1b6b670a37a7d6",
     "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/gopherjs/gopherjs/com_github_gopherjs_gopherjs-v0.0.0-20181017120253-0766667cb4d1.zip": "9b9ccc9606dfeae2fb533f768b437025797dc4aa59ac3f8f091b64dc14bf5db7",
     "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/gordonklaus/ineffassign/com_github_gordonklaus_ineffassign-v0.0.0-20200309095847-7953dde2c7bf.zip": "ca53f10fdaec7dd8a835c69dee8fe2c0189cb6da38cb0a601310d7e756f15d09",
     "https://storage.googleapis.com/cockroach-godeps/gomod/github.com/gorilla/context/com_github_gorilla_context-v1.1.1.zip": "4ec8e01fe741a931edeebdee9348ffb49b5cc565ca245551d0d20b67062e6f0b",

@@ -46,7 +46,7 @@ var tolerateErrors = runFlags.Bool("tolerate-errors", false, "Keep running on er
 var maxRate = runFlags.Float64(
 	"max-rate", 0, "Maximum frequency of operations (reads/writes). If 0, no limit.")
 var maxOps = runFlags.Uint64("max-ops", 0, "Maximum number of operations to run")
-var countErrors = runFlags.Bool("count-errors", false, "If true, unsuccessful operations count towards --max-ops limit.")
+var countErrors = runFlags.Bool("count-errors", false, "If true, unsuccessful operations count towards --max-ops and --max-rate limit.")
 var duration = runFlags.Duration("duration", 0,
 	"The duration to run (in addition to --ramp). If 0, run forever.")
 var doInit = runFlags.Bool("init", false, "Automatically run init. DEPRECATED: Use workload init instead.")
@@ -299,13 +299,6 @@ func workerRun(
 			return
 		}
 
-		// Limit how quickly the load generator sends requests based on --max-rate.
-		if limiter != nil {
-			if err := limiter.Wait(ctx); err != nil {
-				return
-			}
-		}
-
 		if err := workFn(ctx); err != nil {
 			if ctx.Err() != nil && (errors.Is(err, ctx.Err()) || errors.Is(err, driver.ErrBadConn)) {
 				// lib/pq may return either the `context canceled` error or a
@@ -318,6 +311,12 @@ func workerRun(
 				// Continue to the next iteration of the infinite loop only if
 				// we are not counting the errors.
 				continue
+			}
+		}
+		// Limit how quickly the load generator sends requests based on --max-rate.
+		if limiter != nil {
+			if err := limiter.Wait(ctx); err != nil {
+				return
 			}
 		}
 

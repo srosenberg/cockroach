@@ -50,6 +50,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/ibm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/local"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/ovh"
 	"github.com/cockroachdb/cockroach/pkg/server/debug/replay"
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/httputil"
@@ -2032,6 +2033,11 @@ func InitProviders() map[string]string {
 			name:  ibm.ProviderName,
 			init:  ibm.Init,
 			empty: &ibm.Provider{},
+		},
+		{
+			name:  ovh.ProviderName,
+			init:  ovh.Init,
+			empty: &ovh.Provider{},
 		},
 		{
 			name: local.ProviderName,

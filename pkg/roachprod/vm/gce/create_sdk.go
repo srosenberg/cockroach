@@ -156,6 +156,16 @@ func (p *Provider) buildInstanceProperties(
 		props.MinCpuPlatform = proto.String(platform)
 	}
 
+	// TODO(roachprod): set PerformanceMonitoringUnit=STANDARD for C4 machine
+	// types once cloud.google.com/go/compute is upgraded past v1.19.3 (the
+	// PerformanceMonitoringUnit field was added in a later version). The CLI
+	// path in computeInstanceArgs already handles this via --performance-monitoring-unit.
+	if isC4MachineType(providerOpts.MachineType) {
+		l.Printf("WARNING: BulkInsert API does not support setting PerformanceMonitoringUnit "+
+			"with the current SDK version; PMU access may not be enabled for C4 machine type %s",
+			providerOpts.MachineType)
+	}
+
 	// Set the labels on the instance properties.
 	props.Labels = labels
 

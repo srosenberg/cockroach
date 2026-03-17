@@ -39,10 +39,10 @@ const (
 	defaultAPIKeyEnvVarPrefix = "IBM"
 
 	defaultMachineType = "cz2-4x8"
-	defaultCPUArch     = vm.ArchS390x
-	defaultCPUFamily   = "IBM zSystem"
+	defaultCPUArch     = vm.ArchAMD64
+	defaultCPUFamily   = "Cascade Lake"
 	defaultRemoteUser  = "ubuntu"
-	defaultImageAMI    = "ibm-ubuntu-22-04-5-minimal-s390x-5"
+	defaultImageAMI    = "ibm-ubuntu-22-04-5-minimal-amd64-1"
 	defaultNTPServer   = "time.adn.networklayer.com"
 
 	// Default values for volumes
@@ -83,15 +83,20 @@ var (
 	// the zones to use for the cluster, as the supported regions are defined in
 	// the each provider's instance.
 	defaultZones = map[string][]string{
-		"ca-tor": {
-			"ca-tor-1",
-			"ca-tor-2",
-			"ca-tor-3",
-		},
-		"br-sao": {
-			"br-sao-1",
-			"br-sao-2",
-			"br-sao-3",
+		//"ca-tor": {
+		//	"ca-tor-1",
+		//	"ca-tor-2",
+		//	"ca-tor-3",
+		//},
+		//"br-sao": {
+		//	"br-sao-1",
+		//	"br-sao-2",
+		//	"br-sao-3",
+		//},
+		"us-south": {
+			"us-south-1",
+			"us-south-2",
+			"us-south-3",
 		},
 	}
 )
@@ -437,7 +442,7 @@ func (p *Provider) Create(
 	// The more instances we create, the longer it takes to get them all
 	// running, so we wait for a duration of 30 seconds per instance, but never
 	// less than two minutes, and never more than 15 minutes.
-	waitTime := len(names) * 30
+	waitTime := len(names) * 90
 	if waitTime < 120 {
 		waitTime = 120
 	} else if waitTime > 900 {
