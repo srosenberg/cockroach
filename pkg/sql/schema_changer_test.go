@@ -8090,3 +8090,54 @@ func TestCreateTableAsValidationFailure(t *testing.T) {
 	runner.ExpectErr(t, "backfill query did not populate index \"t2_pkey\" with expected number of rows", "CREATE TABLE t2 AS (SELECT * FROM t1)")
 	runner.ExpectErr(t, "backfill query did not populate index \"t2_pkey\" with expected number of rows", "CREATE MATERIALIZED VIEW t2 AS (SELECT n FROM t1)")
 }
+
+// TestSetNotNullInTxnWithCreateTable verifies that ALTER COLUMN SET NOT NULL
+// on a table created in the same transaction correctly sets the column as NOT
+// NULL and does not leave a residual check constraint.
+func TestSetNotNullInTxnWithCreateTable(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(context.Background())
+
+	runner := sqlutils.MakeSQLRunner(sqlDB)
+	runner.Exec(t, `CREATE DATABASE t`)
+
+	tx, err := sqlDB.Begin()
+	require.NoError(t, err)
+
+	_, err = tx.Exec(`SET LOCAL autocommit_before_ddl = off`)
+	require.NoError(t, err)
+
+	_, err = tx.Exec(`CREATE TABLE t.test (k INT PRIMARY KEY, v INT)`)
+	require.NoError(t, err)
+
+	_, err = tx.Exec(`INSERT INTO t.test VALUES (1, 10), (2, 20)`)
+	require.NoError(t, err)
+
+	_, err = tx.Exec(`ALTER TABLE t.test ALTER COLUMN v SET NOT NULL`)
+	require.NoError(t, err)
+
+	require.NoError(t, tx.Commit())
+
+	// The column should be NOT NULL with no residual check constraint.
+	var createStmt string
+	runner.QueryRow(t, `SELECT create_statement FROM [SHOW CREATE TABLE t.test]`).Scan(&createStmt)
+
+	// Column v must be NOT NULL, not NULL.
+	require.Contains(t, createStmt, "v INT8 NOT NULL",
+		"column v should be NOT NULL in the descriptor, got:\n%s", createStmt)
+
+	// There should be no auto_not_null check constraint.
+	require.NotContains(t, createStmt, "auto_not_null",
+		"residual check constraint should not exist, got:\n%s", createStmt)
+
+	// Verify the error code for NULL insertion is 23502 (not_null_violation),
+	// not 23514 (check_violation).
+	_, err = sqlDB.Exec(`INSERT INTO t.test (k) VALUES (3)`)
+	require.Error(t, err)
+	pgErr := pgerror.Flatten(err)
+	require.Equal(t, pgcode.NotNullViolation.String(), pgErr.Code,
+		"expected not_null_violation (23502), got %s: %s", pgErr.Code, err)
+}
