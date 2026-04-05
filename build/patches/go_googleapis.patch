@@ -15,7 +15,7 @@ diff -urN a/google/cloud/kms/v1/BUILD.bazel b/google/cloud/kms/v1/BUILD.bazel
      ],
  )
  
-diff -urN a/google/devtools/build/v1/BUILD.bazel a/google/devtools/build/v1/BUILD.bazel
+diff -urN a/google/devtools/build/v1/BUILD.bazel b/google/devtools/build/v1/BUILD.bazel
 --- a/google/devtools/build/v1/BUILD.bazel	1970-01-01 00:00:00.000000000 +0000
 +++ b/google/devtools/build/v1/BUILD.bazel	2000-01-01 00:00:00.000000000 -0000
 @@ -129,7 +129,13 @@
@@ -32,3 +32,4 @@ diff -urN a/google/devtools/build/v1/BUILD.bazel a/google/devtools/build/v1/BUIL
 +        "@org_golang_google_genproto//protobuf/field_mask:go_default_library",
      ],
  )
+

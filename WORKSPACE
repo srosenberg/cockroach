@@ -193,10 +193,7 @@ bazel_features_deps()
 
 http_archive(
     name = "go_googleapis",
-    patch_args = [
-        "-E",
-        "-p1",
-    ],
+    patch_args = ["-p1"],
     patches = [
         "@com_github_cockroachdb_cockroach//build/patches:go_googleapis.patch",
     ],

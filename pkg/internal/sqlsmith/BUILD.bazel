@@ -13,6 +13,7 @@ go_library(
         "schema.go",
         "scope.go",
         "setup.go",
+        "sqlcoverage.go",
         "sqlsmith.go",
         "tlp.go",
         "type.go",
@@ -53,6 +54,7 @@ go_test(
     srcs = [
         "main_test.go",
         "setup_test.go",
+        "sqlcoverage_test.go",
         "sqlsmith_test.go",
     ],
     data = ["//c-deps:libgeos"],

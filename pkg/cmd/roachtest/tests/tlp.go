@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/internal/sqlsmith"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
+	"github.com/cockroachdb/cockroach/pkg/sql/parser"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/randutil"
 	"github.com/cockroachdb/errors"
@@ -63,27 +64,42 @@ func runTLP(ctx context.Context, t test.Test, c cluster.Cluster) {
 		}
 	}
 
+	coverage := sqlsmith.NewCoverageTracker()
+
 	for i := 0; ; i++ {
 		c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
 		if shouldExit() {
-			return
+			break
 		}
 
-		runOneTLP(ctx, i, timeout, t, c)
+		runOneTLP(ctx, i, timeout, t, c, coverage)
 		// If this iteration of the TLP was interrupted because the timeout of
 		// ctx has been reached, we want to cleanly exit from the test, without
 		// wiping out the cluster (if we tried that, we'd get an error because
 		// ctx is canceled).
 		if shouldExit() {
-			return
+			break
 		}
 		c.Stop(ctx, t.L(), option.DefaultStopOpts())
 		c.Wipe(ctx)
 	}
+
+	// Write the final coverage report to the artifacts directory and log.
+	report := coverage.Report()
+	t.L().Printf("\n%s", report)
+	reportPath := filepath.Join(t.ArtifactsDir(), "coverage_report.txt")
+	if err := os.WriteFile(reportPath, []byte(report), 0644); err != nil {
+		t.L().Printf("failed to write coverage report: %v", err)
+	}
 }
 
 func runOneTLP(
-	ctx context.Context, iter int, timeout time.Duration, t test.Test, c cluster.Cluster,
+	ctx context.Context,
+	iter int,
+	timeout time.Duration,
+	t test.Test,
+	c cluster.Cluster,
+	coverage *sqlsmith.CoverageTracker,
 ) {
 	// Set up a statement logger for easy reproduction. We only
 	// want to log successful statements and statements that
@@ -103,6 +119,24 @@ func runOneTLP(
 			fmt.Fprint(tlpLog, ";")
 		}
 		fmt.Fprint(tlpLog, "\n\n")
+	}
+
+	// observeSQL parses a SQL string and records its features for coverage
+	// tracking. Parse errors and panics are silently ignored since coverage
+	// is best-effort.
+	observeSQL := func(sql string) {
+		defer func() { _ = recover() }()
+		sql = strings.TrimSpace(sql)
+		if sql == "" {
+			return
+		}
+		stmts, err := parser.Parse(sql)
+		if err != nil {
+			return
+		}
+		for i := range stmts {
+			coverage.ObserveStatement(stmts[i].AST)
+		}
 	}
 
 	conn := c.Conn(ctx, t.L(), 1)
@@ -161,29 +195,37 @@ func runOneTLP(
 		default:
 		}
 
-		if i%1000 == 0 {
-			t.Status("running TLP: ", i, " statements completed")
+		if i%100 == 0 {
+			t.Status(fmt.Sprintf(
+				"running TLP: %d statements, coverage: %d/%d features, %d unique fingerprints",
+				i, coverage.FeaturesCovered(), coverage.FeaturesTotal(),
+				coverage.UniqueFingerprints(),
+			))
 		}
 
 		// Run 1000 mutations first so that the tables have rows. Run a mutation
 		// for a fraction of iterations after that to continually change the
 		// state of the database.
 		if i < 1000 || i%10 == 0 {
-			runMutationStatement(t, conn, "", mutSmither, logStmt)
+			if stmt := runMutationStatement(t, conn, "", mutSmither, logStmt); stmt != "" {
+				observeSQL(stmt)
+			}
 			continue
 		}
 
-		if err := runTLPQuery(t, conn, rnd, tlpSmither, logStmt); err != nil {
+		if err := runTLPQuery(t, conn, rnd, tlpSmither, logStmt, observeSQL); err != nil {
 			t.Fatal(err)
 		}
 	}
 }
 
 // runMutationsStatement runs a random INSERT, UPDATE, or DELETE statement that
-// potentially modifies the state of the database.
+// potentially modifies the state of the database. It returns the generated
+// statement string (even if execution fails) so callers can observe it for
+// coverage tracking.
 func runMutationStatement(
 	t task.Tasker, conn *gosql.DB, connInfo string, smither *sqlsmith.Smither, logStmt func(string),
-) {
+) string {
 	// Ignore panics from Generate.
 	defer func() {
 		if r := recover(); r != nil {
@@ -202,6 +244,7 @@ func runMutationStatement(
 		}
 		return nil
 	})
+	return stmt
 }
 
 // runTLPQuery runs two queries to perform TLP. One is partitioned and one is
@@ -210,7 +253,12 @@ func runMutationStatement(
 // partitioned query. See GenerateTLP for more information on TLP and the
 // generated queries.
 func runTLPQuery(
-	t task.Tasker, conn *gosql.DB, rnd *rand.Rand, smither *sqlsmith.Smither, logStmt func(string),
+	t task.Tasker,
+	conn *gosql.DB,
+	rnd *rand.Rand,
+	smither *sqlsmith.Smither,
+	logStmt func(string),
+	observeSQL func(string),
 ) (err error) {
 	// Ignore panics from GenerateTLP.
 	defer func() {
@@ -234,6 +282,9 @@ func runTLPQuery(
 	}
 
 	unpartitioned, partitioned, args := smither.GenerateTLP()
+	// Observe all generated TLP queries for coverage, not just mismatches.
+	observeSQL(unpartitioned)
+	observeSQL(partitioned)
 	combined := sqlsmith.CombinedTLP(unpartitioned, partitioned)
 
 	return runWithTimeout(t, func() error {
