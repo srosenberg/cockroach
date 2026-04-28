@@ -1,0 +1,30 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "streamingvalidator",
+    srcs = [
+        "doc.go",
+        "observation.go",
+        "validator.go",
+        "violation.go",
+    ],
+    importpath = "github.com/cockroachdb/cockroach/pkg/kv/kvnemesis/streamingvalidator",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/kv/kvnemesis/kvnemesisutil",
+        "//pkg/roachpb",
+        "//pkg/util/syncutil",
+    ],
+)
+
+go_test(
+    name = "streamingvalidator_test",
+    srcs = ["validator_test.go"],
+    embed = [":streamingvalidator"],
+    deps = [
+        "//pkg/kv/kvnemesis/kvnemesisutil",
+        "//pkg/roachpb",
+        "//pkg/util/leaktest",
+        "@com_github_stretchr_testify//require",
+    ],
+)
