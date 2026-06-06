@@ -8,14 +8,18 @@ package jobutils
 import (
 	"context"
 	gosql "database/sql"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
+	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/lease"
+	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
@@ -26,37 +30,37 @@ import (
 // WaitForJobToSucceed waits for the specified job ID to succeed.
 func WaitForJobToSucceed(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
 	t.Helper()
-	waitForJobToHaveStatus(t, db, jobID, jobs.StateSucceeded)
+	WaitForJobToHaveStatus(t, db, jobID, jobs.StateSucceeded)
 }
 
 // WaitForJobToPause waits for the specified job ID to be paused.
 func WaitForJobToPause(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
 	t.Helper()
-	waitForJobToHaveStatus(t, db, jobID, jobs.StatePaused)
+	WaitForJobToHaveStatus(t, db, jobID, jobs.StatePaused)
 }
 
 // WaitForJobToCancel waits for the specified job ID to be in a cancelled state.
 func WaitForJobToCancel(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
 	t.Helper()
-	waitForJobToHaveStatus(t, db, jobID, jobs.StateCanceled)
+	WaitForJobToHaveStatus(t, db, jobID, jobs.StateCanceled)
 }
 
 // WaitForJobToRun waits for the specified job ID to be in a running state.
 func WaitForJobToRun(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
 	t.Helper()
-	waitForJobToHaveStatus(t, db, jobID, jobs.StateRunning)
+	WaitForJobToHaveStatus(t, db, jobID, jobs.StateRunning)
 }
 
 // WaitForJobToFail waits for the specified job ID to be in a failed state.
 func WaitForJobToFail(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
 	t.Helper()
-	waitForJobToHaveStatus(t, db, jobID, jobs.StateFailed)
+	WaitForJobToHaveStatus(t, db, jobID, jobs.StateFailed)
 }
 
 // WaitForJobReverting waits for the specified job ID to be in a reverting state.
 func WaitForJobReverting(t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID) {
 	t.Helper()
-	waitForJobToHaveStatus(t, db, jobID, jobs.StateReverting)
+	WaitForJobToHaveStatus(t, db, jobID, jobs.StateReverting)
 }
 
 const (
@@ -75,7 +79,7 @@ const (
 	JobPayloadByIDQuery         = "SELECT value FROM system.job_info WHERE job_id = $1 AND info_key::string = 'legacy_payload' ORDER BY written DESC LIMIT 1"
 )
 
-func waitForJobToHaveStatus(
+func WaitForJobToHaveStatus(
 	t testing.TB, db *sqlutils.SQLRunner, jobID jobspb.JobID, expectedStatus jobs.State,
 ) {
 	t.Helper()
@@ -96,18 +100,26 @@ func waitForJobToHaveStatus(
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("condition failed to evaluate within %s: %s", duration, err)
+		dumpFile := testutils.WriteGoroutineDump()
+		t.Fatalf("condition failed to evaluate within %s: %s\n\ngoroutine dump: %s",
+			duration, err, dumpFile)
 	}
 }
 
 // BulkOpResponseFilter creates a blocking response filter for the responses
 // related to bulk IO/backup/restore/import: Export, Import and AddSSTable. See
 // discussion on RunJob for where this might be useful.
-func BulkOpResponseFilter(allowProgressIota *chan struct{}) kvserverbase.ReplicaResponseFilter {
+func BulkOpResponseFilter(
+	codec *atomic.Pointer[keys.SQLCodec], allowProgressIota *chan struct{},
+) kvserverbase.ReplicaResponseFilter {
 	return func(ctx context.Context, ba *kvpb.BatchRequest, br *kvpb.BatchResponse) *kvpb.Error {
-		for _, ru := range br.Responses {
+		for idx, ru := range br.Responses {
 			switch ru.GetInner().(type) {
 			case *kvpb.ExportResponse, *kvpb.AddSSTableResponse:
+				// Skip over lease manager export requests.
+				if exp := ba.Requests[idx].GetExport(); exp != nil && lease.TestIsLeasingTxnExportRequest(codec.Load(), ba, exp) {
+					continue
+				}
 				select {
 				case <-*allowProgressIota:
 				case <-ctx.Done():

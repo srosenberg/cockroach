@@ -10,12 +10,14 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
-	"github.com/cockroachdb/cockroach/pkg/util/version"
+	"github.com/cockroachdb/version"
 )
 
 // DefaultCockroachPath is the path where the binary passed to the
 // `--cockroach` flag will be made available in every node in the
 // cluster.
+// N.B. This constant is duplicated from roachtest to break build dependency.
+// Thus, any update should be reflected in both places.
 const DefaultCockroachPath = "./cockroach"
 
 // DefaultDeprecatedWorkloadPath is the path where the binary passed

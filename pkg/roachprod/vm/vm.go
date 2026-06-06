@@ -6,6 +6,8 @@
 package vm
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -37,11 +39,16 @@ const (
 	TagUsage = "usage"
 	// TagArch is the CPU architecture tag const.
 	TagArch = "arch"
+	// TagManaged is the label used to identify managed clusters
+	TagManaged = "managed"
 
 	ArchARM64   = CPUArch("arm64")
 	ArchAMD64   = CPUArch("amd64")
 	ArchFIPS    = CPUArch("fips")
+	ArchS390x   = CPUArch("s390x")
 	ArchUnknown = CPUArch("unknown")
+
+	DefaultLifetime = 12 * time.Hour
 )
 
 // UnimplementedError is returned when a method is not implemented by a
@@ -65,11 +72,15 @@ func ParseArch(s string) CPUArch {
 		return ArchAMD64
 	}
 	if strings.Contains(arch, "arm64") || strings.Contains(arch, "aarch64") ||
-		strings.Contains(arch, "ampere") || strings.Contains(arch, "graviton") {
+		strings.Contains(arch, "ampere") || strings.Contains(arch, "graviton") ||
+		strings.Contains(arch, "axion") {
 		return ArchARM64
 	}
 	if strings.Contains(arch, "fips") {
 		return ArchFIPS
+	}
+	if strings.Contains(arch, "s390x") {
+		return ArchS390x
 	}
 	return ArchUnknown
 }
@@ -99,7 +110,7 @@ type VM struct {
 	CreatedAt time.Time `json:"created_at"`
 	// If non-empty, indicates that some or all of the data in the VM instance
 	// is not present or otherwise invalid.
-	Errors      []error           `json:"errors"`
+	Errors      []VMError         `json:"errors"`
 	Lifetime    time.Duration     `json:"lifetime"`
 	Preemptible bool              `json:"preemptible"`
 	Labels      map[string]string `json:"labels"`
@@ -108,7 +119,10 @@ type VM struct {
 
 	// PublicDNS is the public DNS name that can be used to connect to the VM.
 	PublicDNS string `json:"public_dns"`
-	// The DNS provider to use for DNS operations performed for this VM.
+	// PublicDNSZone is the public DNS zone that can be used to connect to the VM
+	// (e.g. roachprod.crdb.io).
+	PublicDNSZone string `json:"public_dns_zone"`
+	// The DNS provider to use for DNS operations performed for this VM (e.g. gce).
 	DNSProvider string `json:"dns_provider"`
 
 	// The name of the cloud provider that hosts the VM instance
@@ -165,7 +179,7 @@ func Name(cluster string, idx int) string {
 	return fmt.Sprintf("%s-%0.4d", cluster, idx)
 }
 
-// Error values for VM.Error
+// Error values for VM.Errors
 var (
 	ErrBadNetwork         = errors.New("could not determine network information")
 	ErrBadScheduling      = errors.New("could not determine scheduling information")
@@ -174,7 +188,73 @@ var (
 	ErrNoExpiration       = errors.New("could not determine expiration")
 )
 
-var regionRE = regexp.MustCompile(`(.*[^-])-?[a-z]$`)
+// VMError wraps an error and implements json.Marshaler/Unmarshaler so that
+// errors can be properly serialized to and from JSON. This is necessary because
+// Go's encoding/json cannot unmarshal into an error interface type.
+type VMError struct {
+	err error
+}
+
+// NewVMError creates a new VMError from an error.
+func NewVMError(err error) VMError {
+	return VMError{err: err}
+}
+
+// Error implements the error interface.
+func (e VMError) Error() string {
+	if e.err == nil {
+		return ""
+	}
+	return e.err.Error()
+}
+
+// Unwrap returns the underlying error for use with errors.Is/As.
+func (e VMError) Unwrap() error {
+	return e.err
+}
+
+// MarshalJSON implements json.Marshaler.
+func (e VMError) MarshalJSON() ([]byte, error) {
+	if e.err == nil {
+		return []byte(`""`), nil
+	}
+	return json.Marshal(e.err.Error())
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+// It handles both the new format (JSON string) and the legacy format (JSON object)
+// that was produced when []error was serialized directly. The legacy format
+// typically produces empty objects `{}` since error types don't have exported fields.
+func (e *VMError) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as a string first (new format)
+	var msg string
+	if err := json.Unmarshal(data, &msg); err == nil {
+		if msg == "" {
+			e.err = nil
+		} else {
+			// Use Newf with %s format to satisfy the fmtsafe linter which requires
+			// constant format strings.
+			e.err = errors.Newf("%s", msg)
+		}
+		return nil
+	}
+
+	// If that fails, try to unmarshal as an object (legacy format).
+	// The legacy format serialized error interfaces as objects, but since
+	// errors.errorString has no exported fields, they serialize as empty `{}`.
+	// We treat any object as a nil/unknown error to maintain backwards compatibility.
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err == nil {
+		// Legacy format - treat as nil error (the error message was lost in serialization)
+		e.err = nil
+		return nil
+	}
+
+	// If neither worked, return an error
+	return errors.Newf("cannot unmarshal VMError from: %s", string(data))
+}
+
+var regionRE = regexp.MustCompile(`(.*[^-])-?[0-9a-z]$`)
 
 // IsLocal returns true if the VM represents the local host.
 func (vm *VM) IsLocal() bool {
@@ -209,6 +289,9 @@ func (vm *VM) ZoneEntry() (string, error) {
 }
 
 func (vm *VM) AttachVolume(l *logger.Logger, v Volume) (deviceName string, _ error) {
+	// N.B. The volume is appended before calling the provider so that
+	// provider implementations can use len(NonBootAttachedVolumes) to
+	// derive the device index.
 	vm.NonBootAttachedVolumes = append(vm.NonBootAttachedVolumes, v)
 	if err := ForProvider(vm.Provider, func(provider Provider) error {
 		var err error
@@ -273,12 +356,35 @@ func (vl List) ProviderIDs() []string {
 	return ret
 }
 
+type Filesystem string
+
 const (
 	// Zfs refers to the zfs file system.
-	Zfs = "zfs"
+	Zfs Filesystem = "zfs"
 	// Ext4 refers to the ext4 file system.
-	Ext4 = "ext4"
+	Ext4 Filesystem = "ext4"
+	// Xfs refers to the xfs file system.
+	Xfs Filesystem = "xfs"
+	// F2fs refers to the f2fs file system.
+	F2fs Filesystem = "f2fs"
+	// Btrfs refers to the btrfs file system.
+	Btrfs Filesystem = "btrfs"
 )
+
+// ParseFilesystemString parses and validates a filesystem string.
+func ParseFilesystemString(s string) (Filesystem, error) {
+	return ParseFileSystemOption(Filesystem(s))
+}
+
+// ParseFileSystemOption parses and validates a Filesystem option.
+func ParseFileSystemOption(s Filesystem) (Filesystem, error) {
+	switch s {
+	case Zfs, Ext4, Xfs, F2fs, Btrfs:
+		return s, nil
+	default:
+		return "", errors.Newf("unsupported filesystem: %s", s)
+	}
+}
 
 // CreateOpts is the set of options when creating VMs.
 type CreateOpts struct {
@@ -292,10 +398,10 @@ type CreateOpts struct {
 	SSDOpts        struct {
 		UseLocalSSD bool
 		// NoExt4Barrier, if set, makes the "-o nobarrier" flag be used when
-		// mounting the SSD. Ignored if UseLocalSSD is not set.
+		// mounting the SSD. Ignored if UseLocalSSD is not set or filesystem is not ext4.
 		NoExt4Barrier bool
 		// The file system to be used. This is set to "ext4" by default.
-		FileSystem string
+		FileSystem Filesystem
 	}
 	OsVolumeSize int
 }
@@ -304,7 +410,7 @@ type CreateOpts struct {
 func DefaultCreateOpts() CreateOpts {
 	defaultCreateOpts := CreateOpts{
 		ClusterName:    "",
-		Lifetime:       12 * time.Hour,
+		Lifetime:       DefaultLifetime,
 		GeoDistributed: false,
 		VMProviders:    []string{},
 		OsVolumeSize:   10,
@@ -348,6 +454,20 @@ type ProviderOpts interface {
 type VolumeSnapshot struct {
 	ID   string
 	Name string
+	// Region is set and used by the AWS provider to scope snapshot
+	// operations to the correct region. Other providers may leave it empty.
+	Region string
+	// Status is the current state of the snapshot. The value is
+	// provider-specific (e.g. "completed" on AWS, "READY" on GCE).
+	// An empty string means the state is unknown.
+	Status string
+}
+
+// IsReady returns true when the snapshot has finished being created and
+// is usable. See VolumeSnapshot.Status for provider-specific values.
+func (v VolumeSnapshot) IsReady() bool {
+	return v.Status == "READY" || // GCE
+		v.Status == "completed" // AWS
 }
 
 type VolumeSnapshots []VolumeSnapshot
@@ -425,6 +545,8 @@ type ListOptions struct {
 	IncludeEmptyClusters bool
 	ComputeEstimatedCost bool
 	IncludeProviders     []string
+	LimitConcurrency     int
+	BailOnProviderError  bool
 }
 
 type PreemptedVM struct {
@@ -460,6 +582,11 @@ type Provider interface {
 	CreateProviderOpts() ProviderOpts
 	CleanSSH(l *logger.Logger) error
 
+	// IsCentralizedProvider returns true if the provider is a centralized provider.
+	// This is used to determine if this provider will pull its state from a centralized
+	// service and trigger actions remotely, or if all will be managed locally.
+	IsCentralizedProvider() bool
+
 	// ConfigSSH takes a list of zones and configures SSH for machines in those
 	// zones for the given provider.
 	ConfigSSH(l *logger.Logger, zones []string) error
@@ -471,7 +598,7 @@ type Provider interface {
 	Extend(l *logger.Logger, vms List, lifetime time.Duration) error
 	// Return the account name associated with the provider
 	FindActiveAccount(l *logger.Logger) (string, error)
-	List(l *logger.Logger, opts ListOptions) (List, error)
+	List(ctx context.Context, l *logger.Logger, opts ListOptions) (List, error)
 	// AddLabels adds (or updates) the given labels to the given VMs.
 	// N.B. If a VM contains a label with the same key, its value will be updated.
 	AddLabels(l *logger.Logger, vms List, labels map[string]string) error
@@ -501,8 +628,10 @@ type Provider interface {
 	DeleteVolume(l *logger.Logger, volume Volume, vm *VM) error
 	// AttachVolume attaches the given volume to the given VM.
 	AttachVolume(l *logger.Logger, volume Volume, vm *VM) (string, error)
-	// CreateVolumeSnapshot creates a snapshot of the given volume, using the
-	// given options.
+	// CreateVolumeSnapshot creates a snapshot of the given volume. Some
+	// providers may return before the snapshot is fully ready. Callers
+	// that need a completed snapshot should poll ListVolumeSnapshots
+	// and check the Status field.
 	CreateVolumeSnapshot(l *logger.Logger, volume Volume, vsco VolumeSnapshotCreateOpts) (VolumeSnapshot, error)
 	// ListVolumeSnapshots lists the individual volume snapshots that satisfy
 	// the search criteria.
@@ -519,6 +648,8 @@ type Provider interface {
 	GetPreemptedSpotVMs(l *logger.Logger, vms List, since time.Time) ([]PreemptedVM, error)
 	// GetHostErrorVMs returns a list of VMs that had host error since the time specified.
 	GetHostErrorVMs(l *logger.Logger, vms List, since time.Time) ([]string, error)
+	// GetLiveMigrationVMs checks a list of VMs if a live migration happened since the time specified.
+	GetLiveMigrationVMs(l *logger.Logger, vms List, since time.Time) ([]string, error)
 	// GetVMSpecs returns a map from VM.Name to a map of VM attributes, according to a specific cloud provider.
 	GetVMSpecs(l *logger.Logger, vms List) (map[string]map[string]interface{}, error)
 
@@ -532,6 +663,9 @@ type Provider interface {
 	// ListLoadBalancers returns a list of load balancer IPs and ports that are currently
 	// routing to services for the given VMs.
 	ListLoadBalancers(l *logger.Logger, vms List) ([]ServiceAddress, error)
+
+	// String returns a human-readable identifier for the provider
+	String() string
 }
 
 // DeleteCluster is an optional capability for a Provider which can
@@ -542,6 +676,9 @@ type DeleteCluster interface {
 
 // Providers contains all known Provider instances. This is initialized by subpackage init() functions.
 var Providers = map[string]Provider{}
+
+// DNSProviders contains all known DNS providers.
+var DNSProviders = map[string]DNSProvider{}
 
 // ProviderOptionsContainer is a container for a collection of provider-specific options.
 type ProviderOptionsContainer map[string]ProviderOpts
@@ -771,4 +908,15 @@ func SanitizeLabelValues(labels map[string]string) map[string]string {
 		sanitized[k] = SanitizeLabel(v)
 	}
 	return sanitized
+}
+
+// GetVMDNSInfo returns the full DNS name, domain, and provider name for a VM
+// given its name and DNS provider.
+func GetVMDNSInfo(
+	ctx context.Context, vmName string, provider DNSProvider,
+) (string, string, string) {
+	if provider == nil {
+		return "", "", ""
+	}
+	return fmt.Sprintf("%s.%s", vmName, provider.Domain()), provider.Domain(), provider.ProviderName()
 }

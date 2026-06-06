@@ -13,8 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/lock"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
-	"github.com/cockroachdb/cockroach/pkg/settings"
-	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/storage/enginepb"
 	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/storage/pebbleiter"
@@ -26,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/metrics"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/pebble/vfs"
 	"github.com/cockroachdb/redact"
@@ -647,6 +646,18 @@ type Writer interface {
 	//
 	// It is safe to modify the contents of the arguments after it returns.
 	ClearUnversioned(key roachpb.Key, opts ClearOptions) error
+	// SingleClearUnversioned removes an unversioned item from the db using a
+	// Pebble SingleDelete. It has the same purpose as ClearUnversioned but uses
+	// SingleDelete which is more efficient when the caller can guarantee that
+	// the key has been Set exactly once since the last deletion.
+	//
+	// WARNING: using this on a key that has been Set multiple times without an
+	// intervening delete will not fully remove the key — it only cancels the
+	// most recent Set, leaving older Sets visible. See the Pebble SingleDelete
+	// documentation for the full contract.
+	//
+	// It is safe to modify the contents of the arguments after it returns.
+	SingleClearUnversioned(key roachpb.Key) error
 	// ClearEngineKey removes the given point key from the engine. It does not
 	// affect range keys.  Note that clear actually removes entries from the
 	// storage engine. This is a general-purpose and low-level method that should
@@ -912,7 +923,8 @@ type DurabilityRequirement int8
 const (
 	// StandardDurability is what should normally be used.
 	StandardDurability DurabilityRequirement = iota
-	// GuaranteedDurability is an advanced option (only for raftLogTruncator).
+	// GuaranteedDurability is an advanced option (only for raftLogTruncator
+	// and WAGTruncator).
 	GuaranteedDurability
 )
 
@@ -924,10 +936,16 @@ type Engine interface {
 	Attrs() roachpb.Attributes
 	// Capacity returns capacity details for the engine's available storage.
 	Capacity() (roachpb.StoreCapacity, error)
+	// WALFailoverDiskUsage returns disk usage for the WAL failover secondary
+	// volume. Returns vfs.ErrUnsupported if WAL failover is not configured.
+	WALFailoverDiskUsage() (vfs.DiskUsage, error)
 	// Properties returns the low-level properties for the engine's underlying storage.
 	Properties() roachpb.StoreProperties
+	// ProfileSeparatedValueRetrievals collects a profile of the engine's
+	// separated value retrievals. It stops when the context is done.
+	ProfileSeparatedValueRetrievals(ctx context.Context) (*metrics.ValueRetrievalProfile, error)
 	// Compact forces compaction over the entire database.
-	Compact() error
+	Compact(ctx context.Context) error
 	// Env returns the filesystem environment used by the Engine.
 	Env() *fs.Env
 	// Excise removes all data for the given span from the engine.
@@ -1043,39 +1061,34 @@ type Engine interface {
 		shared []pebble.SharedSSTMeta,
 		external []pebble.ExternalFile,
 		exciseSpan roachpb.Span,
-		sstsContainExciseTombstone bool,
 	) (pebble.IngestOperationStats, error)
 	// IngestExternalFiles is a variant of IngestLocalFiles that takes external
 	// files. These files can be referred to by multiple stores, but are not
 	// modified or deleted by the Engine doing the ingestion.
 	IngestExternalFiles(ctx context.Context, external []pebble.ExternalFile) (pebble.IngestOperationStats, error)
 
-	// PreIngestDelay offers an engine the chance to backpressure ingestions.
-	// When called, it may choose to block if the engine determines that it is in
-	// or approaching a state where further ingestions may risk its health.
-	PreIngestDelay(ctx context.Context)
 	// ApproximateDiskBytes returns an approximation of the on-disk size and file
 	// counts for the given key span, along with how many of those bytes are on
 	// remote, as well as specifically external remote, storage.
 	ApproximateDiskBytes(from, to roachpb.Key) (total, remote, external uint64, _ error)
-	// ConvertFilesToBatchAndCommit converts local files with the given paths to
-	// a WriteBatch and commits the batch with sync=true. The files represented
-	// in paths must not be overlapping -- this is the same contract as
-	// IngestLocalFiles*. Additionally, clearedSpans represents the spans which
-	// must be deleted before writing the data contained in these paths.
+	// IngestLocalFilesToWriter converts local files with the given paths to
+	// equivalent writes into the Writer, after also clearing the specified spans.
+	// The caller is then responsible for committing the batch behind the Writer.
 	//
-	// This method is expected to be used instead of IngestLocalFiles* or
-	// IngestAndExciseFiles when the sum of the file sizes is small.
+	// This call bears that same expectations as other Ingest* methods, e.g. the
+	// files must not overlap. The call is semantically same, except that instead
+	// of running an ingestion, it populates a batch with an equivalent write. It
+	// is used when the sum of the file sizes is small.
 	//
 	// TODO(sumeer): support this as an alternative to IngestAndExciseFiles.
 	// This should be easy since we use NewSSTEngineIterator to read the ssts,
 	// which supports multiple levels.
-	ConvertFilesToBatchAndCommit(
-		ctx context.Context, paths []string, clearedSpans []roachpb.Span,
+	IngestLocalFilesToWriter(
+		ctx context.Context, paths []string, clearedSpans []roachpb.Span, writer Writer,
 	) error
 	// CompactRange ensures that the specified range of key value pairs is
 	// optimized for space efficiency.
-	CompactRange(start, end roachpb.Key) error
+	CompactRange(ctx context.Context, start, end roachpb.Key) error
 	// ScanStorageInternalKeys returns key level statistics for each level of a pebble store (that overlap start and end).
 	ScanStorageInternalKeys(start, end roachpb.Key, megabytesPerSecond int64) ([]enginepb.StorageInternalKeysMetrics, error)
 	// GetTableMetrics returns information about sstables that overlap start and end.
@@ -1103,13 +1116,9 @@ type Engine interface {
 	// version that it must maintain compatibility with.
 	SetMinVersion(version roachpb.Version) error
 
-	// SetCompactionConcurrency is used to set the engine's compaction
-	// concurrency. It returns the previous compaction concurrency.
-	SetCompactionConcurrency(n uint64) uint64
-
-	// AdjustCompactionConcurrency adjusts the compaction concurrency up or down by
-	// the passed delta, down to a minimum of 1.
-	AdjustCompactionConcurrency(delta int64) uint64
+	// SetCompactionConcurrency is used to override the engine's max compaction
+	// concurrency. A value of 0 removes any existing override.
+	SetCompactionConcurrency(n uint64)
 
 	// SetStoreID informs the engine of the store ID, once it is known.
 	// Used to show the store ID in logs and to initialize the shared object
@@ -1139,6 +1148,17 @@ type Engine interface {
 	// GetPebbleOptions returns the options used when creating the engine. The
 	// caller must not modify these.
 	GetPebbleOptions() *pebble.Options
+
+	// GetDiskUnhealthy returns true if the engine has determined that the
+	// underlying disk is transiently unhealthy. This can change from false to
+	// true and back to false. The engine has mechanisms to mask disk unhealth
+	// (e.g. if WAL failover is configured), but in some cases the unhealth is
+	// longer than what the engine may be able to successfully mask, but not yet
+	// long enough to crash the node (see
+	// COCKROACH_ENGINE_MAX_SYNC_DURATION_DEFAULT). This method returns true in
+	// this intermediate case. Currently, this mainly feeds into allocation
+	// decisions by the caller (such as shedding leases).
+	GetDiskUnhealthy() bool
 }
 
 // Batch is the interface for batch specific operations.
@@ -1176,6 +1196,11 @@ type WriteBatch interface {
 	CommitNoSyncWait() error
 	// SyncWait waits for the disk write initiated by a call to CommitNoSyncWait
 	// to complete.
+	//
+	// An error means the WAL write or fsync failed; the data was already applied
+	// to the memtable and is visible, but durability is not guaranteed. After an
+	// error the batch must not be reused and the caller should treat the error
+	// as fatal.
 	SyncWait() error
 	// Empty returns whether the batch has been written to or not.
 	Empty() bool
@@ -1255,6 +1280,9 @@ type Metrics struct {
 	// distinguished in the pebble logs.
 	WriteStallCount    int64
 	WriteStallDuration time.Duration
+	// DiskUnhealthyDuration is the duration for which Engine.GetUnhealthyDisk
+	// has returned true.
+	DiskUnhealthyDuration time.Duration
 
 	// BlockLoadConcurrencyLimit is the current limit on the number of concurrent
 	// sstable block reads.
@@ -1308,6 +1336,9 @@ type AggregatedIteratorStats struct {
 	// ExternalSteps, it's a good indication that there's an accumulation of
 	// garbage within the LSM (NOT MVCC garbage).
 	InternalSteps int
+	// ValueRetrievalCount is the total count of value retrievals of values
+	// separated into blob files.
+	ValueRetrievalCount uint64
 }
 
 // AggregatedBatchCommitStats hold cumulative stats summed over all the
@@ -1327,16 +1358,17 @@ type MetricsForInterval struct {
 	WALFsyncLatency                prometheusgo.Metric
 	FlushWriteThroughput           pebble.ThroughputMetric
 	WALFailoverWriteAndSyncLatency prometheusgo.Metric
+	WALSecondaryFileOpLatency      prometheusgo.Metric
 }
 
 // NumSSTables returns the total number of SSTables in the LSM, aggregated
 // across levels.
 func (m *Metrics) NumSSTables() int64 {
-	var num int64
+	var num uint64
 	for _, lm := range m.Metrics.Levels {
-		num += lm.NumFiles
+		num += lm.Tables.Count
 	}
-	return num
+	return int64(num)
 }
 
 // IngestedBytes returns the sum of all ingested tables, aggregated across all
@@ -1344,7 +1376,7 @@ func (m *Metrics) NumSSTables() int64 {
 func (m *Metrics) IngestedBytes() uint64 {
 	var ingestedBytes uint64
 	for _, lm := range m.Metrics.Levels {
-		ingestedBytes += lm.BytesIngested
+		ingestedBytes += lm.TablesIngested.Bytes
 	}
 	return ingestedBytes
 }
@@ -1353,9 +1385,11 @@ func (m *Metrics) IngestedBytes() uint64 {
 // compactions across all levels of the LSM.
 func (m *Metrics) CompactedBytes() (read, written uint64) {
 	for _, lm := range m.Metrics.Levels {
-		read += lm.BytesRead
-		written += lm.BytesCompacted
+		read += lm.TableBytesRead + lm.BlobBytesRead
+		written += lm.TablesCompacted.Bytes + lm.BlobBytesCompacted
 	}
+	read += uint64(m.Metrics.Compact.BlobFileRewrite.BytesRead)
+	written += uint64(m.Metrics.Compact.BlobFileRewrite.BytesWritten)
 	return read, written
 }
 
@@ -1365,8 +1399,6 @@ func (m *Metrics) AsStoreStatsEvent() eventpb.StoreStats {
 	e := eventpb.StoreStats{
 		CacheSize:                  m.BlockCache.Size,
 		CacheCount:                 m.BlockCache.Count,
-		CacheHits:                  m.BlockCache.Hits,
-		CacheMisses:                m.BlockCache.Misses,
 		CompactionCountDefault:     m.Compact.DefaultCount,
 		CompactionCountDeleteOnly:  m.Compact.DeleteOnlyCount,
 		CompactionCountElisionOnly: m.Compact.ElisionOnlyCount,
@@ -1391,31 +1423,32 @@ func (m *Metrics) AsStoreStatsEvent() eventpb.StoreStats {
 		WalPhysicalSize:            m.WAL.PhysicalSize,
 		WalBytesIn:                 m.WAL.BytesIn,
 		WalBytesWritten:            m.WAL.BytesWritten,
-		TableObsoleteCount:         m.Table.ObsoleteCount,
-		TableObsoleteSize:          m.Table.ObsoleteSize,
-		TableZombieCount:           m.Table.ZombieCount,
-		TableZombieSize:            m.Table.ZombieSize,
+		TableObsoleteCount:         int64(m.Table.Physical.Obsolete.Total().Count),
+		TableObsoleteSize:          m.Table.Physical.Obsolete.Total().Bytes,
+		TableZombieCount:           int64(m.Table.Physical.Zombie.Total().Count),
+		TableZombieSize:            m.Table.Physical.Zombie.Total().Bytes,
 		RangeKeySetsCount:          m.Keys.RangeKeySetsCount,
 	}
+	e.CacheHits, e.CacheMisses = m.BlockCache.HitsAndMisses.Aggregate()
 	for i, l := range m.Levels {
-		if l.NumFiles == 0 {
+		if l.Tables.Count == 0 {
 			continue
 		}
 		e.Levels = append(e.Levels, eventpb.LevelStats{
 			Level:           uint32(i),
-			NumFiles:        l.NumFiles,
-			SizeBytes:       l.Size,
+			NumFiles:        int64(l.Tables.Count),
+			SizeBytes:       int64(l.Tables.Bytes),
 			Score:           float32(l.Score),
-			BytesIn:         l.BytesIn,
-			BytesIngested:   l.BytesIngested,
-			BytesMoved:      l.BytesMoved,
-			BytesRead:       l.BytesRead,
-			BytesCompacted:  l.BytesCompacted,
-			BytesFlushed:    l.BytesFlushed,
-			TablesCompacted: l.TablesCompacted,
-			TablesFlushed:   l.TablesFlushed,
-			TablesIngested:  l.TablesIngested,
-			TablesMoved:     l.TablesMoved,
+			BytesIn:         l.TableBytesIn,
+			BytesIngested:   l.TablesIngested.Bytes,
+			BytesMoved:      l.TablesMoved.Bytes,
+			BytesRead:       l.TableBytesRead + l.BlobBytesRead,
+			BytesCompacted:  l.TablesCompacted.Bytes + l.BlobBytesCompacted,
+			BytesFlushed:    l.TablesFlushed.Bytes + l.BlobBytesFlushed,
+			TablesCompacted: l.TablesCompacted.Count,
+			TablesFlushed:   l.TablesFlushed.Count,
+			TablesIngested:  l.TablesIngested.Count,
+			TablesMoved:     l.TablesMoved.Count,
 			NumSublevels:    l.Sublevels,
 		})
 	}
@@ -1432,6 +1465,10 @@ func GetIntent(ctx context.Context, reader Reader, key roachpb.Key) (*roachpb.In
 		Prefix: true,
 		// Ignore Exclusive and Shared locks. We only care about intents.
 		MatchMinStr: lock.Intent,
+		// This is eventually called from the QueryIntent request, so this isn't
+		// quite "intent resolution", but we don't want too many categories, and
+		// this does relate to intents, so we use this existing category.
+		ReadCategory: fs.IntentResolutionReadCategory,
 	}
 	iter, err := NewLockTableIterator(ctx, reader, opts)
 	if err != nil {
@@ -1575,17 +1612,12 @@ func ScanLocks(
 
 // WriteSyncNoop carries out a synchronous no-op write to the engine.
 func WriteSyncNoop(eng Engine) error {
-	batch := eng.NewBatch()
+	batch := eng.NewWriteBatch()
 	defer batch.Close()
-
 	if err := batch.LogData(nil); err != nil {
 		return err
 	}
-
-	if err := batch.Commit(true /* sync */); err != nil {
-		return err
-	}
-	return nil
+	return batch.Commit(true /* sync */)
 }
 
 // ClearRangeWithHeuristic clears the keys from start (inclusive) to end
@@ -1594,24 +1626,22 @@ func WriteSyncNoop(eng Engine) error {
 // either write a Pebble range tombstone or clear individual keys. If it uses
 // a range tombstone, it will tighten the span to the first encountered key.
 //
-// pointKeyThreshold and rangeKeyThreshold specify the number of point/range
-// keys respectively where it will switch from clearing individual keys to
-// Pebble range tombstones (RANGEDEL or RANGEKEYDEL respectively). A threshold
-// of 0 disables checking for and clearing that key type.
+// The pointKeyThreshold parameter specifies the number of point keys where it
+// will switch from clearing individual keys using point tombstones to clearing
+// the entire range using Pebble range tombstones (RANGEDELs). The
+// pointKeyThreshold value must be at least 1. NB: An initial scan will be done
+// to determine the type of clear, so a large threshold will potentially involve
+// scanning a large number of keys.
 //
-// NB: An initial scan will be done to determine the type of clear, so a large
-// threshold will potentially involve scanning a large number of keys twice.
-//
-// TODO(erikgrinaker): Consider tightening the end of the range tombstone span
-// too, by doing a SeekLT when we reach the threshold. It's unclear whether it's
-// really worth it.
+// ClearRangeWithHeuristic will also check for the existence of range keys, and
+// if any exist, it will write a RANGEKEYDEL clearing all range keys in the span.
 func ClearRangeWithHeuristic(
-	ctx context.Context,
-	r Reader,
-	w Writer,
-	start, end roachpb.Key,
-	pointKeyThreshold, rangeKeyThreshold int,
+	ctx context.Context, r Reader, w Writer, start, end roachpb.Key, pointKeyThreshold int,
 ) error {
+	if pointKeyThreshold < 1 {
+		return errors.AssertionFailedf("pointKeyThreshold must be at least 1")
+	}
+
 	clearPointKeys := func(r Reader, w Writer, start, end roachpb.Key, threshold int) error {
 		iter, err := r.NewEngineIterator(ctx, IterOptions{
 			KeyTypes:   IterKeyTypePointsOnly,
@@ -1660,7 +1690,7 @@ func ClearRangeWithHeuristic(
 		return err
 	}
 
-	clearRangeKeys := func(r Reader, w Writer, start, end roachpb.Key, threshold int) error {
+	clearRangeKeys := func(r Reader, w Writer, start, end roachpb.Key) error {
 		iter, err := r.NewEngineIterator(ctx, IterOptions{
 			KeyTypes:   IterKeyTypeRangesOnly,
 			LowerBound: start,
@@ -1671,127 +1701,32 @@ func ClearRangeWithHeuristic(
 		}
 		defer iter.Close()
 
-		// Scan, and drop a RANGEKEYDEL if we reach the threshold.
-		var ok bool
-		var count int
-		var firstKey roachpb.Key
-		for ok, err = iter.SeekEngineKeyGE(EngineKey{Key: start}); ok; ok, err = iter.NextEngineKey() {
-			count += len(iter.EngineRangeKeys())
-			if len(firstKey) == 0 {
-				bounds, err := iter.EngineRangeBounds()
-				if err != nil {
-					return err
-				}
-				firstKey = bounds.Key.Clone()
-			}
-			if count >= threshold {
-				return w.ClearRawRange(firstKey, end, false /* pointKeys */, true /* rangeKeys */)
-			}
-		}
-		if err != nil || count == 0 {
+		ok, err := iter.SeekEngineKeyGE(EngineKey{Key: start})
+		if err != nil {
 			return err
 		}
-		// Clear individual range keys.
-		for ok, err = iter.SeekEngineKeyGE(EngineKey{Key: start}); ok; ok, err = iter.NextEngineKey() {
-			bounds, err := iter.EngineRangeBounds()
-			if err != nil {
-				return err
-			}
-			for _, v := range iter.EngineRangeKeys() {
-				if err := w.ClearEngineRangeKey(bounds.Key, bounds.EndKey, v.Version); err != nil {
-					return err
-				}
-			}
+		if !ok {
+			// No range keys in the span.
+			return nil
 		}
+		bounds, err := iter.EngineRangeBounds()
+		if err != nil {
+			return err
+		}
+		// TODO(erikgrinaker): Consider tightening the end of the range
+		// tombstone span too, by doing a SeekLT when we reach the threshold.
+		// It's unclear whether it's really worth it.
+		return w.ClearRawRange(bounds.Key, end, false /* pointKeys */, true /* rangeKeys */)
+	}
+
+	if err := clearPointKeys(r, w, start, end, pointKeyThreshold); err != nil {
+		return err
+	}
+	if err := clearRangeKeys(r, w, start, end); err != nil {
 		return err
 	}
 
-	if pointKeyThreshold > 0 {
-		if err := clearPointKeys(r, w, start, end, pointKeyThreshold); err != nil {
-			return err
-		}
-	}
-
-	if rangeKeyThreshold > 0 {
-		if err := clearRangeKeys(r, w, start, end, rangeKeyThreshold); err != nil {
-			return err
-		}
-	}
-
 	return nil
-}
-
-var ingestDelayL0Threshold = settings.RegisterIntSetting(
-	settings.ApplicationLevel,
-	"rocksdb.ingest_backpressure.l0_file_count_threshold",
-	"number of L0 files after which to backpressure SST ingestions",
-	20,
-)
-
-var ingestDelayTime = settings.RegisterDurationSetting(
-	settings.ApplicationLevel,
-	"rocksdb.ingest_backpressure.max_delay",
-	"maximum amount of time to backpressure a single SST ingestion",
-	time.Second*5,
-)
-
-var preIngestDelayEnabled = settings.RegisterBoolSetting(
-	settings.SystemOnly,
-	"pebble.pre_ingest_delay.enabled",
-	"controls whether the pre-ingest delay mechanism is active",
-	false,
-)
-
-// PreIngestDelay may choose to block for some duration if L0 has an excessive
-// number of files in it or if PendingCompactionBytesEstimate is elevated. This
-// it is intended to be called before ingesting a new SST, since we'd rather
-// backpressure the bulk operation adding SSTs than slow down the whole RocksDB
-// instance and impact all foreground traffic by adding too many files to it.
-// After the number of L0 files exceeds the configured limit, it gradually
-// begins delaying more for each additional file in L0 over the limit until
-// hitting its configured (via settings) maximum delay. If the pending
-// compaction limit is exceeded, it waits for the maximum delay.
-func preIngestDelay(ctx context.Context, eng Engine, settings *cluster.Settings) {
-	if settings == nil {
-		return
-	}
-	if !preIngestDelayEnabled.Get(&settings.SV) {
-		return
-	}
-	metrics := eng.GetMetrics()
-	targetDelay := calculatePreIngestDelay(settings, metrics.Metrics)
-
-	if targetDelay == 0 {
-		return
-	}
-	log.VEventf(ctx, 2, "delaying SST ingestion %s. %d L0 files, %d L0 Sublevels",
-		targetDelay, metrics.Levels[0].NumFiles, metrics.Levels[0].Sublevels)
-
-	select {
-	case <-time.After(targetDelay):
-	case <-ctx.Done():
-	}
-}
-
-func calculatePreIngestDelay(settings *cluster.Settings, metrics *pebble.Metrics) time.Duration {
-	maxDelay := ingestDelayTime.Get(&settings.SV)
-	l0ReadAmpLimit := ingestDelayL0Threshold.Get(&settings.SV)
-
-	const ramp = 10
-	l0ReadAmp := metrics.Levels[0].NumFiles
-	if metrics.Levels[0].Sublevels >= 0 {
-		l0ReadAmp = int64(metrics.Levels[0].Sublevels)
-	}
-
-	if l0ReadAmp > l0ReadAmpLimit {
-		delayPerFile := maxDelay / time.Duration(ramp)
-		targetDelay := time.Duration(l0ReadAmp-l0ReadAmpLimit) * delayPerFile
-		if targetDelay > maxDelay {
-			return maxDelay
-		}
-		return targetDelay
-	}
-	return 0
 }
 
 // Helper function to implement Reader.MVCCIterate().
@@ -2060,6 +1995,7 @@ func ScanConflictingIntentsForDroppingLatchesEarly(
 	intents *[]roachpb.Intent,
 	maxLockConflicts int64,
 	targetLockConflictBytes int64,
+	preferDistinctTxns bool,
 ) (needIntentHistory bool, err error) {
 	if err := ctx.Err(); err != nil {
 		return false, err
@@ -2103,6 +2039,16 @@ func ScanConflictingIntentsForDroppingLatchesEarly(
 	var meta enginepb.MVCCMetadata
 	var ok bool
 	intentSize := int64(0)
+	// When preferDistinctTxns is set, we skip intents from transactions we've
+	// already collected, maximizing the number of distinct conflicting txns
+	// discovered within the maxLockConflicts budget.
+	// TODO(mira): consider collecting the first and last intent per transaction
+	// so that range resolve requests can be constructed more precisely, rather
+	// than widening to the full request span.
+	var seenTxns map[uuid.UUID]struct{}
+	if preferDistinctTxns {
+		seenTxns = make(map[uuid.UUID]struct{})
+	}
 	for ok, err = iter.SeekEngineKeyGE(EngineKey{Key: ltStart}); ok; ok, err = iter.NextEngineKey() {
 		if maxLockConflicts != 0 && int64(len(*intents)) >= maxLockConflicts {
 			// Return early if we're done accumulating intents; make no claims about
@@ -2157,6 +2103,12 @@ func ScanConflictingIntentsForDroppingLatchesEarly(
 		}
 		if intentConflicts := meta.Timestamp.ToTimestamp().LessEq(ts); !intentConflicts {
 			continue
+		}
+		if seenTxns != nil {
+			if _, seen := seenTxns[meta.Txn.ID]; seen {
+				continue
+			}
+			seenTxns[meta.Txn.ID] = struct{}{}
 		}
 		key, err := iter.EngineKey()
 		if err != nil {

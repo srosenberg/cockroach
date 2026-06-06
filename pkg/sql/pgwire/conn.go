@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/col/coldata"
+	"github.com/cockroachdb/cockroach/pkg/server/tcpkeepalive"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql"
@@ -34,6 +35,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgwirecancel"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlcommenter"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
@@ -150,7 +152,7 @@ func (c *conn) processCommands(
 	ctx context.Context,
 	authOpt authOptions,
 	ac AuthConn,
-	sqlServer *sql.Server,
+	server *Server,
 	reserved *mon.BoundAccount,
 	onDefaultIntSizeChange func(newSize int32),
 	sessionID clusterunique.ID,
@@ -174,7 +176,7 @@ func (c *conn) processCommands(
 		// network read on the connection's goroutine.
 		c.cancelConn()
 
-		pgwireKnobs := sqlServer.GetExecutorConfig().PGWireTestingKnobs
+		pgwireKnobs := server.SQLServer.GetExecutorConfig().PGWireTestingKnobs
 		if pgwireKnobs != nil && pgwireKnobs.CatchPanics {
 			if r := recover(); r != nil {
 				// Catch the panic and return it to the client as an error.
@@ -202,14 +204,14 @@ func (c *conn) processCommands(
 
 	// Authenticate the connection.
 	if connCloseAuthHandler, retErr = c.handleAuthentication(
-		ctx, ac, authOpt, sqlServer.GetExecutorConfig(),
+		ctx, ac, authOpt, server,
 	); retErr != nil {
 		// Auth failed or some other error.
 		return
 	}
 
 	var decrementConnectionCount func()
-	if decrementConnectionCount, retErr = sqlServer.IncrementConnectionCount(c.sessionArgs); retErr != nil {
+	if decrementConnectionCount, retErr = server.SQLServer.IncrementConnectionCount(c.sessionArgs); retErr != nil {
 		// This will return pgcode.TooManyConnections which is used by the sql proxy
 		// to skip failed auth throttle (as in this case the auth was fine but the
 		// error occurred before sending back auth ok msg)
@@ -223,7 +225,7 @@ func (c *conn) processCommands(
 	}
 
 	// Inform the client of the default session settings.
-	connHandler, retErr = c.sendInitialConnData(ctx, sqlServer, onDefaultIntSizeChange, sessionID)
+	connHandler, retErr = c.sendInitialConnData(ctx, server.SQLServer, onDefaultIntSizeChange, sessionID)
 	if retErr != nil {
 		return
 	}
@@ -249,7 +251,7 @@ func (c *conn) processCommands(
 
 	// Now actually process commands.
 	reservedOwned = false // We're about to pass ownership away.
-	retErr = sqlServer.ServeConn(
+	retErr = server.SQLServer.ServeConn(
 		ctx,
 		connHandler,
 		reserved,
@@ -288,6 +290,25 @@ func (c *conn) sendInitialConnData(
 		_ /* err */ = c.writeErr(ctx, err, c.conn)
 		return sql.ConnectionHandler{}, err
 	}
+	sv := &sqlServer.GetExecutorConfig().Settings.SV
+	connHandler.SetOnTCPKeepAliveChange(func(
+		idle, interval time.Duration, count int, userTimeout time.Duration,
+	) {
+		if err := tcpkeepalive.ConfigureConnKeepAlive(
+			c.conn, idle, interval, count, userTimeout, sv,
+		); err != nil {
+			log.Ops.Warningf(ctx, "failed to apply TCP keepalive settings: %v", err)
+		}
+	})
+	// Apply any TCP keepalive values that were set during SetupConn from
+	// connection string options or ALTER ROLE SET defaults.
+	if idle, interval, count, userTimeout := connHandler.GetTCPKeepAliveSessionData(); idle != 0 || interval != 0 || count != 0 || userTimeout != 0 {
+		if err := tcpkeepalive.ConfigureConnKeepAlive(
+			c.conn, idle, interval, count, userTimeout, sv,
+		); err != nil {
+			log.Ops.Warningf(ctx, "failed to apply initial TCP keepalive settings: %v", err)
+		}
+	}
 
 	// Send the initial "status parameters" to the client.  This
 	// overlaps partially with session variables. The client wants to
@@ -301,10 +322,18 @@ func (c *conn) sendInitialConnData(
 			return sql.ConnectionHandler{}, err
 		}
 	}
-	// The two following status parameters have no equivalent session
-	// variable.
+	// session_authorization has no equivalent session variable.
 	if err := c.bufferParamStatus("session_authorization", c.sessionArgs.User.Normalized()); err != nil {
 		return sql.ConnectionHandler{}, err
+	}
+
+	// Deliver any notices accumulated during connection setup (e.g. defaulting
+	// pg_dump_compatibility for a dump/restore client) before signaling that the
+	// connection is ready for queries.
+	for _, notice := range connHandler.GetStartupNotices() {
+		if err := c.bufferNotice(ctx, notice); err != nil {
+			return sql.ConnectionHandler{}, err
+		}
 	}
 
 	if err := c.bufferInitialReadyForQuery(connHandler.GetQueryCancelKey()); err != nil {
@@ -380,7 +409,7 @@ func (c *conn) handleSimpleQuery(
 			},
 		)
 	}
-	stmts, err := c.parser.ParseWithInt(query, unqualifiedIntSize)
+	stmts, err := c.parser.ParseWithOptions(query, sqlcommenter.MaybeRetainComments(c.sv).WithIntType(unqualifiedIntSize))
 	if err != nil {
 		log.SqlExec.Infof(ctx, "could not parse simple query: %s", query)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
@@ -516,7 +545,7 @@ func (c *conn) handleParse(ctx context.Context, nakedIntSize *types.T) error {
 	}
 
 	startParse := crtime.NowMono()
-	stmts, err := c.parser.ParseWithInt(query, nakedIntSize)
+	stmts, err := c.parser.ParseWithOptions(query, sqlcommenter.MaybeRetainComments(c.sv).WithIntType(nakedIntSize))
 	if err != nil {
 		log.SqlExec.Infof(ctx, "could not parse: %s", query)
 		return c.stmtBuf.Push(ctx, sql.SendError{Err: err})
@@ -862,7 +891,7 @@ func cookTag(
 		tag = strconv.AppendInt(tag, int64(rowsAffected), 10)
 
 	case tree.Rows:
-		if tagStr != "SHOW" && tagStr != "EXPLAIN" && tagStr != "CALL" {
+		if tagStr != "SHOW" && tagStr != "EXPLAIN" && tagStr != tree.CallStmtTag {
 			tag = append(tag, ' ')
 			tag = strconv.AppendUint(tag, uint64(rowsAffected), 10)
 		}
@@ -1210,7 +1239,7 @@ func (c *conn) writeRowDescription(
 	c.msgBuilder.putInt16(int16(len(columns)))
 	for i, column := range columns {
 		if log.V(2) {
-			log.Infof(ctx, "pgwire: writing column %s of type: %s", column.Name, column.Typ)
+			log.Dev.Infof(ctx, "pgwire: writing column %s of type: %s", column.Name, column.Typ)
 		}
 		c.msgBuilder.writeTerminatedString(column.Name)
 		typ := pgTypeForParserType(column.Typ)
@@ -1250,11 +1279,26 @@ func (c *conn) Flush(pos sql.CmdPos) error {
 	// the underlying ring buffer memory for reuse.
 	c.writerState.fi.cmdStarts.Reset()
 
-	_ /* n */, err := c.writerState.buf.WriteTo(c.conn)
-	if err != nil {
-		c.setErr(err)
-		return err
+	// When flushing, writes into the socket buffer limit how many bytes
+	// are written into an SSL frame at a time. Stock Postgres will at most
+	// write 8 kilobytes of unencrypted data at a time. libpq can also only
+	// consume 8 kilobytes (via PQConsumeInput), so async clients will hang
+	// if bigger SSL frames are sent.
+	const maxWriteSize = 8192
+	bytesToWrite := c.writerState.buf.Bytes()
+	for i := 0; i < len(bytesToWrite); i += maxWriteSize {
+		targetSize := min(len(bytesToWrite)-i, maxWriteSize)
+		m, err := c.conn.Write(bytesToWrite[i : i+targetSize])
+		if err == nil && m < targetSize {
+			err = io.ErrShortWrite
+		}
+		if err != nil {
+			c.setErr(err)
+			c.writerState.buf.Reset()
+			return err
+		}
 	}
+	c.writerState.buf.Reset()
 	return nil
 }
 
@@ -1449,19 +1493,23 @@ func (r *pgwireReader) ReadByte() (byte, error) {
 // initialization.
 //
 // The standard PostgreSQL status vars are listed here:
-// https://www.postgresql.org/docs/10/static/libpq-status.html
+// https://www.postgresql.org/docs/18/libpq-status.html
 var statusReportParams = []string{
 	"server_version",
 	"server_encoding",
 	"client_encoding",
 	"application_name",
-	// Note: session_authorization is handled specially in serveImpl().
+	// Note: session_authorization is handled specially in sendInitialConnData().
 	"DateStyle",
 	"IntervalStyle",
 	"is_superuser",
 	"TimeZone",
 	"integer_datetimes",
 	"standard_conforming_strings",
+	"default_transaction_read_only",
+	"search_path",
+	"scram_iterations",
+	"in_hot_standby",
 	"crdb_version", // CockroachDB extension.
 }
 

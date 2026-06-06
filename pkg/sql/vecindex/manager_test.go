@@ -7,17 +7,14 @@ package vecindex_test
 
 import (
 	"context"
-	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
-	"github.com/cockroachdb/cockroach/pkg/security/securityassets"
-	"github.com/cockroachdb/cockroach/pkg/security/securitytest"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
-	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catenumpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
@@ -34,17 +31,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
-	"github.com/cockroachdb/cockroach/pkg/util/randutil"
+	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 )
-
-func TestMain(m *testing.M) {
-	securityassets.SetLoader(securitytest.EmbeddedAssets)
-	randutil.SeedForTests()
-	serverutils.InitTestServerFactory(server.TestServerFactory)
-
-	os.Exit(m.Run())
-}
 
 func buildTestTable(tableID catid.DescID, tableName string) catalog.MutableTableDescriptor {
 	return tabledesc.NewBuilder(&descpb.TableDescriptor{
@@ -88,7 +77,16 @@ func buildTestTable(tableID catid.DescID, tableName string) catalog.MutableTable
 				KeySuffixColumnIDs:  []descpb.ColumnID{1},
 				EncodingType:        catenumpb.SecondaryIndexEncoding,
 				Version:             descpb.LatestIndexDescriptorVersion,
-				VecConfig:           vecpb.Config{Dims: 2, Seed: 342},
+				VecConfig: vecpb.Config{
+					Dims:             2,
+					Seed:             342,
+					MinPartitionSize: 2,
+					MaxPartitionSize: 8,
+					BuildBeamSize:    4,
+					IsDeterministic:  true,
+					RotAlgorithm:     vecpb.RotGivens,
+					DistanceMetric:   vecpb.CosineDistance,
+				},
 			},
 		},
 		Privileges:       catpb.NewBasePrivilegeDescriptor(username.AdminRoleName()),
@@ -121,18 +119,13 @@ func TestVectorManager(t *testing.T) {
 	}).BuildCreatedMutable()
 
 	err := internalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) (err error) {
-		defer func() {
-			if err == nil {
-				err = txn.KV().Commit(ctx)
-			}
-		}()
 		b := txn.KV().NewBatch()
 
 		err = txn.Descriptors().WriteDescToBatch(ctx, false, newDB, b)
 		if err != nil {
 			return err
 		}
-		for i := 0; i < 11; i++ {
+		for i := range 11 {
 			err = txn.Descriptors().WriteDescToBatch(
 				ctx,
 				false,
@@ -147,24 +140,34 @@ func TestVectorManager(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	vectorMgr := vecindex.NewManager(ctx, stopper, codec, internalDB)
+	settings := srv.ApplicationLayer().ClusterSettings()
+	vectorMgr := vecindex.NewManager(ctx, stopper, &settings.SV, codec, internalDB)
+
+	t.Run("test index options", func(t *testing.T) {
+		idx, err := vectorMgr.Get(ctx, catid.DescID(140), 2)
+		require.NoError(t, err)
+		require.Equal(t, 2, idx.Options().MinPartitionSize)
+		require.Equal(t, 8, idx.Options().MaxPartitionSize)
+		require.Equal(t, 4, idx.Options().BaseBeamSize)
+		require.Equal(t, vecpb.CosineDistance, idx.Quantizer().GetDistanceMetric())
+	})
 
 	t.Run("test metrics", func(t *testing.T) {
 		idx, err := vectorMgr.Get(ctx, catid.DescID(140), 2)
 		require.NoError(t, err)
-		idx.ForceSplitOrMerge(ctx, nil, 0, cspann.RootKey)
+		idx.ForceSplit(ctx, nil, 0, cspann.RootKey, false /* singleStep */)
 
 		metrics := vectorMgr.Metrics().(*vecindex.Metrics)
-		require.Equal(t, int64(1), metrics.FixupsAdded.Count())
+		require.Equal(t, int64(1), metrics.PendingSplitsMerges.Value())
+		require.NoError(t, idx.ProcessFixups(ctx))
 		require.Eventually(t, func() bool {
-			return metrics.FixupsProcessed.Count() == 1
+			return metrics.PendingSplitsMerges.Value() == 0
 		}, 10*time.Second, 10*time.Millisecond)
-		require.Equal(t, int64(0), metrics.SuccessSplits.Count())
 	})
 
 	t.Run("test single threaded functionality", func(t *testing.T) {
 		// Pull all the indexes.
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			_, err = vectorMgr.Get(ctx, catid.DescID(140+i), 2)
 			require.NoError(t, err)
 		}
@@ -195,7 +198,7 @@ func TestVectorManager(t *testing.T) {
 		}
 		vectorMgr.SetTestingKnobs(&testingKnobs)
 		wg := sync.WaitGroup{}
-		for i := 0; i < 11; i++ {
+		for range 11 {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
@@ -224,7 +227,7 @@ func TestVectorManager(t *testing.T) {
 		errs := make([]error, 11)
 		vectorMgr.SetTestingKnobs(&testingKnobs)
 		wg := sync.WaitGroup{}
-		for i := 0; i < 11; i++ {
+		for i := range 11 {
 			wg.Add(1)
 			go func(idx int) {
 				defer wg.Done()
@@ -238,5 +241,83 @@ func TestVectorManager(t *testing.T) {
 			require.Equal(t, errs[0], errs[i])
 		}
 		vectorMgr.SetTestingKnobs(nil)
+	})
+
+	t.Run("test panic during pull recovers cleanly", func(t *testing.T) {
+		// Block the panicking goroutine until the other 10 callers are parked on
+		// e.waitCond, so the panic propagates exactly when 10 waiters depend on
+		// the cleanup defer in Manager.Get.
+		pullDelayer := sync.WaitGroup{}
+		pullDelayer.Add(10)
+		testingKnobs := vecindex.VecIndexTestingKnobs{
+			DuringVecIndexPull: func() {
+				pullDelayer.Wait()
+				panic(errors.AssertionFailedf("injected vecindex panic"))
+			},
+			BeforeVecIndexWait: func() {
+				pullDelayer.Done()
+			},
+		}
+		vectorMgr.SetTestingKnobs(&testingKnobs)
+
+		// Table 150 is created in setup but not pulled by any earlier subtest,
+		// so DuringVecIndexPull will fire (cached entries skip the inner
+		// closure).
+		const tableID catid.DescID = 150
+
+		// Fire 11 concurrent Get calls. The first to acquire m.mu installs the
+		// indexEntry and runs the inner closure, which panics. The other 10
+		// observe e.mustWait=true and block on e.waitCond. The cleanup defer
+		// in Manager.Get must unblock all 10 and delete the cache entry so a
+		// subsequent Get retries instead of hanging.
+		results := make([]error, 11)
+		wg := sync.WaitGroup{}
+		for i := range 11 {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						if err, ok := r.(error); ok {
+							results[idx] = err
+						} else {
+							results[idx] = errors.Newf("non-error panic: %v", r)
+						}
+					}
+				}()
+				_, err := vectorMgr.Get(ctx, tableID, 2)
+				if err != nil {
+					results[idx] = err
+				}
+			}(i)
+		}
+		wg.Wait()
+
+		// The panicker propagates the raw injected panic; the 10 waiters get the
+		// wrapped sentinel, which contains the original cause as well. Check the
+		// sentinel substring first so a wrapped error isn't miscounted as the
+		// raw panic.
+		var injectedCount, wrappedCount int
+		for _, e := range results {
+			require.Error(t, e)
+			require.Contains(t, e.Error(), "injected vecindex panic",
+				"all errors should carry the original panic cause")
+			if strings.Contains(e.Error(), "vector index construction panicked") {
+				wrappedCount++
+			} else {
+				injectedCount++
+			}
+		}
+		require.Equal(t, 1, injectedCount,
+			"exactly one goroutine should propagate the original panic unwrapped")
+		require.Equal(t, 10, wrappedCount,
+			"waiters should receive the wrapped sentinel error")
+
+		// After cleanup, the cache entry must be gone so a second Get retries.
+		// Clear the panicking knob first so the retry can succeed.
+		vectorMgr.SetTestingKnobs(nil)
+		idx, err := vectorMgr.Get(ctx, tableID, 2)
+		require.NoError(t, err)
+		require.NotNil(t, idx)
 	})
 }

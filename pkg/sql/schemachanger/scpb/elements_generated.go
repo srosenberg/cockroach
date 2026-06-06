@@ -306,6 +306,80 @@ func (c *ElementCollection[E]) FilterColumnFamily() *ElementCollection[*ColumnFa
 	return (*ElementCollection[*ColumnFamily])(ret)
 }
 
+func (e ColumnGeneratedAsIdentity) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_ColumnGeneratedAsIdentity) Element() Element {
+	return e.ColumnGeneratedAsIdentity
+}
+
+// ForEachColumnGeneratedAsIdentity iterates over elements of type ColumnGeneratedAsIdentity.
+// Deprecated
+func ForEachColumnGeneratedAsIdentity(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *ColumnGeneratedAsIdentity),
+) {
+  c.FilterColumnGeneratedAsIdentity().ForEach(fn)
+}
+
+// FindColumnGeneratedAsIdentity finds the first element of type ColumnGeneratedAsIdentity.
+// Deprecated
+func FindColumnGeneratedAsIdentity(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *ColumnGeneratedAsIdentity) {
+	if tc := c.FilterColumnGeneratedAsIdentity(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*ColumnGeneratedAsIdentity)
+	}
+	return current, target, element
+}
+
+// ColumnGeneratedAsIdentityElements filters elements of type ColumnGeneratedAsIdentity.
+func (c *ElementCollection[E]) FilterColumnGeneratedAsIdentity() *ElementCollection[*ColumnGeneratedAsIdentity] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*ColumnGeneratedAsIdentity)
+		return ok
+	})
+	return (*ElementCollection[*ColumnGeneratedAsIdentity])(ret)
+}
+
+func (e ColumnHidden) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_ColumnHidden) Element() Element {
+	return e.ColumnHidden
+}
+
+// ForEachColumnHidden iterates over elements of type ColumnHidden.
+// Deprecated
+func ForEachColumnHidden(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *ColumnHidden),
+) {
+  c.FilterColumnHidden().ForEach(fn)
+}
+
+// FindColumnHidden finds the first element of type ColumnHidden.
+// Deprecated
+func FindColumnHidden(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *ColumnHidden) {
+	if tc := c.FilterColumnHidden(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*ColumnHidden)
+	}
+	return current, target, element
+}
+
+// ColumnHiddenElements filters elements of type ColumnHidden.
+func (c *ElementCollection[E]) FilterColumnHidden() *ElementCollection[*ColumnHidden] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*ColumnHidden)
+		return ok
+	})
+	return (*ElementCollection[*ColumnHidden])(ret)
+}
+
 func (e ColumnName) element() {}
 
 // Element implements ElementGetter.
@@ -861,6 +935,228 @@ func (c *ElementCollection[E]) FilterDatabaseZoneConfig() *ElementCollection[*Da
 	return (*ElementCollection[*DatabaseZoneConfig])(ret)
 }
 
+func (e DomainCheckConstraint) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_DomainCheckConstraint) Element() Element {
+	return e.DomainCheckConstraint
+}
+
+// ForEachDomainCheckConstraint iterates over elements of type DomainCheckConstraint.
+// Deprecated
+func ForEachDomainCheckConstraint(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *DomainCheckConstraint),
+) {
+  c.FilterDomainCheckConstraint().ForEach(fn)
+}
+
+// FindDomainCheckConstraint finds the first element of type DomainCheckConstraint.
+// Deprecated
+func FindDomainCheckConstraint(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *DomainCheckConstraint) {
+	if tc := c.FilterDomainCheckConstraint(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*DomainCheckConstraint)
+	}
+	return current, target, element
+}
+
+// DomainCheckConstraintElements filters elements of type DomainCheckConstraint.
+func (c *ElementCollection[E]) FilterDomainCheckConstraint() *ElementCollection[*DomainCheckConstraint] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*DomainCheckConstraint)
+		return ok
+	})
+	return (*ElementCollection[*DomainCheckConstraint])(ret)
+}
+
+func (e DomainCheckConstraintUnvalidated) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_DomainCheckConstraintUnvalidated) Element() Element {
+	return e.DomainCheckConstraintUnvalidated
+}
+
+// ForEachDomainCheckConstraintUnvalidated iterates over elements of type DomainCheckConstraintUnvalidated.
+// Deprecated
+func ForEachDomainCheckConstraintUnvalidated(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *DomainCheckConstraintUnvalidated),
+) {
+  c.FilterDomainCheckConstraintUnvalidated().ForEach(fn)
+}
+
+// FindDomainCheckConstraintUnvalidated finds the first element of type DomainCheckConstraintUnvalidated.
+// Deprecated
+func FindDomainCheckConstraintUnvalidated(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *DomainCheckConstraintUnvalidated) {
+	if tc := c.FilterDomainCheckConstraintUnvalidated(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*DomainCheckConstraintUnvalidated)
+	}
+	return current, target, element
+}
+
+// DomainCheckConstraintUnvalidatedElements filters elements of type DomainCheckConstraintUnvalidated.
+func (c *ElementCollection[E]) FilterDomainCheckConstraintUnvalidated() *ElementCollection[*DomainCheckConstraintUnvalidated] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*DomainCheckConstraintUnvalidated)
+		return ok
+	})
+	return (*ElementCollection[*DomainCheckConstraintUnvalidated])(ret)
+}
+
+func (e DomainConstraintName) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_DomainConstraintName) Element() Element {
+	return e.DomainConstraintName
+}
+
+// ForEachDomainConstraintName iterates over elements of type DomainConstraintName.
+// Deprecated
+func ForEachDomainConstraintName(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *DomainConstraintName),
+) {
+  c.FilterDomainConstraintName().ForEach(fn)
+}
+
+// FindDomainConstraintName finds the first element of type DomainConstraintName.
+// Deprecated
+func FindDomainConstraintName(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *DomainConstraintName) {
+	if tc := c.FilterDomainConstraintName(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*DomainConstraintName)
+	}
+	return current, target, element
+}
+
+// DomainConstraintNameElements filters elements of type DomainConstraintName.
+func (c *ElementCollection[E]) FilterDomainConstraintName() *ElementCollection[*DomainConstraintName] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*DomainConstraintName)
+		return ok
+	})
+	return (*ElementCollection[*DomainConstraintName])(ret)
+}
+
+func (e DomainDefault) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_DomainDefault) Element() Element {
+	return e.DomainDefault
+}
+
+// ForEachDomainDefault iterates over elements of type DomainDefault.
+// Deprecated
+func ForEachDomainDefault(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *DomainDefault),
+) {
+  c.FilterDomainDefault().ForEach(fn)
+}
+
+// FindDomainDefault finds the first element of type DomainDefault.
+// Deprecated
+func FindDomainDefault(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *DomainDefault) {
+	if tc := c.FilterDomainDefault(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*DomainDefault)
+	}
+	return current, target, element
+}
+
+// DomainDefaultElements filters elements of type DomainDefault.
+func (c *ElementCollection[E]) FilterDomainDefault() *ElementCollection[*DomainDefault] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*DomainDefault)
+		return ok
+	})
+	return (*ElementCollection[*DomainDefault])(ret)
+}
+
+func (e DomainNotNull) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_DomainNotNull) Element() Element {
+	return e.DomainNotNull
+}
+
+// ForEachDomainNotNull iterates over elements of type DomainNotNull.
+// Deprecated
+func ForEachDomainNotNull(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *DomainNotNull),
+) {
+  c.FilterDomainNotNull().ForEach(fn)
+}
+
+// FindDomainNotNull finds the first element of type DomainNotNull.
+// Deprecated
+func FindDomainNotNull(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *DomainNotNull) {
+	if tc := c.FilterDomainNotNull(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*DomainNotNull)
+	}
+	return current, target, element
+}
+
+// DomainNotNullElements filters elements of type DomainNotNull.
+func (c *ElementCollection[E]) FilterDomainNotNull() *ElementCollection[*DomainNotNull] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*DomainNotNull)
+		return ok
+	})
+	return (*ElementCollection[*DomainNotNull])(ret)
+}
+
+func (e DomainType) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_DomainType) Element() Element {
+	return e.DomainType
+}
+
+// ForEachDomainType iterates over elements of type DomainType.
+// Deprecated
+func ForEachDomainType(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *DomainType),
+) {
+  c.FilterDomainType().ForEach(fn)
+}
+
+// FindDomainType finds the first element of type DomainType.
+// Deprecated
+func FindDomainType(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *DomainType) {
+	if tc := c.FilterDomainType(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*DomainType)
+	}
+	return current, target, element
+}
+
+// DomainTypeElements filters elements of type DomainType.
+func (c *ElementCollection[E]) FilterDomainType() *ElementCollection[*DomainType] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*DomainType)
+		return ok
+	})
+	return (*ElementCollection[*DomainType])(ret)
+}
+
 func (e EnumType) element() {}
 
 // Element implements ElementGetter.
@@ -1083,6 +1379,43 @@ func (c *ElementCollection[E]) FilterFunctionBody() *ElementCollection[*Function
 	return (*ElementCollection[*FunctionBody])(ret)
 }
 
+func (e FunctionComment) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_FunctionComment) Element() Element {
+	return e.FunctionComment
+}
+
+// ForEachFunctionComment iterates over elements of type FunctionComment.
+// Deprecated
+func ForEachFunctionComment(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *FunctionComment),
+) {
+  c.FilterFunctionComment().ForEach(fn)
+}
+
+// FindFunctionComment finds the first element of type FunctionComment.
+// Deprecated
+func FindFunctionComment(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *FunctionComment) {
+	if tc := c.FilterFunctionComment(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*FunctionComment)
+	}
+	return current, target, element
+}
+
+// FunctionCommentElements filters elements of type FunctionComment.
+func (c *ElementCollection[E]) FilterFunctionComment() *ElementCollection[*FunctionComment] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*FunctionComment)
+		return ok
+	})
+	return (*ElementCollection[*FunctionComment])(ret)
+}
+
 func (e FunctionLeakProof) element() {}
 
 // Element implements ElementGetter.
@@ -1192,6 +1525,43 @@ func (c *ElementCollection[E]) FilterFunctionNullInputBehavior() *ElementCollect
 		return ok
 	})
 	return (*ElementCollection[*FunctionNullInputBehavior])(ret)
+}
+
+func (e FunctionParams) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_FunctionParams) Element() Element {
+	return e.FunctionParams
+}
+
+// ForEachFunctionParams iterates over elements of type FunctionParams.
+// Deprecated
+func ForEachFunctionParams(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *FunctionParams),
+) {
+  c.FilterFunctionParams().ForEach(fn)
+}
+
+// FindFunctionParams finds the first element of type FunctionParams.
+// Deprecated
+func FindFunctionParams(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *FunctionParams) {
+	if tc := c.FilterFunctionParams(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*FunctionParams)
+	}
+	return current, target, element
+}
+
+// FunctionParamsElements filters elements of type FunctionParams.
+func (c *ElementCollection[E]) FilterFunctionParams() *ElementCollection[*FunctionParams] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*FunctionParams)
+		return ok
+	})
+	return (*ElementCollection[*FunctionParams])(ret)
 }
 
 func (e FunctionSecurity) element() {}
@@ -2230,43 +2600,6 @@ func (c *ElementCollection[E]) FilterSecondaryIndex() *ElementCollection[*Second
 	return (*ElementCollection[*SecondaryIndex])(ret)
 }
 
-func (e SecondaryIndexPartial) element() {}
-
-// Element implements ElementGetter.
-func (e * ElementProto_SecondaryIndexPartial) Element() Element {
-	return e.SecondaryIndexPartial
-}
-
-// ForEachSecondaryIndexPartial iterates over elements of type SecondaryIndexPartial.
-// Deprecated
-func ForEachSecondaryIndexPartial(
-	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *SecondaryIndexPartial),
-) {
-  c.FilterSecondaryIndexPartial().ForEach(fn)
-}
-
-// FindSecondaryIndexPartial finds the first element of type SecondaryIndexPartial.
-// Deprecated
-func FindSecondaryIndexPartial(
-	c *ElementCollection[Element],
-) (current Status, target TargetStatus, element *SecondaryIndexPartial) {
-	if tc := c.FilterSecondaryIndexPartial(); !tc.IsEmpty() {
-		var e Element
-		current, target, e = tc.Get(0)
-		element = e.(*SecondaryIndexPartial)
-	}
-	return current, target, element
-}
-
-// SecondaryIndexPartialElements filters elements of type SecondaryIndexPartial.
-func (c *ElementCollection[E]) FilterSecondaryIndexPartial() *ElementCollection[*SecondaryIndexPartial] {
-	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
-		_, ok := e.(*SecondaryIndexPartial)
-		return ok
-	})
-	return (*ElementCollection[*SecondaryIndexPartial])(ret)
-}
-
 func (e Sequence) element() {}
 
 // Element implements ElementGetter.
@@ -2376,6 +2709,43 @@ func (c *ElementCollection[E]) FilterSequenceOwner() *ElementCollection[*Sequenc
 		return ok
 	})
 	return (*ElementCollection[*SequenceOwner])(ret)
+}
+
+func (e SequenceValue) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_SequenceValue) Element() Element {
+	return e.SequenceValue
+}
+
+// ForEachSequenceValue iterates over elements of type SequenceValue.
+// Deprecated
+func ForEachSequenceValue(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *SequenceValue),
+) {
+  c.FilterSequenceValue().ForEach(fn)
+}
+
+// FindSequenceValue finds the first element of type SequenceValue.
+// Deprecated
+func FindSequenceValue(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *SequenceValue) {
+	if tc := c.FilterSequenceValue(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*SequenceValue)
+	}
+	return current, target, element
+}
+
+// SequenceValueElements filters elements of type SequenceValue.
+func (c *ElementCollection[E]) FilterSequenceValue() *ElementCollection[*SequenceValue] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*SequenceValue)
+		return ok
+	})
+	return (*ElementCollection[*SequenceValue])(ret)
 }
 
 func (e Table) element() {}
@@ -2600,6 +2970,43 @@ func (c *ElementCollection[E]) FilterTableLocalityRegionalByRow() *ElementCollec
 	return (*ElementCollection[*TableLocalityRegionalByRow])(ret)
 }
 
+func (e TableLocalityRegionalByRowUsingConstraint) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_TableLocalityRegionalByRowUsingConstraint) Element() Element {
+	return e.TableLocalityRegionalByRowUsingConstraint
+}
+
+// ForEachTableLocalityRegionalByRowUsingConstraint iterates over elements of type TableLocalityRegionalByRowUsingConstraint.
+// Deprecated
+func ForEachTableLocalityRegionalByRowUsingConstraint(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *TableLocalityRegionalByRowUsingConstraint),
+) {
+  c.FilterTableLocalityRegionalByRowUsingConstraint().ForEach(fn)
+}
+
+// FindTableLocalityRegionalByRowUsingConstraint finds the first element of type TableLocalityRegionalByRowUsingConstraint.
+// Deprecated
+func FindTableLocalityRegionalByRowUsingConstraint(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *TableLocalityRegionalByRowUsingConstraint) {
+	if tc := c.FilterTableLocalityRegionalByRowUsingConstraint(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*TableLocalityRegionalByRowUsingConstraint)
+	}
+	return current, target, element
+}
+
+// TableLocalityRegionalByRowUsingConstraintElements filters elements of type TableLocalityRegionalByRowUsingConstraint.
+func (c *ElementCollection[E]) FilterTableLocalityRegionalByRowUsingConstraint() *ElementCollection[*TableLocalityRegionalByRowUsingConstraint] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*TableLocalityRegionalByRowUsingConstraint)
+		return ok
+	})
+	return (*ElementCollection[*TableLocalityRegionalByRowUsingConstraint])(ret)
+}
+
 func (e TableLocalitySecondaryRegion) element() {}
 
 // Element implements ElementGetter.
@@ -2709,6 +3116,43 @@ func (c *ElementCollection[E]) FilterTableSchemaLocked() *ElementCollection[*Tab
 		return ok
 	})
 	return (*ElementCollection[*TableSchemaLocked])(ret)
+}
+
+func (e TableStorageParam) element() {}
+
+// Element implements ElementGetter.
+func (e * ElementProto_TableStorageParam) Element() Element {
+	return e.TableStorageParam
+}
+
+// ForEachTableStorageParam iterates over elements of type TableStorageParam.
+// Deprecated
+func ForEachTableStorageParam(
+	c *ElementCollection[Element], fn func(current Status, target TargetStatus, e *TableStorageParam),
+) {
+  c.FilterTableStorageParam().ForEach(fn)
+}
+
+// FindTableStorageParam finds the first element of type TableStorageParam.
+// Deprecated
+func FindTableStorageParam(
+	c *ElementCollection[Element],
+) (current Status, target TargetStatus, element *TableStorageParam) {
+	if tc := c.FilterTableStorageParam(); !tc.IsEmpty() {
+		var e Element
+		current, target, e = tc.Get(0)
+		element = e.(*TableStorageParam)
+	}
+	return current, target, element
+}
+
+// TableStorageParamElements filters elements of type TableStorageParam.
+func (c *ElementCollection[E]) FilterTableStorageParam() *ElementCollection[*TableStorageParam] {
+	ret := c.genericFilter(func(_ Status, _ TargetStatus, e Element) bool {
+		_, ok := e.(*TableStorageParam)
+		return ok
+	})
+	return (*ElementCollection[*TableStorageParam])(ret)
 }
 
 func (e TableZoneConfig) element() {}
@@ -3324,6 +3768,10 @@ func (e* ElementProto) SetElement(element Element) {
 			e.ElementOneOf = &ElementProto_ColumnDefaultExpression{ ColumnDefaultExpression: t}
 		case *ColumnFamily:
 			e.ElementOneOf = &ElementProto_ColumnFamily{ ColumnFamily: t}
+		case *ColumnGeneratedAsIdentity:
+			e.ElementOneOf = &ElementProto_ColumnGeneratedAsIdentity{ ColumnGeneratedAsIdentity: t}
+		case *ColumnHidden:
+			e.ElementOneOf = &ElementProto_ColumnHidden{ ColumnHidden: t}
 		case *ColumnName:
 			e.ElementOneOf = &ElementProto_ColumnName{ ColumnName: t}
 		case *ColumnNotNull:
@@ -3354,6 +3802,18 @@ func (e* ElementProto) SetElement(element Element) {
 			e.ElementOneOf = &ElementProto_DatabaseRoleSetting{ DatabaseRoleSetting: t}
 		case *DatabaseZoneConfig:
 			e.ElementOneOf = &ElementProto_DatabaseZoneConfig{ DatabaseZoneConfig: t}
+		case *DomainCheckConstraint:
+			e.ElementOneOf = &ElementProto_DomainCheckConstraint{ DomainCheckConstraint: t}
+		case *DomainCheckConstraintUnvalidated:
+			e.ElementOneOf = &ElementProto_DomainCheckConstraintUnvalidated{ DomainCheckConstraintUnvalidated: t}
+		case *DomainConstraintName:
+			e.ElementOneOf = &ElementProto_DomainConstraintName{ DomainConstraintName: t}
+		case *DomainDefault:
+			e.ElementOneOf = &ElementProto_DomainDefault{ DomainDefault: t}
+		case *DomainNotNull:
+			e.ElementOneOf = &ElementProto_DomainNotNull{ DomainNotNull: t}
+		case *DomainType:
+			e.ElementOneOf = &ElementProto_DomainType{ DomainType: t}
 		case *EnumType:
 			e.ElementOneOf = &ElementProto_EnumType{ EnumType: t}
 		case *EnumTypeValue:
@@ -3366,12 +3826,16 @@ func (e* ElementProto) SetElement(element Element) {
 			e.ElementOneOf = &ElementProto_Function{ Function: t}
 		case *FunctionBody:
 			e.ElementOneOf = &ElementProto_FunctionBody{ FunctionBody: t}
+		case *FunctionComment:
+			e.ElementOneOf = &ElementProto_FunctionComment{ FunctionComment: t}
 		case *FunctionLeakProof:
 			e.ElementOneOf = &ElementProto_FunctionLeakProof{ FunctionLeakProof: t}
 		case *FunctionName:
 			e.ElementOneOf = &ElementProto_FunctionName{ FunctionName: t}
 		case *FunctionNullInputBehavior:
 			e.ElementOneOf = &ElementProto_FunctionNullInputBehavior{ FunctionNullInputBehavior: t}
+		case *FunctionParams:
+			e.ElementOneOf = &ElementProto_FunctionParams{ FunctionParams: t}
 		case *FunctionSecurity:
 			e.ElementOneOf = &ElementProto_FunctionSecurity{ FunctionSecurity: t}
 		case *FunctionVolatility:
@@ -3428,14 +3892,14 @@ func (e* ElementProto) SetElement(element Element) {
 			e.ElementOneOf = &ElementProto_SchemaParent{ SchemaParent: t}
 		case *SecondaryIndex:
 			e.ElementOneOf = &ElementProto_SecondaryIndex{ SecondaryIndex: t}
-		case *SecondaryIndexPartial:
-			e.ElementOneOf = &ElementProto_SecondaryIndexPartial{ SecondaryIndexPartial: t}
 		case *Sequence:
 			e.ElementOneOf = &ElementProto_Sequence{ Sequence: t}
 		case *SequenceOption:
 			e.ElementOneOf = &ElementProto_SequenceOption{ SequenceOption: t}
 		case *SequenceOwner:
 			e.ElementOneOf = &ElementProto_SequenceOwner{ SequenceOwner: t}
+		case *SequenceValue:
+			e.ElementOneOf = &ElementProto_SequenceValue{ SequenceValue: t}
 		case *Table:
 			e.ElementOneOf = &ElementProto_Table{ Table: t}
 		case *TableComment:
@@ -3448,12 +3912,16 @@ func (e* ElementProto) SetElement(element Element) {
 			e.ElementOneOf = &ElementProto_TableLocalityPrimaryRegion{ TableLocalityPrimaryRegion: t}
 		case *TableLocalityRegionalByRow:
 			e.ElementOneOf = &ElementProto_TableLocalityRegionalByRow{ TableLocalityRegionalByRow: t}
+		case *TableLocalityRegionalByRowUsingConstraint:
+			e.ElementOneOf = &ElementProto_TableLocalityRegionalByRowUsingConstraint{ TableLocalityRegionalByRowUsingConstraint: t}
 		case *TableLocalitySecondaryRegion:
 			e.ElementOneOf = &ElementProto_TableLocalitySecondaryRegion{ TableLocalitySecondaryRegion: t}
 		case *TablePartitioning:
 			e.ElementOneOf = &ElementProto_TablePartitioning{ TablePartitioning: t}
 		case *TableSchemaLocked:
 			e.ElementOneOf = &ElementProto_TableSchemaLocked{ TableSchemaLocked: t}
+		case *TableStorageParam:
+			e.ElementOneOf = &ElementProto_TableStorageParam{ TableStorageParam: t}
 		case *TableZoneConfig:
 			e.ElementOneOf = &ElementProto_TableZoneConfig{ TableZoneConfig: t}
 		case *TemporaryIndex:
@@ -3500,6 +3968,8 @@ func GetElementOneOfProtos() []interface{} {
 	((*ElementProto_ColumnComputeExpression)(nil)),
 	((*ElementProto_ColumnDefaultExpression)(nil)),
 	((*ElementProto_ColumnFamily)(nil)),
+	((*ElementProto_ColumnGeneratedAsIdentity)(nil)),
+	((*ElementProto_ColumnHidden)(nil)),
 	((*ElementProto_ColumnName)(nil)),
 	((*ElementProto_ColumnNotNull)(nil)),
 	((*ElementProto_ColumnOnUpdateExpression)(nil)),
@@ -3515,15 +3985,23 @@ func GetElementOneOfProtos() []interface{} {
 	((*ElementProto_DatabaseRegionConfig)(nil)),
 	((*ElementProto_DatabaseRoleSetting)(nil)),
 	((*ElementProto_DatabaseZoneConfig)(nil)),
+	((*ElementProto_DomainCheckConstraint)(nil)),
+	((*ElementProto_DomainCheckConstraintUnvalidated)(nil)),
+	((*ElementProto_DomainConstraintName)(nil)),
+	((*ElementProto_DomainDefault)(nil)),
+	((*ElementProto_DomainNotNull)(nil)),
+	((*ElementProto_DomainType)(nil)),
 	((*ElementProto_EnumType)(nil)),
 	((*ElementProto_EnumTypeValue)(nil)),
 	((*ElementProto_ForeignKeyConstraint)(nil)),
 	((*ElementProto_ForeignKeyConstraintUnvalidated)(nil)),
 	((*ElementProto_Function)(nil)),
 	((*ElementProto_FunctionBody)(nil)),
+	((*ElementProto_FunctionComment)(nil)),
 	((*ElementProto_FunctionLeakProof)(nil)),
 	((*ElementProto_FunctionName)(nil)),
 	((*ElementProto_FunctionNullInputBehavior)(nil)),
+	((*ElementProto_FunctionParams)(nil)),
 	((*ElementProto_FunctionSecurity)(nil)),
 	((*ElementProto_FunctionVolatility)(nil)),
 	((*ElementProto_IndexColumn)(nil)),
@@ -3552,19 +4030,21 @@ func GetElementOneOfProtos() []interface{} {
 	((*ElementProto_SchemaComment)(nil)),
 	((*ElementProto_SchemaParent)(nil)),
 	((*ElementProto_SecondaryIndex)(nil)),
-	((*ElementProto_SecondaryIndexPartial)(nil)),
 	((*ElementProto_Sequence)(nil)),
 	((*ElementProto_SequenceOption)(nil)),
 	((*ElementProto_SequenceOwner)(nil)),
+	((*ElementProto_SequenceValue)(nil)),
 	((*ElementProto_Table)(nil)),
 	((*ElementProto_TableComment)(nil)),
 	((*ElementProto_TableData)(nil)),
 	((*ElementProto_TableLocalityGlobal)(nil)),
 	((*ElementProto_TableLocalityPrimaryRegion)(nil)),
 	((*ElementProto_TableLocalityRegionalByRow)(nil)),
+	((*ElementProto_TableLocalityRegionalByRowUsingConstraint)(nil)),
 	((*ElementProto_TableLocalitySecondaryRegion)(nil)),
 	((*ElementProto_TablePartitioning)(nil)),
 	((*ElementProto_TableSchemaLocked)(nil)),
+	((*ElementProto_TableStorageParam)(nil)),
 	((*ElementProto_TableZoneConfig)(nil)),
 	((*ElementProto_TemporaryIndex)(nil)),
 	((*ElementProto_Trigger)(nil)),
@@ -3596,6 +4076,8 @@ func GetElementTypes() []interface{} {
 	((*ColumnComputeExpression)(nil)),
 	((*ColumnDefaultExpression)(nil)),
 	((*ColumnFamily)(nil)),
+	((*ColumnGeneratedAsIdentity)(nil)),
+	((*ColumnHidden)(nil)),
 	((*ColumnName)(nil)),
 	((*ColumnNotNull)(nil)),
 	((*ColumnOnUpdateExpression)(nil)),
@@ -3611,15 +4093,23 @@ func GetElementTypes() []interface{} {
 	((*DatabaseRegionConfig)(nil)),
 	((*DatabaseRoleSetting)(nil)),
 	((*DatabaseZoneConfig)(nil)),
+	((*DomainCheckConstraint)(nil)),
+	((*DomainCheckConstraintUnvalidated)(nil)),
+	((*DomainConstraintName)(nil)),
+	((*DomainDefault)(nil)),
+	((*DomainNotNull)(nil)),
+	((*DomainType)(nil)),
 	((*EnumType)(nil)),
 	((*EnumTypeValue)(nil)),
 	((*ForeignKeyConstraint)(nil)),
 	((*ForeignKeyConstraintUnvalidated)(nil)),
 	((*Function)(nil)),
 	((*FunctionBody)(nil)),
+	((*FunctionComment)(nil)),
 	((*FunctionLeakProof)(nil)),
 	((*FunctionName)(nil)),
 	((*FunctionNullInputBehavior)(nil)),
+	((*FunctionParams)(nil)),
 	((*FunctionSecurity)(nil)),
 	((*FunctionVolatility)(nil)),
 	((*IndexColumn)(nil)),
@@ -3648,19 +4138,21 @@ func GetElementTypes() []interface{} {
 	((*SchemaComment)(nil)),
 	((*SchemaParent)(nil)),
 	((*SecondaryIndex)(nil)),
-	((*SecondaryIndexPartial)(nil)),
 	((*Sequence)(nil)),
 	((*SequenceOption)(nil)),
 	((*SequenceOwner)(nil)),
+	((*SequenceValue)(nil)),
 	((*Table)(nil)),
 	((*TableComment)(nil)),
 	((*TableData)(nil)),
 	((*TableLocalityGlobal)(nil)),
 	((*TableLocalityPrimaryRegion)(nil)),
 	((*TableLocalityRegionalByRow)(nil)),
+	((*TableLocalityRegionalByRowUsingConstraint)(nil)),
 	((*TableLocalitySecondaryRegion)(nil)),
 	((*TablePartitioning)(nil)),
 	((*TableSchemaLocked)(nil)),
+	((*TableStorageParam)(nil)),
 	((*TableZoneConfig)(nil)),
 	((*TemporaryIndex)(nil)),
 	((*Trigger)(nil)),

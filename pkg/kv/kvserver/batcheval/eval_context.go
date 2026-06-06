@@ -19,25 +19,31 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/readsummary/rspb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
+	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/storage/enginepb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/limit"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
+	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
+	"github.com/cockroachdb/tokenbucket"
 	"golang.org/x/time/rate"
 )
 
 // Limiters is the collection of per-store limits used during cmd evaluation.
 type Limiters struct {
 	BulkIOWriteRate                      *rate.Limiter
-	ConcurrentExportRequests             limit.ConcurrentRequestLimiter
 	ConcurrentAddSSTableRequests         limit.ConcurrentRequestLimiter
 	ConcurrentAddSSTableAsWritesRequests limit.ConcurrentRequestLimiter
-	// concurrentRangefeedIters is a semaphore used to limit the number of
-	// rangefeeds in the "catch-up" state across the store. The "catch-up" state
-	// is a temporary state at the beginning of a rangefeed which is expensive
-	// because it uses an engine iterator.
-	ConcurrentRangefeedIters limit.ConcurrentRequestLimiter
+	ConcurrentRangefeedIters             limit.ConcurrentRequestLimiter
+	// BulkIOReadRate and ConcurrentBulkReadRequests work in concert to
+	// throttle low-priority bulk read operations like TTL (Reverse)Scan and
+	// Export.
+	BulkIOReadRate struct {
+		syncutil.Mutex
+		tokenbucket.TokenBucket
+	}
+	ConcurrentBulkReadRequests limit.ConcurrentRequestLimiter
 }
 
 // EvalContext is the interface through which command evaluation accesses the
@@ -62,6 +68,8 @@ type EvalContext interface {
 	GetCompactedIndex() kvpb.RaftIndex
 	GetTerm(index kvpb.RaftIndex) (kvpb.RaftTerm, error)
 	GetLeaseAppliedIndex() kvpb.LeaseAppliedIndex
+	// LogEngine returns the engine that stores the raft log.
+	LogEngine() storage.Engine
 
 	Desc() *roachpb.RangeDescriptor
 	ContainsKey(key roachpb.Key) bool
@@ -175,6 +183,7 @@ type MockEvalCtx struct {
 	GCThreshold            hlc.Timestamp
 	Term                   kvpb.RaftTerm
 	CompactedIndex         kvpb.RaftIndex
+	LogEngine              storage.Engine
 	CanCreateTxnRecordFn   func() (bool, kvpb.TransactionAbortedReason)
 	MinTxnCommitTSFn       func() hlc.Timestamp
 	LastReplicaGCTimestamp hlc.Timestamp
@@ -223,6 +232,14 @@ func (m *mockEvalCtxImpl) GetConcurrencyManager() concurrency.Manager {
 		panic("ConcurrencyManager not configured")
 	}
 }
+
+func (m *mockEvalCtxImpl) LogEngine() storage.Engine {
+	if m.MockEvalCtx.LogEngine != nil {
+		return m.MockEvalCtx.LogEngine
+	}
+	panic("LogEngine not configured")
+}
+
 func (m *mockEvalCtxImpl) NodeID() roachpb.NodeID {
 	return m.MockEvalCtx.NodeID
 }

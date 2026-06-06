@@ -16,9 +16,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdcevent"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kcjsonschema"
-	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/builtins/builtinsregistry"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/volatility"
@@ -387,7 +387,7 @@ func (e *versionEncoder) datumToJSON(ctx context.Context, d tree.Datum) (json.JS
 				return nil, err
 			}
 			if collides && jsonNullObjectCollisionLogLim.ShouldLog() {
-				log.Warningf(ctx, "JSON value collides with reserved null object: %q", j.String())
+				log.Changefeed.Warningf(ctx, "JSON value collides with reserved null object: %q", j.String())
 			}
 		}
 	}
@@ -621,7 +621,6 @@ func (e *jsonEncoder) makeValueSchema(updated, prev cdcevent.Row) (json.JSON, er
 		source, _ = ptr(e.enrichedEnvelopeSourceProvider.KafkaConnectJSONSchema(), nil)
 	}
 
-	// NOTE: this is option (2) cc @rohan-joshi
 	if e.keyInValue {
 		keyInValue, err = ptr(kcjsonschema.NewSchemaFromIterator(updated.ForEachKeyColumn(), fmt.Sprintf("%s.key", sqlName)))
 		if err != nil {
@@ -649,6 +648,9 @@ func (e *jsonEncoder) initEnrichedEnvelope(ctx context.Context) error {
 	}
 
 	payloadKeys := []string{"after", "op", "ts_ns"}
+	if e.beforeField {
+		payloadKeys = append(payloadKeys, "before")
+	}
 	if e.keyInValue {
 		payloadKeys = append(payloadKeys, "key")
 	}
@@ -678,14 +680,28 @@ func (e *jsonEncoder) initEnrichedEnvelope(ctx context.Context) error {
 			return nil, err
 		}
 
+		if e.beforeField {
+			var before json.JSON
+			if prev.IsInitialized() && !prev.IsDeleted() {
+				before, err = e.versionEncoder(prev.EventDescriptor, true).rowAsGoNative(ctx, prev, emitDeletedRowAsNull, nil)
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				before = json.NullJSONValue
+			}
+
+			if err := payloadBuilder.Set("before", before); err != nil {
+				return nil, err
+			}
+		}
 		if e.keyInValue {
-			// NOTE: this is option (2) cc @rohan-joshi
 			if err := ve.encodeKeyInValue(ctx, updated, payloadBuilder, true); err != nil {
 				return nil, err
 			}
 		}
 		if e.sourceField {
-			sourceJson, err := e.enrichedEnvelopeSourceProvider.GetJSON(updated)
+			sourceJson, err := e.enrichedEnvelopeSourceProvider.GetJSON(updated, evCtx)
 			if err != nil {
 				return nil, err
 			}
@@ -831,8 +847,9 @@ func init() {
 		Volatility: volatility.Volatile,
 	}
 
-	utilccl.RegisterCCLBuiltin("crdb_internal.to_json_as_changefeed_with_flags",
-		`Encodes a tuple the way a changefeed would output it if it were inserted as a row or emitted by a changefeed expression, and returns the raw bytes.
-		Flags such as 'diff' modify the encoding as though specified in the WITH portion of a changefeed.`,
-		overload)
+	builtinsregistry.Register(
+		"crdb_internal.to_json_as_changefeed_with_flags",
+		&tree.FunctionProperties{Category: "CCL-only internal function"},
+		[]tree.Overload{overload},
+	)
 }

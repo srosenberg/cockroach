@@ -186,8 +186,7 @@ func (d *DiskBackedNumberedRowContainer) GetRow(
 			return nil, nil
 		}
 		mrc := d.rc.mrc
-		mrc.getEncRow(mrc.scratchEncRow, idx)
-		return mrc.scratchEncRow, nil
+		return mrc.scratchEncRow, mrc.getEncRow(mrc.scratchEncRow, idx)
 	}
 	return d.rowIter.getRow(ctx, idx, skip)
 }
@@ -567,7 +566,7 @@ func (n *numberedDiskRowIterator) tryAddCacheHelper(
 	ctx context.Context, elem *cacheElement, row rowenc.EncDatumRow, alreadyDecoded bool,
 ) error {
 	if elem.row != nil {
-		log.Fatalf(ctx, "adding row to cache when it is already in cache")
+		log.Dev.Fatalf(ctx, "adding row to cache when it is already in cache")
 	}
 	nextAccess := elem.accesses[0]
 	evict := func() (rowenc.EncDatumRow, error) {

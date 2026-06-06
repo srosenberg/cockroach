@@ -45,13 +45,12 @@ func bootstrapSystem(
 	}{
 		{"initialize cluster version", populateVersionSetting, false},
 		{"configure key visualizer", keyVisualizerTablesMigration, true},
-		{"configure sql activity table TTLs", sqlStatsTTLChange, true},
 	} {
 		if skipSomeSteps && u.skippableInTest {
-			log.Infof(ctx, "skipping system bootstrap step %q", u.name)
+			log.Dev.Infof(ctx, "skipping system bootstrap step %q", u.name)
 			continue
 		}
-		log.Infof(ctx, "executing system bootstrap step %q", u.name)
+		log.Dev.Infof(ctx, "executing system bootstrap step %q", u.name)
 		if err := u.fn(ctx, cv, deps); err != nil {
 			return errors.Wrapf(err, "system bootstrap step %q failed", u.name)
 		}
@@ -88,13 +87,15 @@ func bootstrapCluster(
 		{"create update cached table metadata job", createUpdateTableMetadataCacheJob, true},
 		{"maybe initialize replication standby read-only catalog", maybeSetupPCRStandbyReader, true},
 		{"create sql activity flush job", createSqlActivityFlushJob, true},
+		{"configure sql activity table TTLs", sqlStatsTTLChange, true},
+		{"create hot range logger job", createHotRangesLoggerJob, true},
 	} {
 
 		if skipSomeSteps && u.skippableInTest {
-			log.Infof(ctx, "skipping bootstrap step %q", u.name)
+			log.Dev.Infof(ctx, "skipping bootstrap step %q", u.name)
 			continue
 		}
-		log.Infof(ctx, "executing bootstrap step %q", u.name)
+		log.Dev.Infof(ctx, "executing bootstrap step %q", u.name)
 		if err := u.fn(ctx, cv, deps); err != nil {
 			return errors.Wrapf(err, "bootstrap step %q failed", u.name)
 		}
@@ -161,13 +162,19 @@ func addRootToAdminRole(ctx context.Context, txn isql.Txn) error {
 func optInToDiagnosticsStatReporting(
 	ctx context.Context, _ clusterversion.ClusterVersion, deps upgrade.TenantDeps,
 ) error {
+	// N.B. The default for `diagnostics.reporting.enabled` is `true` as of [1].
+	// [1] https://github.com/cockroachdb/cockroach/pull/131097
+	optIn := true
 	// We're opting-out of the automatic opt-in. See discussion in updates.go.
 	if cluster.TelemetryOptOut {
-		return nil
+		optIn = false
 	}
 	_, err := deps.InternalExecutor.Exec(
 		ctx, "optInToDiagnosticsStatReporting", nil, /* txn */
-		`SET CLUSTER SETTING diagnostics.reporting.enabled = true`)
+		fmt.Sprintf(`SET CLUSTER SETTING diagnostics.reporting.enabled = %t`, optIn))
+	if errors.Is(err, cluster.SettingOverrideErr) {
+		return nil
+	}
 	return err
 }
 
@@ -266,7 +273,7 @@ func createDefaultDbs(
 		stmt := fmt.Sprintf(createDbStmt, dbName)
 		_, err = deps.InternalExecutor.Exec(ctx, "create-default-DB", nil /* txn */, stmt)
 		if err != nil {
-			log.Warningf(ctx, "failed attempt to add database %q: %s", dbName, err)
+			log.Dev.Warningf(ctx, "failed attempt to add database %q: %s", dbName, err)
 			return err
 		}
 	}

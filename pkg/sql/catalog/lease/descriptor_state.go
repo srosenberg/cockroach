@@ -47,10 +47,17 @@ type descriptorState struct {
 		// offline temporarily (as opposed to dropped).
 		takenOffline bool
 
+		// Timestamp at which this descriptor became offline.
+		takenOfflineAt hlc.Timestamp
+
 		// maxVersionSeen is used to prevent a race where a concurrent lease
 		// acquisition might miss an event indicating that there is a new version
 		// of a descriptor.
 		maxVersionSeen descpb.DescriptorVersion
+
+		// maxVersionNotified is the maximum version of the descriptor for
+		// which observers have been notified.
+		maxVersionNotified descpb.DescriptorVersion
 
 		// acquisitionsInProgress indicates that at least one caller is currently
 		// in the process of performing an acquisition. This tracking is critical
@@ -58,6 +65,9 @@ type descriptorState struct {
 		// acquisition finishes but indicate that that new lease is expired are not
 		// ignored.
 		acquisitionsInProgress int
+
+		// acquisitionChannel indicates that a bulk acquisition is in progress.
+		acquisitionChannel chan struct{}
 	}
 }
 
@@ -82,7 +92,7 @@ type descriptorState struct {
 // It returns true if the descriptor returned is the known latest version
 // of the descriptor.
 func (t *descriptorState) findForTimestamp(
-	ctx context.Context, timestamp hlc.Timestamp,
+	ctx context.Context, timestamp ReadTimestamp,
 ) (*descriptorVersionState, bool, error) {
 	expensiveLogEnabled := log.ExpensiveLogEnabled(ctx, 2)
 	t.mu.Lock()
@@ -90,21 +100,62 @@ func (t *descriptorState) findForTimestamp(
 
 	// Acquire a lease if no descriptor exists in the cache.
 	if len(t.mu.active.data) == 0 {
+		// If the descriptor is marked as offline, we should attempt
+		// a historical query to fetch it, since it's likely querying
+		// the past. If the requested time is past the offline time,
+		// then attempt to renew again, since it could have come online
+		// again.
+		if t.mu.takenOffline && timestamp.GetTimestamp().Less(t.mu.takenOfflineAt) {
+			return nil, false, errReadOlderVersion
+		}
 		return nil, false, errRenewLease
 	}
+	return t.findForTimestampImpl(ctx, timestamp.GetTimestamp(), timestamp.GetBaseTimestamp(), expensiveLogEnabled)
+}
 
+// findForTimestampImpl searches for a descriptor that is valid for both the lease
+// timestamp and read timestamp. If no such descriptor exists, then this function
+// will return a descriptor satisfying the read timestamp (when using locked leases
+// this means we will allow mixing versions on first reads).
+func (t *descriptorState) findForTimestampImpl(
+	ctx context.Context,
+	leaseTimestamp hlc.Timestamp,
+	readTimestamp hlc.Timestamp,
+	expensiveLogEnabled bool,
+) (*descriptorVersionState, bool, error) {
+	// Read is attempting to read at or after the offline time, so
+	// attempt a renewal first.
+	if t.mu.takenOffline && !leaseTimestamp.Less(t.mu.takenOfflineAt) {
+		return nil, false, errRenewLease
+	}
+	// Normally this is true if an older timestamp is intentionally used for
+	// locked leasing.
+	hasDifferentReadTimeStamp := leaseTimestamp != readTimestamp
 	// Walk back the versions to find one that is valid for the timestamp.
 	for i := len(t.mu.active.data) - 1; i >= 0; i-- {
-		// Check to see if the ModificationTime is valid.
-		if desc := t.mu.active.data[i]; desc.GetModificationTime().LessEq(timestamp) {
+		// Check to see if the ModificationTime is valid. If only the initial version
+		// of the descriptor is known, then read it at the base timestamp.
+		if desc := t.mu.active.data[i]; desc.GetModificationTime().LessEq(leaseTimestamp) {
+			// If the version within the time range is marked as dropped,
+			// then return a dropped descriptor error.
+			if err := catalog.FilterDroppedDescriptor(desc); err != nil {
+				return nil, false, err
+			}
 			latest := i+1 == len(t.mu.active.data)
-			if !desc.hasExpired(ctx, timestamp) {
+			if !desc.hasExpired(ctx, readTimestamp) {
 				// Existing valid descriptor version.
 				desc.incRefCount(ctx, expensiveLogEnabled)
 				return desc, latest, nil
+			} else if (!latest || t.mu.takenOffline) && hasDifferentReadTimeStamp {
+				// The lease timestamp is not compatible with the read timestamp, since
+				// the descriptor returned will be expired. This means we are seeing the
+				// first read of this descriptor, since the prior version was not locked.
+				// In this scenario, we will allow this transaction to mix versions as a
+				// last resort.
+				return t.findForTimestampImpl(ctx, readTimestamp, readTimestamp, expensiveLogEnabled)
 			}
 
-			if latest {
+			if latest && !t.mu.takenOffline {
 				// Renew the lease if the lease has expired
 				// The latest descriptor always has a lease.
 				return nil, false, errRenewLease
@@ -113,6 +164,19 @@ func (t *descriptorState) findForTimestamp(
 		}
 	}
 
+	// If we have the initial version of the descriptor, and it satisfies the read
+	// timestamp, then the object was just created. We can confirm it satisfies
+	// the request by executing findForTimestampImpl with the readTimestamp instead.
+	if oldest := t.mu.active.findOldest(); hasDifferentReadTimeStamp &&
+		oldest != nil &&
+		oldest.GetVersion() == 1 &&
+		oldest.GetModificationTime().LessEq(readTimestamp) {
+		return t.findForTimestampImpl(ctx, readTimestamp, readTimestamp, expensiveLogEnabled)
+	}
+
+	if !hasDifferentReadTimeStamp {
+		return nil, false, errReadOlderVersionAtBase
+	}
 	return nil, false, errReadOlderVersion
 }
 
@@ -126,37 +190,81 @@ func (t *descriptorState) upsertLeaseLocked(
 	session sqlliveness.Session,
 	regionEnumPrefix []byte,
 ) error {
+	if fn := t.m.testingKnobs.TestingLeaseUpsertEventForID; fn != nil {
+		fn(desc.GetID(), desc.GetVersion(), "attempting")
+	}
 	if t.mu.maxVersionSeen < desc.GetVersion() {
 		t.mu.maxVersionSeen = desc.GetVersion()
 	}
 	s := t.mu.active.find(desc.GetVersion())
 	if s == nil {
 		if t.mu.active.findNewest() != nil {
-			log.Infof(ctx, "new lease: %s", desc)
+			log.Dev.Infof(ctx, "new lease: %s", desc)
 		}
 		descState := newDescriptorVersionState(t, desc, hlc.Timestamp{}, session, regionEnumPrefix, true /* isLease */)
+		if err := t.m.boundAccount.Grow(ctx, descState.getByteSize()); err != nil {
+			// If we don't have sufficient memory, then release the lease so
+			// that the system.lease table doesn't have a reference.
+			t.m.storage.release(ctx, t.m.stopper, descState.mu.lease)
+			if fn := t.m.testingKnobs.TestingLeaseUpsertEventForID; fn != nil {
+				fn(desc.GetID(), desc.GetVersion(), "memory budget exceeded, releasing lease")
+			}
+			return wrapMemoryError(err)
+		}
 		t.mu.active.insert(descState)
 		t.m.names.insert(ctx, descState)
+		if fn := t.m.testingKnobs.TestingLeaseUpsertEventForID; fn != nil {
+			fn(desc.GetID(), desc.GetVersion(), "inserted new version into active set")
+		}
 		return nil
 	}
-	// If the version already exists and the session ID matches nothing
-	// needs to be done.
-	if s.getSessionID() == session.ID() {
+	// If the version already exists and the session ID matches, nothing
+	// needs to be done. If an expiration is set up then this is a historical
+	// version being revived.
+	if s.getSessionID() == session.ID() && s.expiration.Load() == nil {
+		if fn := t.m.testingKnobs.TestingLeaseUpsertEventForID; fn != nil {
+			fn(desc.GetID(), desc.GetVersion(), "already exists with same session, skipping")
+		}
 		return nil
 	}
 
 	// Otherwise, we need to update the existing lease to fix the session ID. The
 	// previously stored lease also needs to be deleted.
 	var existingLease storedLease
+	cleanupOldLease := false
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		existingLease = *s.mu.lease
 		s.session.Store(&session)
-		s.mu.lease.sessionID = session.ID().UnsafeBytes()
+		if s.mu.lease != nil {
+			existingLease = *s.mu.lease
+			cleanupOldLease = true
+			s.mu.lease.sessionID = session.ID().UnsafeBytes()
+			return
+		}
+		// It's possible a historical descriptor is now being revived as
+		// a live descriptor. This can only happen due to a repair query.
+		// In this scenario, we need to repopulate the stored lease with
+		// the new information.
+		s.mu.lease = &storedLease{
+			id:        desc.GetID(),
+			prefix:    regionEnumPrefix,
+			sessionID: session.ID().UnsafeBytes(),
+			version:   int(desc.GetVersion()),
+		}
+		s.expiration.Store(nil)
 	}()
 	// Delete the existing lease on behalf of the caller.
-	t.m.storage.release(ctx, t.m.stopper, &existingLease)
+	if cleanupOldLease {
+		if fn := t.m.testingKnobs.TestingLeaseUpsertEventForID; fn != nil {
+			fn(desc.GetID(), desc.GetVersion(), "updated session, releasing old lease")
+		}
+		t.m.storage.release(ctx, t.m.stopper, &existingLease)
+	} else {
+		if fn := t.m.testingKnobs.TestingLeaseUpsertEventForID; fn != nil {
+			fn(desc.GetID(), desc.GetVersion(), "revived historical descriptor as live lease")
+		}
+	}
 	return nil
 }
 
@@ -190,23 +298,31 @@ func newDescriptorVersionState(
 	if !expiration.IsEmpty() {
 		descState.expiration.Store(&expiration)
 	}
-
+	// Populate the size of the structure.
+	descState.byteSize = descState.calculateByteSize()
 	return descState
 }
 
 // removeInactiveVersions removes inactive versions in t.mu.active.data with
 // refcount 0. t.mu must be locked. It returns leases that need to be released.
-func (t *descriptorState) removeInactiveVersions() []*storedLease {
+func (t *descriptorState) removeInactiveVersions(ctx context.Context) []*storedLease {
 	var leases []*storedLease
 	// A copy of t.mu.active.data must be made since t.mu.active.data will be changed
 	// within the loop.
 	for _, desc := range append([]*descriptorVersionState(nil), t.mu.active.data...) {
 		if desc.refcount.Load() == 0 {
 			t.mu.active.remove(desc)
-			if l := desc.mu.lease; l != nil {
-				desc.mu.lease = nil
-				leases = append(leases, l)
-			}
+			func() {
+				desc.mu.Lock()
+				defer desc.mu.Unlock()
+				// Ensure we have a lock to allow us to clean up the usage
+				// by the stored lease.
+				t.m.boundAccount.Shrink(ctx, desc.getByteSize())
+				if l := desc.mu.lease; l != nil {
+					desc.mu.lease = nil
+					leases = append(leases, l)
+				}
+			}()
 		}
 	}
 	return leases
@@ -222,7 +338,7 @@ func (t *descriptorState) release(ctx context.Context, s *descriptorVersionState
 	decRefCount := func(s *descriptorVersionState) (shouldRemove bool) {
 		currCount := s.refcount.Add(-1)
 		if expensiveLoggingEnabled {
-			log.Infof(ctx, "release: %s", s.redactedString())
+			log.Dev.Infof(ctx, "release: %s", s.redactedString())
 		}
 		return currCount == 0
 	}
@@ -267,14 +383,15 @@ func (t *descriptorState) release(ctx context.Context, s *descriptorVersionState
 			leaseReleased := true
 			// For testing, we will synchronously release leases, but that
 			// exposes us to the danger of the context getting cancelled. To
-			// eliminate this risk, we are going first remove the lease from
-			// storage and then delete if from mqemory.
+			// eliminate this risk, we are going to first remove the lease from
+			// storage and then delete it from memory.
 			if t.m.storage.testingKnobs.RemoveOnceDereferenced {
 				leaseReleased = releaseLease(ctx, l, t.m)
 				l = nil
 			}
 			if leaseReleased {
 				t.mu.active.remove(s)
+				s.t.m.boundAccount.Shrink(ctx, s.getByteSize())
 			}
 			return l
 		}
@@ -297,4 +414,19 @@ func (t *descriptorState) markAcquisitionDone(ctx context.Context) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.mu.acquisitionsInProgress--
+}
+
+// setTakenOfflineLocked marks the descriptor as offline and sets / clears the timestamp.
+func (t *descriptorState) setTakenOfflineLocked(offline bool) {
+	// If the descriptor is already offline or online
+	// don't modify the timestamp.
+	if t.mu.takenOffline == offline {
+		return
+	}
+	t.mu.takenOffline = offline
+	timestamp := hlc.Timestamp{}
+	if offline {
+		timestamp = t.m.storage.clock.Now()
+	}
+	t.mu.takenOfflineAt = timestamp
 }

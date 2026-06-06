@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/ccl/multiregionccl/multiregionccltestutils"
+	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -63,7 +64,8 @@ func TestRegionLivenessProber(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 	// Force extra logging to diagnose flakes.
-	require.NoError(t, log.SetVModule("prober=2"))
+	testutils.SetVModule(t, "prober=2")
+
 	// This test forces the SQL liveness TTL be a small number,
 	// which makes the heartbeats even more critical. Under stress and
 	// race environments this test becomes even more sensitive, if
@@ -76,7 +78,6 @@ func TestRegionLivenessProber(t *testing.T) {
 	// multi-region. and enable region liveness for testing.
 	makeSettings := func() *cluster.Settings {
 		cs := cluster.MakeTestingClusterSettings()
-		instancestorage.ReclaimLoopInterval.Override(ctx, &cs.SV, 150*time.Millisecond)
 		regionliveness.RegionLivenessEnabled.Override(ctx, &cs.SV, true)
 		return cs
 	}
@@ -239,12 +240,10 @@ func TestRegionLivenessProberForLeases(t *testing.T) {
 	// multi-region. and enable region liveness for testing.
 	makeSettings := func() *cluster.Settings {
 		cs := cluster.MakeTestingClusterSettings()
-		instancestorage.ReclaimLoopInterval.Override(ctx, &cs.SV, 150*time.Millisecond)
 		regionliveness.RegionLivenessEnabled.Override(ctx, &cs.SV, true)
 		return cs
 	}
 	defer regionliveness.TestingSetUnavailableAtTTLOverride(testingRegionLivenessTTL)()
-
 	expectedRegions := []string{
 		"us-east",
 		"us-south",
@@ -309,6 +308,12 @@ func TestRegionLivenessProberForLeases(t *testing.T) {
 			TenantID: id,
 			Locality: s.Locality(),
 			TestingKnobs: base.TestingKnobs{
+				// Speed up job adoption for this test, since we can potentially
+				// end up with the schema change jobs rolling back below. The goal
+				// of this test is to confirm that we recover after a region failure,
+				// so any delay in adopting a rollback / rollback failure will cause
+				// our SucceedsSoon block to timeout.
+				JobsTestingKnobs: jobs.NewTestingKnobsWithShortIntervals(),
 				SQLExecutor: &sql.ExecutorTestingKnobs{
 					BeforeExecute: func(ctx context.Context, stmt string, descriptors *descs.Collection) {
 						if !detectLeaseWait.Load() {
@@ -484,7 +489,6 @@ func TestRegionLivenessProberForSQLInstances(t *testing.T) {
 	// multi-region. and enable region liveness for testing.
 	makeSettings := func() *cluster.Settings {
 		cs := cluster.MakeTestingClusterSettings()
-		//	instancestorage.ReclaimLoopInterval.Override(ctx, &cs.SV, 150*time.Millisecond)
 		regionliveness.RegionLivenessEnabled.Override(ctx, &cs.SV, true)
 		instancestorage.PreallocatedCount.Override(ctx, &cs.SV, 1)
 		return cs

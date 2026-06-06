@@ -48,16 +48,22 @@ func (r *RowLevelSecurityMeta) MaybeInit(user username.SQLUsername, hasAdminRole
 
 // Clear unsets the initialized property. This is used as a test helper.
 func (r *RowLevelSecurityMeta) Clear() {
-	r = &RowLevelSecurityMeta{}
+	if r == nil {
+		return
+	}
+	*r = RowLevelSecurityMeta{}
 }
 
 // AddTableUse indicates that an RLS-enabled table was encountered while
 // building the query plan. If any policies are in use, they will be added
 // via the AddPolicyUse call.
-func (r *RowLevelSecurityMeta) AddTableUse(tableID TableID, isTableOwnerAndNotForced bool) {
+func (r *RowLevelSecurityMeta) AddTableUse(
+	tableID TableID, isTableOwnerAndNotForced, bypassRLS bool,
+) {
 	if _, found := r.PoliciesApplied[tableID]; !found {
 		r.PoliciesApplied[tableID] = PoliciesApplied{
 			NoForceExempt: isTableOwnerAndNotForced,
+			BypassRLS:     bypassRLS,
 			Filter:        PolicyIDSet{},
 			Check:         PolicyIDSet{},
 		}
@@ -82,11 +88,54 @@ func (r *RowLevelSecurityMeta) AddPoliciesUsed(
 	r.PoliciesApplied[tableID] = a
 }
 
+// GetPoliciesUsed returns the policies that are in use for a particular table.
+func (r *RowLevelSecurityMeta) GetPoliciesUsed(
+	tableID TableID,
+) (filters PolicyIDSet, checks PolicyIDSet) {
+	if a, ok := r.PoliciesApplied[tableID]; ok {
+		return a.Filter, a.Check
+	}
+	return PolicyIDSet{}, PolicyIDSet{}
+}
+
+// RefreshNoPoliciesAppliedForTable should be called after policy application
+// is complete for a given table. If no policies were recorded for the table,
+// it updates the 'NoPoliciesApplied' flag to indicate this.
+func (r *RowLevelSecurityMeta) RefreshNoPoliciesAppliedForTable(tableID TableID) {
+	if a, ok := r.PoliciesApplied[tableID]; !ok {
+		r.NoPoliciesApplied = true
+	} else {
+		r.NoPoliciesApplied = a.Filter.Len() == 0 && a.Check.Len() == 0
+	}
+}
+
+// Copy returns a deep copy of the RowLevelSecurityMeta.
+func (r *RowLevelSecurityMeta) Copy() RowLevelSecurityMeta {
+	cpy := RowLevelSecurityMeta{
+		IsInitialized:     r.IsInitialized,
+		User:              r.User,
+		HasAdminRole:      r.HasAdminRole,
+		NoPoliciesApplied: r.NoPoliciesApplied,
+	}
+	for id, policies := range r.PoliciesApplied {
+		if cpy.PoliciesApplied == nil {
+			cpy.PoliciesApplied = make(map[TableID]PoliciesApplied)
+		}
+		cpy.PoliciesApplied[id] = policies.Copy()
+	}
+	return cpy
+}
+
 // PoliciesApplied stores the set of policies that were applied to a table.
 type PoliciesApplied struct {
 	// NoForceExempt is true if the policies were exempt because they were the
 	// table owner and force RLS wasn't set.
 	NoForceExempt bool
+	// BypassRLS is true if the policies were bypassed because the user had the
+	// BYPASSRLS option/privilege. There is an argument to combine the two bools
+	// for exemption. However, the memo staleness checks have different handling
+	// for when these exemptions change, so they need to be stored separately.
+	BypassRLS bool
 	// Filter is the set of policy IDs that were applied to filter out existing
 	// rows. The USING expression in each policy is used to derive the filter.
 	Filter PolicyIDSet
@@ -99,6 +148,7 @@ type PoliciesApplied struct {
 func (p *PoliciesApplied) Copy() PoliciesApplied {
 	return PoliciesApplied{
 		NoForceExempt: p.NoForceExempt,
+		BypassRLS:     p.BypassRLS,
 		Filter:        p.Filter.Copy(),
 		Check:         p.Check.Copy(),
 	}

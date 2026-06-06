@@ -7,6 +7,7 @@ go_library(
         "eval.go",
         "filter.go",
         "key.go",
+        "method.go",
         "operation.go",
         "scalar.go",
     ],
@@ -20,6 +21,7 @@ go_library(
         "//pkg/util/json",
         "//pkg/util/jsonpath",
         "//pkg/util/jsonpath/parser",
+        "@com_github_cockroachdb_apd_v3//:apd",
         "@com_github_cockroachdb_errors//:errors",
     ],
 )

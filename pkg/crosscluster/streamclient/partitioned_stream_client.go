@@ -44,16 +44,16 @@ type partitionedStreamClient struct {
 func NewPartitionedStreamClient(
 	ctx context.Context, remote ClusterUri, opts ...Option,
 ) (*partitionedStreamClient, error) {
-	options := processOptions(opts)
-	conn, config, err := newPGConnForClient(ctx, remote.URL(), options)
+	streamOpts := processOptions(opts)
+	conn, config, err := newPGConnForClient(ctx, remote.URL(), streamOpts)
 	if err != nil {
 		return nil, err
 	}
 	client := partitionedStreamClient{
 		clusterUri: remote,
 		pgxConfig:  config,
-		compressed: options.compressed,
-		logical:    options.logical,
+		compressed: streamOpts.compressed,
+		logical:    streamOpts.logical,
 	}
 	client.mu.activeSubscriptions = make(map[*partitionedStreamSubscription]struct{})
 	client.mu.srcConn = conn
@@ -265,6 +265,7 @@ func (p *partitionedStreamClient) Subscribe(
 	sps.WrappedEvents = true
 	sps.WithDiff = cfg.withDiff
 	sps.WithFiltering = cfg.withFiltering
+	sps.WithMvccOrdering = cfg.withMvccOrdering
 	sps.Type = streampb.ReplicationType_PHYSICAL
 	sps.Config.BatchByteSize = cfg.batchByteSize
 	if p.logical {
@@ -466,7 +467,7 @@ func (p *partitionedStreamSubscription) Subscribe(ctx context.Context) error {
 	}
 	defer func() {
 		if err != nil {
-			log.Warningf(ctx, "error when closing subscription connection: %v", err)
+			log.Dev.Warningf(ctx, "error when closing subscription connection: %v", err)
 		}
 	}()
 

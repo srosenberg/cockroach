@@ -38,7 +38,9 @@ func BenchmarkConcurrentSelect1(b *testing.B) {
 	for _, numOfConcurrentConn := range []int{24, 48, 64} {
 		b.Run(fmt.Sprintf("concurrentConn=%d", numOfConcurrentConn),
 			func(b *testing.B) {
-				s, db, _ := serverutils.StartServer(b, base.TestServerArgs{})
+				s, db, _ := serverutils.StartServer(b, base.TestServerArgs{
+					DisableElasticCPUAdmission: true,
+				})
 				sqlServer := s.SQLServer().(*sql.Server)
 				defer s.Stopper().Stop(ctx)
 
@@ -134,8 +136,9 @@ func BenchmarkSqlStatsPersisted(b *testing.B) {
 					base.TestClusterArgs{
 						ReplicationMode: base.ReplicationAuto,
 						ServerArgs: base.TestServerArgs{
-							UseDatabase:       "bench",
-							SQLMemoryPoolSize: 512 << 20,
+							DisableElasticCPUAdmission: true,
+							UseDatabase:                "bench",
+							SQLMemoryPoolSize:          512 << 20,
 						},
 					})
 				sqlRunner := sqlutils.MakeRoundRobinSQLRunner(tc.Conns[0],
@@ -150,8 +153,9 @@ func BenchmarkSqlStatsPersisted(b *testing.B) {
 					base.TestClusterArgs{
 						ReplicationMode: base.ReplicationAuto,
 						ServerArgs: base.TestServerArgs{
-							UseDatabase:       "bench",
-							SQLMemoryPoolSize: 512 << 20,
+							DisableElasticCPUAdmission: true,
+							UseDatabase:                "bench",
+							SQLMemoryPoolSize:          512 << 20,
 						},
 					})
 				sqlRunner := sqlutils.MakeRoundRobinSQLRunner(tc.Conns[0],
@@ -320,7 +324,7 @@ func BenchmarkSqlStatsPersisted(b *testing.B) {
 					sqlRunner, tc := cluster.create()
 					defer tc.Stopper().Stop(ctx)
 					sqlRunner.Exec(b, `INSERT INTO system.users VALUES ('node', NULL, 
-							true, 3)`)
+							true, 3, NULL)`)
 					sqlRunner.Exec(b, `GRANT node TO root`)
 					sqlRunner.Exec(b, `CREATE DATABASE IF NOT EXISTS bench`)
 					for _, query := range dropQueries {
@@ -374,6 +378,7 @@ func BenchmarkSqlStatsMaxFlushTime(b *testing.B) {
 	fakeTime := &stubTime{}
 	fakeTime.setTime(timeutil.Now())
 	s, conn, _ := serverutils.StartServer(b, base.TestServerArgs{
+		DisableElasticCPUAdmission: true,
 		Knobs: base.TestingKnobs{
 			SQLStatsKnobs: &sqlstats.TestingKnobs{
 				StubTimeNow: fakeTime.Now,
@@ -385,7 +390,6 @@ func BenchmarkSqlStatsMaxFlushTime(b *testing.B) {
 
 	sqlStats := s.SQLServer().(*sql.Server).GetLocalSQLStatsProvider()
 	pss := s.SQLServer().(*sql.Server).GetSQLStatsProvider()
-	controller := s.SQLServer().(*sql.Server).GetSQLStatsController()
 	stmtFingerprintLimit := sqlstats.MaxMemSQLStatsStmtFingerprints.Get(&s.ClusterSettings().SV)
 	txnFingerprintLimit := sqlstats.MaxMemSQLStatsTxnFingerprints.Get(&s.ClusterSettings().SV)
 
@@ -393,11 +397,10 @@ func BenchmarkSqlStatsMaxFlushTime(b *testing.B) {
 	fillBenchAppMemStats := func() {
 		appContainer := sqlStats.GetApplicationStats("bench")
 		for i := int64(1); i <= stmtFingerprintLimit; i++ {
-			mockStmtValue := sqlstats.RecordedStmtStats{
+			mockStmtValue := &sqlstats.RecordedStmtStats{
 				Query:                    "SELECT 1",
 				App:                      "bench",
 				DistSQL:                  false,
-				ImplicitTxn:              false,
 				Vec:                      false,
 				FullScan:                 false,
 				Database:                 "",
@@ -412,7 +415,7 @@ func BenchmarkSqlStatsMaxFlushTime(b *testing.B) {
 		}
 
 		for i := int64(1); i <= txnFingerprintLimit; i++ {
-			mockTxnValue := sqlstats.RecordedTxnStats{
+			mockTxnValue := &sqlstats.RecordedTxnStats{
 				FingerprintID: appstatspb.TransactionFingerprintID(i),
 			}
 			err := appContainer.RecordTransaction(ctx, mockTxnValue)
@@ -435,7 +438,7 @@ func BenchmarkSqlStatsMaxFlushTime(b *testing.B) {
 	b.Run(fmt.Sprintf("single-application/writes=insert/%d-fingerprints", totalFingerprints), func(b *testing.B) {
 		b.StopTimer()
 		for i := 0; i < b.N; i++ {
-			require.NoError(b, controller.ResetClusterSQLStats(ctx))
+			require.NoError(b, pss.ResetClusterSQLStats(ctx))
 			fillBenchAppMemStats()
 			b.StartTimer()
 			require.True(b, pss.MaybeFlush(ctx, s.AppStopper()))

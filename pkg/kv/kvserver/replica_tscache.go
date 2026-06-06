@@ -74,7 +74,7 @@ func (r *Replica) addToTSCacheChecked(
 	// production logic.
 	if st := r.CurrentLeaseStatus(ctx); st.IsValid() && st.OwnedBy(r.StoreID()) {
 		if exp := st.Expiration(); exp.LessEq(ts) {
-			log.Fatalf(ctx, "Unsafe timestamp cache update! Cannot add timestamp %s to timestamp "+
+			log.KvExec.Fatalf(ctx, "Unsafe timestamp cache update! Cannot add timestamp %s to timestamp "+
 				"cache after evaluating %v (resp=%v; err=%v) with lease expiration %v. The timestamp "+
 				"cache update could be lost on a non-cooperative lease change.", ts, ba, br, pErr, exp)
 		}
@@ -134,7 +134,7 @@ func (r *Replica) updateTimestampCache(
 
 		if ba.WaitPolicy == lock.WaitPolicy_SkipLocked && kvpb.CanSkipLocked(req) && resp != nil {
 			if ba.IndexFetchSpec != nil {
-				log.Errorf(ctx, "%v", errors.AssertionFailedf("unexpectedly IndexFetchSpec is set with SKIP LOCKED wait policy"))
+				log.KvExec.Errorf(ctx, "%v", errors.AssertionFailedf("unexpectedly IndexFetchSpec is set with SKIP LOCKED wait policy"))
 			}
 			// If the request is using a SkipLocked wait policy, it behaves as if run
 			// at a lower isolation level for any keys that it skips over. If the read
@@ -153,7 +153,7 @@ func (r *Replica) updateTimestampCache(
 			if err := kvpb.ResponseKeyIterate(req, resp, func(key roachpb.Key) {
 				addToTSCache(key, nil, ts, txnID)
 			}, false /* includeLockedNonExisting */); err != nil {
-				log.Errorf(ctx, "error iterating over response keys while "+
+				log.KvExec.Errorf(ctx, "error iterating over response keys while "+
 					"updating timestamp cache for ba=%v, br=%v: %v", ba, br, err)
 			}
 			continue
@@ -170,12 +170,12 @@ func (r *Replica) updateTimestampCache(
 			// transaction's MinTimestamp, which is consulted in CanCreateTxnRecord.
 			key := transactionTombstoneMarker(start, txnID)
 			addToTSCache(key, nil, ts, txnID)
-			// Additionally, EndTxn requests that release replicated locks for
-			// committed transactions bump the timestamp cache over those lock
-			// spans to the commit timestamp of the transaction to ensure that
-			// the released locks continue to provide protection against writes
-			// underneath the transaction's commit timestamp.
-			for _, sp := range resp.(*kvpb.EndTxnResponse).ReplicatedLocksReleasedOnCommit {
+			// Additionally, EndTxn requests that release local replicated locks for
+			// committed transactions bump the timestamp cache over those lock spans
+			// to the commit timestamp of the transaction to ensure that the released
+			// locks continue to provide protection against writes underneath the
+			// transaction's commit timestamp.
+			for _, sp := range resp.(*kvpb.EndTxnResponse).ReplicatedLocalLocksReleasedOnCommit {
 				addToTSCache(sp.Key, sp.EndKey, br.Txn.WriteTimestamp, txnID)
 			}
 		case *kvpb.HeartbeatTxnRequest:
@@ -239,7 +239,7 @@ func (r *Replica) updateTimestampCache(
 				// timestamp was already below the prepared transaction's timestamp.
 				continue
 			default:
-				log.Fatalf(ctx, "unexpected transaction status: %v", pushee.Status)
+				log.KvExec.Fatalf(ctx, "unexpected transaction status: %v", pushee.Status)
 			}
 
 			var key roachpb.Key
@@ -268,13 +268,6 @@ func (r *Replica) updateTimestampCache(
 			// ConditionalPut only updates on ConditionFailedErrors. On other
 			// errors, no information is returned. On successful writes, the
 			// intent already protects against writes underneath the read.
-			if _, ok := pErr.GetDetail().(*kvpb.ConditionFailedError); ok {
-				addToTSCache(start, end, ts, txnID)
-			}
-		case *kvpb.InitPutRequest:
-			// InitPut only updates on ConditionFailedErrors. On other errors,
-			// no information is returned. On successful writes, the intent
-			// already protects against writes underneath the read.
 			if _, ok := pErr.GetDetail().(*kvpb.ConditionFailedError); ok {
 				addToTSCache(start, end, ts, txnID)
 			}
@@ -385,8 +378,7 @@ func init() {
 
 // applyTimestampCache moves the batch timestamp forward depending on
 // the presence of overlapping entries in the timestamp cache. If the
-// batch is transactional, the txn timestamp and the txn.WriteTooOld
-// bool are updated.
+// batch is transactional the txn timestamp is updated.
 //
 // Two important invariants of Cockroach: 1) encountering a more
 // recently written value means transaction restart. 2) values must
@@ -723,7 +715,10 @@ func transactionPushMarker(key roachpb.Key, txnID uuid.UUID) roachpb.Key {
 func (r *Replica) GetCurrentReadSummary(ctx context.Context) rspb.ReadSummary {
 	localBudget := ReadSummaryLocalBudget.Get(&r.store.ClusterSettings().SV)
 	globalBudget := ReadSummaryGlobalBudget.Get(&r.store.ClusterSettings().SV)
-	sum := collectReadSummaryFromTimestampCache(ctx, r.store.tsCache, r.Desc(), localBudget, globalBudget)
+	sum, localCompressed, _ := collectReadSummaryFromTimestampCache(ctx, r.store.tsCache, r.Desc(), localBudget, globalBudget)
+	if localCompressed {
+		r.store.metrics.ReadSummaryLocalCompressionCount.Inc(1)
+	}
 	// Forward the read summary by the range's closed timestamp, because any
 	// replica could have served reads below this time. We also return the
 	// closed timestamp separately, in case callers want it split out.
@@ -736,42 +731,43 @@ func (r *Replica) GetCurrentReadSummary(ctx context.Context) rspb.ReadSummary {
 // with the specified descriptor using the timestamp cache. The function accepts
 // two size budgets, which are used to limit the size of the local and global
 // segments of the read summary, respectively.
+//
+// In addition to the read summary, we also return whether the local and global
+// segments lost precission due to compression or not.
 func collectReadSummaryFromTimestampCache(
 	ctx context.Context,
 	tc tscache.Cache,
 	desc *roachpb.RangeDescriptor,
 	localBudget, globalBudget int64,
-) rspb.ReadSummary {
-	serializeSegment := func(start, end roachpb.Key, budget int64) rspb.Segment {
+) (sum rspb.ReadSummary, localCompressed, globalCompressed bool) {
+	serializeSegment := func(start, end roachpb.Key, budget int64) (rspb.Segment, bool) {
 		var seg rspb.Segment
+		var compressed bool
 		if budget > 0 {
 			// Serialize the key range and then compress to the budget.
 			seg = tc.Serialize(ctx, start, end)
-			// TODO(nvanbenschoten): return a boolean from this function indicating
-			// whether the segment lost precision when being compressed. Then use that
-			// to increment a metric to provide observability.
-			seg.Compress(budget)
+			compressed = seg.Compress(budget)
 		} else {
 			// If the budget is 0, just return the maximum timestamp in the key range.
 			// This is equivalent to serializing the key range and then compressing
 			// the resulting segment to 0 bytes, but much cheaper.
 			seg.LowWater, _ = tc.GetMax(ctx, start, end)
+			compressed = true
 		}
-		return seg
+		return seg, compressed
 	}
-	var s rspb.ReadSummary
-	s.Local = serializeSegment(
+	sum.Local, localCompressed = serializeSegment(
 		keys.MakeRangeKeyPrefix(desc.StartKey),
 		keys.MakeRangeKeyPrefix(desc.EndKey),
 		localBudget,
 	)
 	userKeys := desc.KeySpan()
-	s.Global = serializeSegment(
+	sum.Global, globalCompressed = serializeSegment(
 		userKeys.Key.AsRawKey(),
 		userKeys.EndKey.AsRawKey(),
 		globalBudget,
 	)
-	return s
+	return sum, localCompressed, globalCompressed
 }
 
 // applyReadSummaryToTimestampCache updates the timestamp cache to reflect the

@@ -16,9 +16,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdcevent"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kvevent"
+	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -32,6 +34,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 )
@@ -93,6 +97,11 @@ func newEventConsumer(
 	sliMetrics *sliMetrics,
 	knobs TestingKnobs,
 ) (eventConsumer, EventSink, error) {
+	if knobs.EventConsumerError != nil {
+		if err := knobs.EventConsumerError(); err != nil {
+			return nil, nil, err
+		}
+	}
 	encodingOpts, err := feed.Opts.GetEncodingOptions()
 	if err != nil {
 		return nil, nil, err
@@ -104,7 +113,15 @@ func newEventConsumer(
 	makeConsumer := func(s EventSink, frontier frontier) (eventConsumer, error) {
 		sourceData := enrichedSourceData{}
 		if encodingOpts.Envelope == changefeedbase.OptEnvelopeEnriched {
-			sourceData, err = newEnrichedSourceData(ctx, cfg, spec, sink.getConcreteType())
+			var schemaInfo map[descpb.ID]tableSchemaInfo
+			if inSet(changefeedbase.EnrichedPropertySource, encodingOpts.EnrichedProperties) {
+				targetTS := spec.GetSchemaTS()
+				schemaInfo, err = GetTableSchemaInfo(ctx, cfg, feed.Targets, targetTS)
+				if err != nil {
+					return nil, err
+				}
+			}
+			sourceData, err = newEnrichedSourceData(ctx, cfg, spec, sink.getConcreteType(), schemaInfo)
 			if err != nil {
 				return nil, err
 			}
@@ -136,6 +153,7 @@ func newEventConsumer(
 			if !ok {
 				tenantID = roachpb.SystemTenantID
 			}
+			wid, wtype := kv.WorkloadInfoFromContext(ctx)
 
 			pacer = cfg.AdmissionPacerFactory.NewPacer(
 				pacerRequestUnit,
@@ -144,6 +162,8 @@ func newEventConsumer(
 					Priority:        admissionpb.BulkNormalPri,
 					CreateTime:      timeutil.Now().UnixNano(),
 					BypassAdmission: false,
+					WorkloadID:      wid,
+					WorkloadType:    wtype,
 				},
 			)
 		}
@@ -234,7 +254,7 @@ func newKVEventToRowConsumer(
 ) (_ *kvEventToRowConsumer, err error) {
 	includeVirtual := details.Opts.IncludeVirtual()
 	keyOnly := details.Opts.KeyOnly()
-	decoder, err := cdcevent.NewEventDecoder(ctx, cfg, details.Targets, includeVirtual, keyOnly)
+	decoder, err := cdcevent.NewEventDecoder(ctx, cfg, details.Targets, includeVirtual, keyOnly, cdcevent.DecoderOptions{SkipOffline: true})
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +312,7 @@ func newEvaluator(
 				"error upgrading changefeed expression.  Please recreate changefeed manually"))
 		}
 		if newExpr != sc {
-			log.Warningf(ctx,
+			log.Changefeed.Warningf(ctx,
 				"changefeed expression %s (job %d) created prior to 22.2-30 rewritten as %s",
 				tree.AsString(sc), spec.JobID,
 				tree.AsString(newExpr))
@@ -333,7 +353,7 @@ func (c *kvEventToRowConsumer) ConsumeEvent(ctx context.Context, ev kvevent.Even
 	// Request CPU time to use for event consumption, block if this time is
 	// unavailable. If there is unused CPU time left from the last call to
 	// Pace, then use that time instead of blocking.
-	if err := c.pacer.Pace(ctx); err != nil {
+	if _, err := c.pacer.Pace(ctx); err != nil {
 		return err
 	}
 
@@ -346,30 +366,45 @@ func (c *kvEventToRowConsumer) ConsumeEvent(ctx context.Context, ev kvevent.Even
 		prevSchemaTimestamp = schemaTimestamp.Prev()
 	}
 
-	updatedRow, err := c.decoder.DecodeKV(ctx, ev.KV(), cdcevent.CurrentRow, schemaTimestamp, keyOnly)
+	updatedRow, status, err := c.decoder.DecodeKV(ctx, ev.KV(), cdcevent.CurrentRow, schemaTimestamp, keyOnly)
 	if err != nil {
+		// On decode errors, return immediately without releasing the allocation.
+		// The allocation is managed elsewhere for error cases.
+		return err
+	}
+	if status != cdcevent.DecodeOK {
 		// Column families are stored contiguously, so we'll get
 		// events for each one even if we're not watching them all.
-		if errors.Is(err, cdcevent.ErrUnwatchedFamily) {
-			return nil
-		}
-		return err
+		// An event on an offline table should be silently dropped for db
+		// level changefeeds. Since the descriptor is offline, we can't
+		// safely decode the event.
+		// Release the event's allocation since we're skipping this event.
+		// Note: We only release on skip conditions (non-OK status), not on errors.
+		a := ev.DetachAlloc()
+		a.Release(ctx)
+		return nil
 	}
 
 	// Get prev value, if necessary.
-	prevRow, err := func() (cdcevent.Row, error) {
+	prevRow, prevStatus, err := func() (cdcevent.Row, cdcevent.DecodeStatus, error) {
 		if !c.details.Opts.GetFilters().WithDiff {
-			return cdcevent.Row{}, nil
+			return cdcevent.Row{}, cdcevent.DecodeOK, nil
 		}
 		return c.decoder.DecodeKV(ctx, ev.PrevKeyValue(), cdcevent.PrevRow, prevSchemaTimestamp, keyOnly)
 	}()
 	if err != nil {
+		// On decode errors, return immediately without releasing the allocation.
+		// The allocation is managed elsewhere for error cases.
+		return err
+	}
+	if prevStatus != cdcevent.DecodeOK {
 		// Column families are stored contiguously, so we'll get
 		// events for each one even if we're not watching them all.
-		if errors.Is(err, cdcevent.ErrUnwatchedFamily) {
-			return nil
-		}
-		return err
+		// Release the event's allocation since we're skipping this event.
+		// Note: We only release on skip conditions (non-OK status), not on errors.
+		a := ev.DetachAlloc()
+		a.Release(ctx)
+		return nil
 	}
 
 	if c.evaluator != nil {
@@ -432,7 +467,7 @@ func (c *kvEventToRowConsumer) encodeAndEmit(
 		}
 	}
 
-	stop := c.metrics.Timers.Encode.Start()
+	timer := c.metrics.Timers.Encode.Start()
 	if c.encodingOpts.Format == changefeedbase.OptFormatParquet {
 		return c.encodeForParquet(
 			ctx, updatedRow, prevRow, topic, schemaTS, updatedRow.MvccTimestamp,
@@ -444,19 +479,28 @@ func (c *kvEventToRowConsumer) encodeAndEmit(
 	if err != nil {
 		return err
 	}
-	c.scratch, keyCopy = c.scratch.Copy(encodedKey, 0 /* extraCap */)
+	c.scratch, keyCopy = c.scratch.Copy(encodedKey)
 	// TODO(yevgeniy): Some refactoring is needed in the encoder: namely, prevRow
 	// might not be available at all when working with changefeed expressions.
 	encodedValue, err := c.encoder.EncodeValue(ctx, evCtx, updatedRow, prevRow)
 	if err != nil {
 		return err
 	}
-	c.scratch, valueCopy = c.scratch.Copy(encodedValue, 0 /* extraCap */)
+	c.scratch, valueCopy = c.scratch.Copy(encodedValue)
+
+	// Encode the CSV header row if the csv_header option is set.
+	var csvColumnHeader []byte
+	if c.encodingOpts.CsvHeader && c.encodingOpts.Format == changefeedbase.OptFormatCSV {
+		csvColumnHeader, err = c.encodeCSVHeaderRow(ctx, updatedRow)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Since we're done processing/converting this event, and will not use much more
 	// than len(key)+len(bytes) worth of resources, adjust allocation to match.
-	alloc.AdjustBytesToTarget(ctx, int64(len(keyCopy)+len(valueCopy)))
-	stop()
+	alloc.AdjustBytesToTarget(ctx, int64(len(keyCopy)+len(valueCopy)+len(csvColumnHeader)))
+	timer.End()
 
 	headers, err := c.makeRowHeaders(ctx, updatedRow)
 	if err != nil {
@@ -465,18 +509,18 @@ func (c *kvEventToRowConsumer) encodeAndEmit(
 
 	c.metrics.Timers.EmitRow.Time(func() {
 		err = c.sink.EmitRow(
-			ctx, topic, keyCopy, valueCopy, schemaTS, updatedRow.MvccTimestamp, alloc, headers,
+			ctx, topic, keyCopy, valueCopy, csvColumnHeader, schemaTS, updatedRow.MvccTimestamp, alloc, headers,
 		)
 	})
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
-			log.Warningf(ctx, `sink failed to emit row: %v`, err)
+			log.Changefeed.Warningf(ctx, `sink failed to emit row: %v`, err)
 			c.metrics.SinkErrors.Inc(1)
 		}
 		return err
 	}
 	if log.V(3) {
-		log.Infof(ctx, `r %s: %s(%+v) -> %s`, updatedRow.TableName, keyCopy, headers, valueCopy)
+		log.Changefeed.Infof(ctx, `r %s: %s(%+v) -> %s`, updatedRow.TableName, keyCopy, headers, valueCopy)
 	}
 	return nil
 }
@@ -509,7 +553,7 @@ func (c *kvEventToRowConsumer) makeRowHeaders(
 	}
 	if objIt == nil {
 		if jsonHeaderWrongTypeLogLim.ShouldLog() || log.V(2) {
-			log.Warningf(ctx, "headers column %s must be a JSON object, was %s, in: %s", c.encodingOpts.HeadersJSONColName, redact.SafeString(headersJSON.Type().String()), updatedRow.DebugString())
+			log.Changefeed.Warningf(ctx, "headers column %s must be a JSON object, was %s, in: %s", c.encodingOpts.HeadersJSONColName, redact.SafeString(headersJSON.Type().String()), updatedRow.DebugString())
 		}
 		return nil, nil
 	}
@@ -527,7 +571,7 @@ func (c *kvEventToRowConsumer) makeRowHeaders(
 			headers[objIt.Key()] = []byte(objIt.Value().String())
 		default:
 			if jsonHeaderWrongValTypeLogLim.ShouldLog() || log.V(2) {
-				log.Warningf(ctx, "headers column %s must be a JSON object with primitive values, got %s - %s, in: %s",
+				log.Changefeed.Warningf(ctx, "headers column %s must be a JSON object with primitive values, got %s - %s, in: %s",
 					c.encodingOpts.HeadersJSONColName, redact.SafeString(objIt.Value().Type().String()), objIt.Value(), updatedRow.DebugString())
 			}
 		}
@@ -563,6 +607,22 @@ func (c *kvEventToRowConsumer) encodeForParquet(
 		return err
 	}
 	return nil
+}
+
+func (c *kvEventToRowConsumer) encodeCSVHeaderRow(
+	ctx context.Context, updatedRow cdcevent.Row,
+) ([]byte, error) {
+	hEnc, ok := c.encoder.(*csvEncoder)
+	if !ok {
+		return nil, errors.AssertionFailedf("expected csv encoder for csv format with %s", changefeedbase.OptCsvHeader)
+	}
+	hdr, err := hEnc.EncodeCSVHeaderRow(ctx, updatedRow)
+	if err != nil {
+		return nil, err
+	}
+	var csvColumnHeader []byte
+	c.scratch, csvColumnHeader = c.scratch.Copy(hdr)
+	return csvColumnHeader, nil
 }
 
 // Flush is a noop for the kvEventToRowConsumer because it does not buffer any events.
@@ -622,10 +682,9 @@ type parallelEventConsumer struct {
 var _ eventConsumer = (*parallelEventConsumer)(nil)
 
 func (c *parallelEventConsumer) ConsumeEvent(ctx context.Context, ev kvevent.Event) error {
-	startTime := timeutil.Now().UnixNano()
+	start := crtime.NowMono()
 	defer func() {
-		time := timeutil.Now().UnixNano()
-		c.metrics.ParallelConsumerConsumeNanos.RecordValue(time - startTime)
+		c.metrics.ParallelConsumerConsumeNanos.RecordValue(start.Elapsed().Nanoseconds())
 	}()
 
 	bucket := c.getBucketForEvent(ev)
@@ -677,6 +736,9 @@ func (c *parallelEventConsumer) startWorkers() error {
 		id := i
 		consumer := consumers[i]
 		workerClosure := func(ctx2 context.Context) error {
+			ctx2, sp := tracing.ChildSpan(ctx2, "changefeed.parallel_event_consumer.worker")
+			defer sp.Finish()
+
 			return c.workerLoop(ctx2, consumer, id)
 		}
 		c.g.GoCtx(workerClosure)
@@ -690,7 +752,7 @@ func (c *parallelEventConsumer) workerLoop(
 	defer func() {
 		err := consumer.Close()
 		if err != nil {
-			log.Errorf(ctx, "closing consumer: %v", err)
+			log.Changefeed.Errorf(ctx, "closing consumer: %v", err)
 		}
 	}()
 
@@ -702,9 +764,9 @@ func (c *parallelEventConsumer) workerLoop(
 			return nil
 		case <-c.termCh:
 			c.mu.Lock()
-			//nolint:deferloop TODO(#137605)
-			defer c.mu.Unlock()
-			return c.mu.termErr
+			termErr := c.mu.termErr
+			c.mu.Unlock()
+			return termErr
 		case e := <-c.workerCh[id]:
 			if err := consumer.ConsumeEvent(ctx, e); err != nil {
 				return c.setWorkerError(err)
@@ -748,10 +810,9 @@ func (c *parallelEventConsumer) setWorkerError(err error) error {
 // Flush flushes the consumer by blocking until all events are consumed,
 // or until there is an error.
 func (c *parallelEventConsumer) Flush(ctx context.Context) error {
-	startTime := timeutil.Now().UnixNano()
+	start := crtime.NowMono()
 	defer func() {
-		time := timeutil.Now().UnixNano()
-		c.metrics.ParallelConsumerFlushNanos.RecordValue(time - startTime)
+		c.metrics.ParallelConsumerFlushNanos.RecordValue(start.Elapsed().Nanoseconds())
 	}()
 
 	needFlush := func() bool {
@@ -813,7 +874,7 @@ func readOneJSONValue(row cdcevent.Row, colName string) (*tree.DJSON, error) {
 		if d == tree.DNull {
 			return nil
 		}
-		if valJSON, ok = tree.AsDJSON(d); !ok {
+		if valJSON, ok = d.(*tree.DJSON); !ok {
 			return errors.Newf("expected a JSON object, got %s", d.ResolvedType())
 		}
 		return nil

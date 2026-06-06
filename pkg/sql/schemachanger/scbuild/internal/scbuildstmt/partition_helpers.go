@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catenumpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemaexpr"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
@@ -35,118 +34,157 @@ import (
 func configureIndexDescForNewIndexPartitioning(
 	b BuildCtx,
 	tableID catid.DescID,
-	indexDesc descpb.IndexDescriptor,
+	sourcePartitionIndexID catid.IndexID,
+	prevSpec *indexSpec,
+	mutatedSpec *indexSpecMutator,
+	isPrimary bool,
 	partitionByIndex *tree.PartitionByIndex,
-) (descpb.IndexDescriptor, error) {
+	overridePartitioning *partitioningSpec,
+) error {
+	// If there was a previous specification is missing, then the mutated spec is
+	// the starting point. Otherwise, prevSpec is the base starting point, and mutated
+	// spec already has other changes applied.
+	if prevSpec == nil {
+		prevSpec = &mutatedSpec.indexSpec
+	}
 	var err error
 	partitionAllBy := b.QueryByID(tableID).FilterTablePartitioning().MustHaveZeroOrOne()
-	if partitionByIndex.ContainsPartitioningClause() || partitionAllBy != nil {
+	if partitionByIndex.ContainsPartitioningClause() || partitionAllBy != nil || overridePartitioning != nil {
 		var partitionBy *tree.PartitionBy
-		if partitionAllBy == nil {
+		if overridePartitioning != nil {
+			partitionBy = overridePartitioning.PartitionBy
+			if partitionBy == nil {
+				// remove all partitioning from the index, including implicit columns
+				mutatedSpec.partitioning = nil
+				mutatedSpec.removeImplicitColumns()
+			}
+		} else if partitionAllBy == nil {
 			if partitionByIndex.ContainsPartitions() {
 				partitionBy = partitionByIndex.PartitionBy
 			}
 		} else if partitionByIndex.ContainsPartitioningClause() {
-			return indexDesc, pgerror.New(
+			return pgerror.New(
 				pgcode.FeatureNotSupported,
 				"cannot define PARTITION BY on an index if the table has a PARTITION ALL BY definition",
 			)
 		} else {
-			partitionBy, err = partitionByFromTableID(b, tableID)
+			partitionBy, err = partitionByFromTableID(b, tableID, sourcePartitionIndexID)
 			if err != nil {
-				return indexDesc, err
+				return err
 			}
 		}
-		localityRBR := b.QueryByID(tableID).FilterTableLocalityRegionalByRow().
-			MustGetZeroOrOneElement()
+		localityRBR := b.QueryByID(tableID).Filter(publicTargetFilter).FilterTableLocalityRegionalByRow().MustGetZeroOrOneElement()
+		overrideImplicitPartitioning := overridePartitioning != nil && len(overridePartitioning.NewImplicitColumns) > 0
 		allowImplicitPartitioning := b.EvalCtx().SessionData().ImplicitColumnPartitioningEnabled ||
-			localityRBR != nil
+			localityRBR != nil || overrideImplicitPartitioning
 		if partitionBy != nil {
+			oldNumImplicitColumns := 0
+			if mutatedSpec.partitioning != nil {
+				oldNumImplicitColumns = int(prevSpec.partitioning.NumImplicitColumns)
+			}
+			oldKeyColumns := make([]string, 0, len(prevSpec.columns))
+			for _, col := range prevSpec.columns {
+				if col.Kind == scpb.IndexColumn_KEY {
+					oldKeyColumns = append(oldKeyColumns,
+						mustRetrieveColumnName(b, col.TableID, col.ColumnID).Name)
+				}
+			}
 			newImplicitCols, newPartitioning, err := createPartitioning(
 				b,
 				tableID,
 				partitionBy,
-				int(indexDesc.Partitioning.NumImplicitColumns),
-				indexDesc.KeyColumnNames,
+				oldNumImplicitColumns,
+				oldKeyColumns,
 				nil, /* allowedNewColumnNames */
 				allowImplicitPartitioning,
+				overridePartitioning,
 			)
 			if err != nil {
-				return indexDesc, err
+				return err
 			}
-			updateIndexPartitioning(&indexDesc, false /* isIndexPrimary */, newImplicitCols, newPartitioning)
+			updateIndexPartitioning(mutatedSpec, isPrimary /* isIndexPrimary */, newImplicitCols, newPartitioning)
 		}
 	}
-	return indexDesc, nil
+	return nil
 }
 
 // updateIndexPartitioning applies the new partition and adjusts the column info
 // for the specified index descriptor. Returns false iff this was a no-op.
 func updateIndexPartitioning(
-	idx *descpb.IndexDescriptor,
+	spec *indexSpecMutator,
 	isIndexPrimary bool,
 	newImplicitCols []*scpb.ColumnName,
 	newPartitioning catpb.PartitioningDescriptor,
-) bool {
-	oldNumImplicitCols := int(idx.Partitioning.NumImplicitColumns)
-	isNoOp := oldNumImplicitCols == len(newImplicitCols) && idx.Partitioning.Equal(newPartitioning)
-	numCols := len(idx.KeyColumnIDs)
-	newCap := numCols + len(newImplicitCols) - oldNumImplicitCols
-	newColumnIDs := make([]descpb.ColumnID, len(newImplicitCols), newCap)
-	newColumnNames := make([]string, len(newImplicitCols), newCap)
-	newColumnDirections := make([]catenumpb.IndexColumn_Direction, len(newImplicitCols), newCap)
+) {
+	var currPartitioning catpb.PartitioningDescriptor
+	if spec.partitioning != nil {
+		currPartitioning = spec.partitioning.PartitioningDescriptor
+	}
+	isNoOp := currPartitioning.Equal(newPartitioning)
+	keyColsOnly := make([]*scpb.IndexColumn, 0, len(spec.columns))
+	for _, col := range spec.columns {
+		if col.Kind != scpb.IndexColumn_KEY {
+			continue
+		}
+		keyColsOnly = append(keyColsOnly, col)
+	}
+	spec.removeImplicitColumns()
+	newColIDs := catalog.MakeTableColSet()
 	for i, col := range newImplicitCols {
-		newColumnIDs[i] = col.ColumnID
-		newColumnNames[i] = col.Name
-		newColumnDirections[i] = catenumpb.IndexColumn_ASC
+		spec.prependColumn(&scpb.IndexColumn{
+			TableID:   spec.tableID(),
+			IndexID:   spec.indexID(),
+			ColumnID:  col.ColumnID,
+			Implicit:  true,
+			Direction: catenumpb.IndexColumn_ASC,
+			Kind:      scpb.IndexColumn_KEY,
+		})
+		newColIDs.Add(col.ColumnID)
 		if isNoOp &&
-			(idx.KeyColumnIDs[i] != newColumnIDs[i] ||
-				idx.KeyColumnNames[i] != newColumnNames[i] ||
-				idx.KeyColumnDirections[i] != newColumnDirections[i]) {
+			(keyColsOnly[i].ColumnID != col.ColumnID ||
+				keyColsOnly[i].Direction != catenumpb.IndexColumn_ASC) {
 			isNoOp = false
 		}
 	}
 	if isNoOp {
-		return false
-	}
-	idx.KeyColumnNames = append(newColumnNames, idx.KeyColumnNames[oldNumImplicitCols:]...)
-	idx.KeyColumnDirections = append(newColumnDirections, idx.KeyColumnDirections[oldNumImplicitCols:]...)
-	idx.Partitioning = newPartitioning
-	if !isIndexPrimary {
-		return true
+		return
 	}
 
-	newStoreColumnIDs := make([]descpb.ColumnID, 0, len(idx.StoreColumnIDs))
-	newStoreColumnNames := make([]string, 0, len(idx.StoreColumnNames))
-	for i := range idx.StoreColumnIDs {
-		id := idx.StoreColumnIDs[i]
-		name := idx.StoreColumnNames[i]
-		found := false
-		for _, newColumnName := range newColumnNames {
-			if newColumnName == name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			newStoreColumnIDs = append(newStoreColumnIDs, id)
-			newStoreColumnNames = append(newStoreColumnNames, name)
+	if spec.partitioning != nil {
+		spec.partitioning.PartitioningDescriptor = newPartitioning
+	} else {
+		spec.partitioning = &scpb.IndexPartitioning{
+			TableID:                spec.tableID(),
+			IndexID:                spec.indexID(),
+			PartitioningDescriptor: newPartitioning,
 		}
 	}
-	idx.StoreColumnIDs = newStoreColumnIDs
-	idx.StoreColumnNames = newStoreColumnNames
-	if len(idx.StoreColumnNames) == 0 {
-		idx.StoreColumnIDs = nil
-		idx.StoreColumnNames = nil
+	if !isIndexPrimary {
+		return
 	}
-	return true
+
+	// Iterate over a copy of the list since we are modifying it below.
+	for _, storeCol := range append([]*scpb.IndexColumn{}, spec.columns...) {
+		if storeCol.Kind != scpb.IndexColumn_STORED {
+			continue
+		}
+		if !newColIDs.Contains(storeCol.ColumnID) {
+			continue
+		}
+		spec.removeColumn(storeCol.ColumnID, scpb.IndexColumn_STORED)
+	}
 }
 
 // partitionByFromTableID constructs a PartitionBy clause from a tableID.
-func partitionByFromTableID(b BuildCtx, tableID catid.DescID) (*tree.PartitionBy, error) {
-	idx := getLatestPrimaryIndex(b, tableID)
-	partitioning := mustRetrievePartitioningFromIndexPartitioning(b, tableID, idx.IndexID)
-	return partitionByFromTableIDImpl(b, tableID, idx.IndexID, partitioning, 0)
+func partitionByFromTableID(
+	b BuildCtx, tableID catid.DescID, indexID catid.IndexID,
+) (*tree.PartitionBy, error) {
+	if indexID == 0 {
+		idx := getLatestPrimaryIndex(b, tableID)
+		indexID = idx.IndexID
+	}
+	partitioning := mustRetrievePartitioningFromIndexPartitioning(b, tableID, indexID)
+	return partitionByFromTableIDImpl(b, tableID, indexID, partitioning, 0)
 }
 
 // partitionByFromTableIDImpl contains the inner logic of partitionByFromTableID.
@@ -282,6 +320,7 @@ func createPartitioning(
 	oldKeyColumnNames []string,
 	allowedNewColumnNames []tree.Name,
 	allowImplicitPartitioning bool,
+	overridePartitioning *partitioningSpec,
 ) (newImplicitCols []*scpb.ColumnName, newPartitioning catpb.PartitioningDescriptor, err error) {
 	if partBy == nil {
 		if oldNumImplicitColumns > 0 {
@@ -297,15 +336,28 @@ func createPartitioning(
 	newIdxColumnNames := oldKeyColumnNames[oldNumImplicitColumns:]
 
 	if allowImplicitPartitioning {
-		newImplicitCols, err = collectImplicitPartitionColumns(
-			b,
-			tableID,
-			oldKeyColumnNames[0],
-			partBy,
-			allowedNewColumnNames,
-		)
-		if err != nil {
-			return nil, newPartitioning, err
+		if overridePartitioning != nil {
+			newImplicitCols = overridePartitioning.NewImplicitColumns
+			allowedNewColumnNames = overridePartitioning.AllowedNewColumnNames
+			i := 0
+			// no need to add the implicit key if column is already part of the index keys
+			for ; i < min(len(newImplicitCols), len(oldKeyColumnNames)); i++ {
+				if newImplicitCols[i].Name != oldKeyColumnNames[i] {
+					break
+				}
+			}
+			newImplicitCols = newImplicitCols[i:]
+		} else {
+			newImplicitCols, err = collectImplicitPartitionColumns(
+				b,
+				tableID,
+				newIdxColumnNames[0],
+				partBy,
+				allowedNewColumnNames,
+			)
+			if err != nil {
+				return nil, newPartitioning, err
+			}
 		}
 	}
 	if len(newImplicitCols) > 0 {
@@ -321,7 +373,7 @@ func createPartitioning(
 	// same implicitly partitioned columns.
 	// Having different implicitly partitioned columns requires rewrites,
 	// which is outside the scope of createPartitioning.
-	if oldNumImplicitColumns > 0 {
+	if oldNumImplicitColumns > 0 && overridePartitioning == nil {
 		if len(newImplicitCols) != oldNumImplicitColumns {
 			return nil, newPartitioning, errors.AssertionFailedf(
 				"mismatching number of implicit columns: old %d vs new %d",

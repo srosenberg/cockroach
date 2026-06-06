@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/geo/geopb"
 	"github.com/cockroachdb/cockroach/pkg/sql/oidext"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
+	"github.com/google/go-cmp/cmp"
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -524,7 +525,7 @@ func TestTypes(t *testing.T) {
 			if !tc.actual.Identical(tc.expected) {
 				t.Errorf("expected <%v>, got <%v>", tc.expected.DebugString(), tc.actual.DebugString())
 			}
-			if !reflect.DeepEqual(tc.actual, tc.expected) {
+			if !cmp.Equal(tc.actual, tc.expected) {
 				t.Errorf("expected <%v>, got <%v>", tc.expected.DebugString(), tc.actual.DebugString())
 			}
 
@@ -737,72 +738,7 @@ func TestIdentical(t *testing.T) {
 	}
 }
 
-// TestMarshalCompat tests backwards-compatibility during marshal.
-func TestMarshalCompat(t *testing.T) {
-	intElemType := IntFamily
-	oidElemType := OidFamily
-	strElemType := StringFamily
-	collStrElemType := CollatedStringFamily
-	enLocale := "en"
-
-	testCases := []struct {
-		from *T
-		to   InternalType
-	}{
-		// ARRAY
-		{Int2Vector, InternalType{Family: int2vector, Oid: oid.T_int2vector, Width: 16,
-			ArrayElemType: &intElemType, ArrayContents: Int2}},
-		{OidVector, InternalType{Family: oidvector, Oid: oid.T_oidvector,
-			ArrayElemType: &oidElemType, ArrayContents: Oid}},
-		{IntArray, InternalType{Family: ArrayFamily, Oid: oid.T__int8, Width: 64,
-			ArrayElemType: &intElemType, ArrayContents: Int}},
-		{MakeArray(MakeVarChar(10)), InternalType{Family: ArrayFamily, Oid: oid.T__varchar, Width: 10, VisibleType: visibleVARCHAR,
-			ArrayElemType: &strElemType, ArrayContents: MakeVarChar(10)}},
-		{MakeArray(MakeCollatedString(String, enLocale)), InternalType{Family: ArrayFamily, Oid: oid.T__text, Locale: &enLocale,
-			ArrayElemType: &collStrElemType, ArrayContents: MakeCollatedString(String, enLocale)}},
-
-		// BIT
-		{typeBit, InternalType{Family: BitFamily, Oid: oid.T_bit}},
-		{MakeVarBit(10), InternalType{Family: BitFamily, Oid: oid.T_varbit, Width: 10, VisibleType: visibleVARBIT}},
-
-		// COLLATEDSTRING
-		{MakeCollatedString(MakeVarChar(10), enLocale),
-			InternalType{Family: CollatedStringFamily, Oid: oid.T_varchar, Width: 10, VisibleType: visibleVARCHAR, Locale: &enLocale}},
-
-		// FLOAT
-		{Float, InternalType{Family: FloatFamily, Oid: oid.T_float8, Width: 64}},
-		{Float4, InternalType{Family: FloatFamily, Oid: oid.T_float4, Width: 32, VisibleType: visibleREAL}},
-
-		// REFCURSOR
-		{RefCursor, InternalType{Family: RefCursorFamily, Oid: oid.T_refcursor}},
-
-		// STRING
-		{MakeString(10), InternalType{Family: StringFamily, Oid: oid.T_text, Width: 10}},
-		{VarChar, InternalType{Family: StringFamily, Oid: oid.T_varchar, VisibleType: visibleVARCHAR}},
-		{MakeChar(10), InternalType{Family: StringFamily, Oid: oid.T_bpchar, Width: 10, VisibleType: visibleCHAR}},
-		{QChar, InternalType{Family: StringFamily, Oid: oid.T_char, Width: 1, VisibleType: visibleQCHAR}},
-		{Name, InternalType{Family: name, Oid: oid.T_name}},
-	}
-
-	for _, tc := range testCases {
-		data, err := protoutil.Marshal(tc.from)
-		if err != nil {
-			t.Errorf("error during marshal of type <%v>: %v", tc.from.DebugString(), err)
-		}
-
-		var actual InternalType
-		err = protoutil.Unmarshal(data, &actual)
-		if err != nil {
-			t.Errorf("error during unmarshal of type <%v>: %v", tc.from.DebugString(), err)
-		}
-
-		if !reflect.DeepEqual(actual, tc.to) {
-			t.Errorf("expected <%v>, got <%v>", tc.to.String(), actual.String())
-		}
-	}
-}
-
-// TestMarshalCompat tests backwards-compatibility during unmarshal. Unmarshal
+// TestUnmarshalCompat tests backwards-compatibility during unmarshal. Unmarshal
 // needs to handle all formats ever used by CRDB in the past.
 func TestUnmarshalCompat(t *testing.T) {
 	intElemType := IntFamily
@@ -813,29 +749,29 @@ func TestUnmarshalCompat(t *testing.T) {
 		to   *T
 	}{
 		// ARRAY
-		{InternalType{Family: ArrayFamily, ArrayElemType: &intElemType, VisibleType: visibleSMALLINT},
+		{InternalType{Family: ArrayFamily, ArrayElemType: &intElemType, Width: 16},
 			MakeArray(Int2)},
-		{InternalType{Family: ArrayFamily, ArrayElemType: &floatElemType, VisibleType: visibleDOUBLE},
+		{InternalType{Family: ArrayFamily, ArrayElemType: &floatElemType},
 			MakeArray(Float)},
 
 		// BIT
-		{InternalType{Family: BitFamily, VisibleType: visibleVARBIT}, VarBit},
-		{InternalType{Family: BitFamily, VisibleType: visibleVARBIT, Width: 20}, MakeVarBit(20)},
+		{InternalType{Family: BitFamily}, MakeBit(0)},
+		{InternalType{Family: BitFamily, Oid: oid.T_varbit}, VarBit},
+		{InternalType{Family: BitFamily, Oid: oid.T_varbit, Width: 20}, MakeVarBit(20)},
 
 		// FLOAT
 		{InternalType{Family: FloatFamily}, Float},
-		{InternalType{Family: FloatFamily, VisibleType: visibleREAL}, Float4},
-		{InternalType{Family: FloatFamily, VisibleType: visibleDOUBLE}, Float},
 		{InternalType{Family: FloatFamily, Precision: 1}, Float4},
 		{InternalType{Family: FloatFamily, Precision: 24}, Float4},
 		{InternalType{Family: FloatFamily, Precision: 25}, Float},
 		{InternalType{Family: FloatFamily, Precision: 60}, Float},
+		{InternalType{Family: FloatFamily, Width: 32}, Float4},
+		{InternalType{Family: FloatFamily, Width: 64}, Float},
 
 		// INT
-		{InternalType{Family: IntFamily, VisibleType: visibleSMALLINT}, Int2},
-		{InternalType{Family: IntFamily, VisibleType: visibleINTEGER}, Int4},
-		{InternalType{Family: IntFamily, VisibleType: visibleBIGINT}, Int},
-		{InternalType{Family: IntFamily, VisibleType: visibleBIT}, Int},
+		{InternalType{Family: IntFamily, Width: 16}, Int2},
+		{InternalType{Family: IntFamily, Width: 32}, Int4},
+		{InternalType{Family: IntFamily, Width: 64}, Int},
 		{InternalType{Family: IntFamily, Width: 20}, Int},
 		{InternalType{Family: IntFamily}, Int},
 
@@ -844,10 +780,11 @@ func TestUnmarshalCompat(t *testing.T) {
 
 		// STRING
 		{InternalType{Family: StringFamily}, String},
-		{InternalType{Family: StringFamily, VisibleType: visibleVARCHAR}, VarChar},
-		{InternalType{Family: StringFamily, VisibleType: visibleVARCHAR, Width: 20}, MakeVarChar(20)},
-		{InternalType{Family: StringFamily, VisibleType: visibleCHAR}, BPChar},
-		{InternalType{Family: StringFamily, VisibleType: visibleQCHAR, Width: 1}, QChar},
+		{InternalType{Family: StringFamily, Oid: oid.T_varchar}, VarChar},
+		{InternalType{Family: StringFamily, Oid: oid.T_varchar, Width: 20}, MakeVarChar(20)},
+		{InternalType{Family: StringFamily, Oid: oid.T_bpchar}, BPChar},
+		{InternalType{Family: StringFamily, Oid: oid.T_char, Width: 1}, QChar},
+		{InternalType{Family: name}, Name},
 	}
 
 	for _, tc := range testCases {
@@ -1027,15 +964,13 @@ func TestUpgradeType(t *testing.T) {
 			}},
 		},
 		{
-			desc: "varbit types are not assigned the default family Oid value",
+			desc: "legacy NAME support",
 			input: &T{InternalType: InternalType{
-				Family:      BitFamily,
-				VisibleType: visibleVARBIT,
-				Locale:      &emptyLocale,
+				Family: name,
 			}},
 			expected: &T{InternalType: InternalType{
-				Family: BitFamily,
-				Oid:    oid.T_varbit,
+				Family: StringFamily,
+				Oid:    oid.T_name,
 				Locale: &emptyLocale,
 			}},
 		},
@@ -1079,6 +1014,16 @@ func TestSQLStandardName(t *testing.T) {
 }
 
 func TestWithoutTypeModifiers(t *testing.T) {
+	const userDefinedOID = oidext.CockroachPredefinedOIDMax + 700
+	domain := MakeDomain(MakeString(2), userDefinedOID, userDefinedOID+1)
+	domain.TypeMeta = UserDefinedTypeMetadata{
+		Name: &UserDefinedTypeName{Name: "d"},
+		DomainData: &DomainMetadata{
+			BaseType: MakeString(2),
+		},
+	}
+	domainArray := MakeArray(domain)
+
 	testCases := []struct {
 		t        *T
 		expected *T
@@ -1102,6 +1047,8 @@ func TestWithoutTypeModifiers(t *testing.T) {
 		{MakeInterval(IntervalTypeMetadata{Precision: 3, PrecisionIsSet: true}),
 			Interval},
 		{MakeArray(MakeDecimal(5, 1)), DecimalArray},
+		{domain, domain},
+		{domainArray, domainArray},
 		{MakeTuple([]*T{MakeString(2), Time, MakeDecimal(5, 1)}),
 			MakeTuple([]*T{String, Time, Decimal})},
 		{MakeGeography(geopb.ShapeType_Point, 3857), Geography},
@@ -1124,6 +1071,8 @@ func TestWithoutTypeModifiers(t *testing.T) {
 		{Name, Name},
 		{Uuid, Uuid},
 		{RefCursor, RefCursor},
+		{CIText, CIText},
+		{LTree, LTree},
 	}
 
 	for _, tc := range testCases {

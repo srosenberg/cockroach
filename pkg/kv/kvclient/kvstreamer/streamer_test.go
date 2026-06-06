@@ -46,11 +46,11 @@ func getStreamer(
 	reverse bool,
 ) *kvstreamer.Streamer {
 	rootTxn := kv.NewTxn(ctx, s.DB(), s.DistSQLPlanningNodeID())
-	leafInputState, err := rootTxn.GetLeafTxnInputState(ctx)
+	leafInputState, err := rootTxn.GetLeafTxnInputState(ctx, nil /* readsTree */)
 	if err != nil {
 		panic(err)
 	}
-	leafTxn := kv.NewLeafTxn(ctx, s.DB(), s.DistSQLPlanningNodeID(), leafInputState)
+	leafTxn := kv.NewLeafTxn(ctx, s.DB(), s.DistSQLPlanningNodeID(), leafInputState, nil /* header */)
 	metrics := kvstreamer.MakeMetrics()
 	return kvstreamer.NewStreamer(
 		s.DistSenderI().(*kvcoord.DistSender),
@@ -70,9 +70,12 @@ func getStreamer(
 		limitBytes,
 		acc,
 		nil, /* kvPairsRead */
+		nil, /* kvCPUTime */
 		lock.None,
 		lock.Unreplicated,
 		reverse,
+		0, /* workloadID */
+		0, /* workloadType */
 	)
 }
 
@@ -131,9 +134,12 @@ func TestStreamerLimitations(t *testing.T) {
 				math.MaxInt64, /* limitBytes */
 				nil,           /* acc */
 				nil,           /* kvPairsRead */
+				nil,           /* kvCpuTime */
 				lock.None,
 				lock.Unreplicated,
 				false, /* reverse */
+				0,     /* workloadID */
+				0,     /* workloadType */
 			)
 		})
 	})
@@ -196,7 +202,7 @@ func TestStreamerBudgetErrorInEnqueue(t *testing.T) {
 	// Imitate a root SQL memory monitor with 1MiB size.
 	const rootPoolSize = 1 << 20 /* 1MiB */
 	rootMemMonitor := mon.NewMonitor(mon.Options{
-		Name:     mon.MakeMonitorName("root"),
+		Name:     mon.MakeName("root"),
 		Settings: cluster.MakeTestingClusterSettings(),
 	})
 	rootMemMonitor.Start(ctx, nil /* pool */, mon.NewStandaloneBudget(rootPoolSize))
@@ -265,7 +271,7 @@ func TestStreamerCorrectlyDiscardsResponses(t *testing.T) {
 	// request by the Streamer will be numRowsPerRange x InitialAvgResponseSize,
 	// so we pick the blob size such that about half of rows are included in the
 	// partial responses.
-	const blobSize = 2 * kvstreamer.InitialAvgResponseSize
+	const blobSize = 2 * kvstreamer.DefaultInitialAvgResponseSize
 	const numRows = 20
 	const numRowsPerRange = 4
 
@@ -295,9 +301,9 @@ func TestStreamerCorrectlyDiscardsResponses(t *testing.T) {
 	// the budget. This includes 4/3 factor since the vectorized ColIndexJoin
 	// gives 3/4 of the workmem limit to the Streamer.
 	for _, workmem := range []int{
-		3 * kvstreamer.InitialAvgResponseSize * numRows / 2,
-		7 * kvstreamer.InitialAvgResponseSize * numRows / 4,
-		2 * kvstreamer.InitialAvgResponseSize * numRows,
+		3 * kvstreamer.DefaultInitialAvgResponseSize * numRows / 2,
+		7 * kvstreamer.DefaultInitialAvgResponseSize * numRows / 4,
+		2 * kvstreamer.DefaultInitialAvgResponseSize * numRows,
 	} {
 		t.Run(fmt.Sprintf("workmem=%s", humanize.Bytes(uint64(workmem))), func(t *testing.T) {
 			_, err = db.Exec(fmt.Sprintf("SET distsql_workmem = '%dB'", workmem))
@@ -324,7 +330,7 @@ func TestStreamerWideRows(t *testing.T) {
 	})
 	defer s.Stopper().Stop(context.Background())
 
-	const blobSize = 10 * kvstreamer.InitialAvgResponseSize
+	const blobSize = 10 * kvstreamer.DefaultInitialAvgResponseSize
 	const numRows = 2
 
 	_, err := db.Exec("CREATE TABLE t (pk INT PRIMARY KEY, k INT, blob1 STRING, blob2 STRING, INDEX (k), FAMILY (pk, k, blob1), FAMILY (blob2))")
@@ -623,7 +629,7 @@ ALTER TABLE t SPLIT AT SELECT generate_series(1, 30000, 3000);
 		for i := 0; i < 2; i++ {
 			gRPCCalls := -1
 			var err error
-			rows := runner.QueryStr(t, `EXPLAIN ANALYZE SELECT length(blob) FROM t@t_v_idx WHERE v = '1';`)
+			rows := runner.QueryStr(t, `EXPLAIN ANALYZE (VERBOSE) SELECT length(blob) FROM t@t_v_idx WHERE v = '1';`)
 			for _, row := range rows {
 				if matches := kvGRPCCallsRegex.FindStringSubmatch(row[0]); len(matches) > 0 {
 					gRPCCalls, err = strconv.Atoi(strings.ReplaceAll(matches[1], ",", ""))
@@ -684,6 +690,11 @@ ALTER TABLE t SPLIT AT SELECT i*2000 FROM generate_series(0, 2) AS g(i);
 	// extremely suboptimal).
 	kvGRPCCallsRegex := regexp.MustCompile(`KV gRPC calls: ([\d,]+)`)
 	for i := 0; i < 10; i++ {
+		// Clear the pool so that each iteration gets a fresh helper with no
+		// retained allocations from previous iterations. Reused helpers with
+		// large slices eat into the workmem budget, forcing smaller TargetBytes
+		// and more gRPC batches.
+		kvcoord.TestingResetBatchTruncationHelperPool()
 		// Pick random workmem limit in [2MiB; 16MiB] range.
 		workmem := 2<<20 + rng.Intn(14<<20)
 		runner.Exec(t, fmt.Sprintf("SET distsql_workmem = '%dB'", workmem))
@@ -691,7 +702,7 @@ ALTER TABLE t SPLIT AT SELECT i*2000 FROM generate_series(0, 2) AS g(i);
 			runner.Exec(t, `SET streamer_always_maintain_ordering = $1;`, inOrder)
 			gRPCCalls := -1
 			var err error
-			rows := runner.QueryStr(t, `EXPLAIN ANALYZE SELECT * FROM t@v_idx WHERE v > 0`)
+			rows := runner.QueryStr(t, `EXPLAIN ANALYZE (VERBOSE) SELECT * FROM t@v_idx WHERE v > 0`)
 			for _, row := range rows {
 				if matches := kvGRPCCallsRegex.FindStringSubmatch(row[0]); len(matches) > 0 {
 					gRPCCalls, err = strconv.Atoi(strings.ReplaceAll(matches[1], ",", ""))

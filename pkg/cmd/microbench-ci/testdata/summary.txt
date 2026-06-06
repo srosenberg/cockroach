@@ -11,8 +11,10 @@ benchmarks:
     compare_alpha: 0.05
     retries: 3
     metrics:
-      - "sec/op"
-      - "allocs/op"
+      - name: "sec/op"
+        threshold: 0.001
+      - name: "allocs/op"
+        threshold: 0.001
 
 ----
 
@@ -88,7 +90,15 @@ chmod +x benchdiff/abcdef1/bin/1058449141/cockroachdb_cockroach_pkg_sql_tests
 ```
 **benchdiff command**:
 ```shell
-benchdiff --run=^BenchmarkSysbench/SQL/3node/oltp_read_write$ --old=abcdef1 --new=qwerty4 ./pkg/sql/tests
+# NB: for best (most stable) results, also add a suitable `--benchtime` that
+# results in ~1s to ~5s of benchmark runs. For example, if ops average ~3ms, a
+# benchtime of `1000x` is appropriate.
+#
+# Some benchmarks (in particular BenchmarkSysbench) output additional memory
+# profiles covering only the execution (excluding the setup/teardown) - those
+# should be preferred for analysis since they more closely correspond to what's
+# reported as B/op and alloc/op.
+benchdiff --run=^BenchmarkSysbench/SQL/3node/oltp_read_write$ --old=abcdef1 --new=qwerty4 --memprofile ./pkg/sql/tests
 ```
 
 </details>
@@ -107,16 +117,6 @@ gcloud storage cp gs://cockroach-microbench-ci/artifacts/abcdef123//\* old/
 
 </details>
 
-<details><summary>Legend</summary>
-
-- ⚪ **Neutral:** No significant performance change.
-- 🔴 **Regression:** Likely performance regression, requiring investigation.
-- 🟢 **Improvement:** Likely performance gain.
-
-</details>
-
-No regressions detected!
-
 _built with commit: [qwerty456](https://github.com/cockroachdb/cockroach/commit/qwerty456)_
 ----
 ----
@@ -128,17 +128,22 @@ tree
 /abcdef123
 /abcdef123/artifacts
 /abcdef123/artifacts/cleaned_Sysbench_SQL_3node_oltp_read_write.log
-/abcdef123/artifacts/cpu_Sysbench_SQL_3node_oltp_read_write_merged.prof
-/abcdef123/artifacts/memory_Sysbench_SQL_3node_oltp_read_write_merged.prof
-/abcdef123/artifacts/mutex_Sysbench_SQL_3node_oltp_read_write_merged.prof
+/abcdef123/artifacts/cpu_Sysbench_SQL_3node_oltp_read_write_merged_1.prof
+/abcdef123/artifacts/cpu_Sysbench_SQL_3node_oltp_read_write_merged_2.prof
+/abcdef123/artifacts/memory_Sysbench_SQL_3node_oltp_read_write_merged_1.prof
+/abcdef123/artifacts/memory_Sysbench_SQL_3node_oltp_read_write_merged_2.prof
+/abcdef123/artifacts/mutex_Sysbench_SQL_3node_oltp_read_write_merged_1.prof
+/abcdef123/artifacts/mutex_Sysbench_SQL_3node_oltp_read_write_merged_2.prof
 /abcdef123/artifacts/raw_Sysbench_SQL_3node_oltp_read_write.log
-/github-summary.md
 /qwerty456
 /qwerty456/artifacts
 /qwerty456/artifacts/cleaned_Sysbench_SQL_3node_oltp_read_write.log
-/qwerty456/artifacts/cpu_Sysbench_SQL_3node_oltp_read_write_merged.prof
-/qwerty456/artifacts/memory_Sysbench_SQL_3node_oltp_read_write_merged.prof
-/qwerty456/artifacts/mutex_Sysbench_SQL_3node_oltp_read_write_merged.prof
+/qwerty456/artifacts/cpu_Sysbench_SQL_3node_oltp_read_write_merged_1.prof
+/qwerty456/artifacts/cpu_Sysbench_SQL_3node_oltp_read_write_merged_2.prof
+/qwerty456/artifacts/memory_Sysbench_SQL_3node_oltp_read_write_merged_1.prof
+/qwerty456/artifacts/memory_Sysbench_SQL_3node_oltp_read_write_merged_2.prof
+/qwerty456/artifacts/mutex_Sysbench_SQL_3node_oltp_read_write_merged_1.prof
+/qwerty456/artifacts/mutex_Sysbench_SQL_3node_oltp_read_write_merged_2.prof
 /qwerty456/artifacts/raw_Sysbench_SQL_3node_oltp_read_write.log
 /suite.yml
 /summary.json

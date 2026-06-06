@@ -28,20 +28,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 )
 
-type flushBucket struct {
-	aggInterval  time.Duration
-	aggregatedTs time.Time
-	nodeID       base.SQLInstanceID
-}
-
-func (s *PersistedSQLStats) getBucket() flushBucket {
-	return flushBucket{
-		aggInterval:  s.GetAggregationInterval(),
-		aggregatedTs: s.ComputeAggregatedTs(),
-		nodeID:       s.GetEnabledSQLInstanceID(),
-	}
-}
-
 // MaybeFlush flushes in-memory sql stats into a system table, returning true if the flush
 // was attempted. Any errors encountered will be logged as warning. We may return
 // without attempting to flush any sql stats if any of the following are true:
@@ -55,6 +41,8 @@ func (s *PersistedSQLStats) MaybeFlush(ctx context.Context, stopper *stop.Stoppe
 func (s *PersistedSQLStats) MaybeFlushWithDrainer(
 	ctx context.Context, stopper *stop.Stopper, ssDrainer sqlstats.SSDrainer,
 ) bool {
+	ctx, stopCancel := stopper.WithCancelOnQuiesce(ctx)
+	defer stopCancel()
 	now := s.getTimeNow()
 	allowDiscardWhenDisabled := DiscardInMemoryStatsWhenFlushDisabled.Get(&s.cfg.Settings.SV)
 	minimumFlushInterval := MinimumInterval.Get(&s.cfg.Settings.SV)
@@ -68,7 +56,7 @@ func (s *PersistedSQLStats) MaybeFlushWithDrainer(
 	if !enabled && allowDiscardWhenDisabled {
 		defer func() {
 			if err := ssDrainer.Reset(ctx); err != nil {
-				log.Warningf(ctx, "fail to reset SQL Stats: %s", err)
+				log.Dev.Warningf(ctx, "fail to reset SQL Stats: %s", err)
 			}
 		}()
 	}
@@ -79,7 +67,7 @@ func (s *PersistedSQLStats) MaybeFlushWithDrainer(
 	}
 
 	if flushingTooSoon {
-		log.Infof(ctx, "flush aborted due to high flush frequency. "+
+		log.Dev.Infof(ctx, "flush aborted due to high flush frequency. "+
 			"The minimum interval between flushes is %s", minimumFlushInterval.String())
 		return false
 	}
@@ -93,10 +81,10 @@ func (s *PersistedSQLStats) MaybeFlushWithDrainer(
 	}
 
 	if err != nil {
-		log.Errorf(ctx, "encountered an error at flush, checking for statement statistics size limit: %v", err)
+		log.Dev.Errorf(ctx, "encountered an error at flush, checking for statement statistics size limit: %v", err)
 	}
 	if limitReached {
-		log.Infof(ctx, "unable to flush fingerprints because table limit was reached.")
+		log.Dev.Infof(ctx, "unable to flush fingerprints because table limit was reached.")
 		return false
 	}
 
@@ -107,12 +95,12 @@ func (s *PersistedSQLStats) MaybeFlushWithDrainer(
 	stmtStats, txnStats, fingerprintCount := ssDrainer.DrainStats(ctx)
 	s.cfg.FlushedFingerprintCount.Inc(fingerprintCount)
 	if log.V(1) {
-		log.Infof(ctx, "flushing %d stmt/txn fingerprints (%d bytes) after %s",
+		log.Dev.Infof(ctx, "flushing %d stmt/txn fingerprints (%d bytes) after %s",
 			fingerprintCount, s.SQLStats.GetTotalFingerprintBytes(), timeutil.Since(lastFlush))
 	}
 
-	bucket := s.getBucket()
-	s.flush(ctx, stopper, &bucket, stmtStats, txnStats)
+	nodeID := s.GetEnabledSQLInstanceID()
+	s.flush(ctx, stopper, nodeID, stmtStats, txnStats)
 	s.cfg.FlushLatency.RecordValue(s.getTimeNow().Sub(flushBegin).Nanoseconds())
 
 	if s.cfg.Knobs != nil && s.cfg.Knobs.OnStmtStatsFlushFinished != nil {
@@ -132,7 +120,7 @@ func (s *PersistedSQLStats) StmtsLimitSizeReached(ctx context.Context) (bool, er
 	intervalToCheck := SQLStatsLimitTableCheckInterval.Get(&s.cfg.Settings.SV)
 	if !s.lastSizeCheck.IsZero() && s.lastSizeCheck.Add(intervalToCheck).After(timeutil.Now()) {
 		if log.V(1) {
-			log.Infof(ctx, "PersistedSQLStats.StmtsLimitSizeReached skipped with last check at: %s and check interval: %s", s.lastSizeCheck, intervalToCheck)
+			log.Dev.Infof(ctx, "PersistedSQLStats.StmtsLimitSizeReached skipped with last check at: %s and check interval: %s", s.lastSizeCheck, intervalToCheck)
 		}
 		return false, nil
 	}
@@ -179,12 +167,12 @@ func (s *PersistedSQLStats) StmtsLimitSizeReached(ctx context.Context) (bool, er
 func (s *PersistedSQLStats) flush(
 	ctx context.Context,
 	stopper *stop.Stopper,
-	flushBucket *flushBucket,
+	nodeID base.SQLInstanceID,
 	stmtStats []*appstatspb.CollectedStatementStatistics,
 	txnStats []*appstatspb.CollectedTransactionStatistics,
 ) {
 	if s.cfg.Knobs != nil && s.cfg.Knobs.FlushInterceptor != nil {
-		s.cfg.Knobs.FlushInterceptor(ctx, stopper, flushBucket.aggregatedTs, stmtStats, txnStats)
+		s.cfg.Knobs.FlushInterceptor(ctx, stopper, stmtStats, txnStats)
 		return
 	}
 
@@ -196,10 +184,10 @@ func (s *PersistedSQLStats) flush(
 
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
-		s.flushStmtStatsInBatches(ctx, stmtStats, flushBucket)
+		s.flushStmtStatsInBatches(ctx, stmtStats, nodeID)
 	})
 	if err != nil {
-		log.Warningf(ctx, "failed to execute sql-stmt-stats-flush task, %s", err.Error())
+		log.Dev.Warningf(ctx, "failed to execute sql-stmt-stats-flush task, %s", err.Error())
 		wg.Done()
 		return
 	}
@@ -209,10 +197,10 @@ func (s *PersistedSQLStats) flush(
 
 		ctx, cancel := stopper.WithCancelOnQuiesce(ctx)
 		defer cancel()
-		s.flushTxnStatsInBatches(ctx, txnStats, flushBucket)
+		s.flushTxnStatsInBatches(ctx, txnStats, nodeID)
 	})
 	if err != nil {
-		log.Warningf(ctx, "failed to execute sql-txn-stats-flush task, %s", err.Error())
+		log.Dev.Warningf(ctx, "failed to execute sql-txn-stats-flush task, %s", err.Error())
 		wg.Done()
 		return
 	}
@@ -221,7 +209,9 @@ func (s *PersistedSQLStats) flush(
 }
 
 func (s *PersistedSQLStats) flushTxnStatsInBatches(
-	ctx context.Context, stats []*appstatspb.CollectedTransactionStatistics, flushBucket *flushBucket,
+	ctx context.Context,
+	stats []*appstatspb.CollectedTransactionStatistics,
+	nodeID base.SQLInstanceID,
 ) {
 	batchSize := int(SQLStatsFlushBatchSize.Get(&s.cfg.Settings.SV))
 	for i := 0; i < len(stats); i += batchSize {
@@ -230,9 +220,9 @@ func (s *PersistedSQLStats) flushTxnStatsInBatches(
 			end = len(stats)
 		}
 		batch := stats[i:end]
-		if err := doFlushTxnStats(ctx, batch, flushBucket, s.cfg.DB); err != nil {
+		if err := doFlushTxnStats(ctx, batch, nodeID, s.cfg.DB); err != nil {
 			s.cfg.FlushesFailed.Inc(1)
-			log.Warningf(ctx, "failed to flush transaction statistics: %s", err)
+			log.Dev.Warningf(ctx, "failed to flush transaction statistics: %s", err)
 		} else {
 			s.cfg.FlushesSuccessful.Inc(1)
 		}
@@ -240,7 +230,7 @@ func (s *PersistedSQLStats) flushTxnStatsInBatches(
 }
 
 func (s *PersistedSQLStats) flushStmtStatsInBatches(
-	ctx context.Context, stats []*appstatspb.CollectedStatementStatistics, flushBucket *flushBucket,
+	ctx context.Context, stats []*appstatspb.CollectedStatementStatistics, nodeID base.SQLInstanceID,
 ) {
 	batchSize := int(SQLStatsFlushBatchSize.Get(&s.cfg.Settings.SV))
 	for i := 0; i < len(stats); i += batchSize {
@@ -249,30 +239,13 @@ func (s *PersistedSQLStats) flushStmtStatsInBatches(
 			end = len(stats)
 		}
 		batch := stats[i:end]
-		if err := doFlushStmtStats(ctx, batch, flushBucket, s.cfg.DB); err != nil {
+		if err := doFlushStmtStats(ctx, batch, nodeID, s.cfg.DB); err != nil {
 			s.cfg.FlushesFailed.Inc(1)
-			log.Warningf(ctx, "failed to flush statement statistics: %s", err)
+			log.Dev.Warningf(ctx, "failed to flush statement statistics: %s", err)
 		} else {
 			s.cfg.FlushesSuccessful.Inc(1)
 		}
 	}
-}
-
-// ComputeAggregatedTs returns the aggregation timestamp to assign
-// in-memory SQL stats during storage or aggregation.
-func (s *PersistedSQLStats) ComputeAggregatedTs() time.Time {
-	interval := SQLStatsAggregationInterval.Get(&s.cfg.Settings.SV)
-	now := s.getTimeNow()
-
-	aggTs := now.Truncate(interval)
-
-	return aggTs
-}
-
-// GetAggregationInterval returns the current aggregation interval
-// used by PersistedSQLStats.
-func (s *PersistedSQLStats) GetAggregationInterval() time.Duration {
-	return SQLStatsAggregationInterval.Get(&s.cfg.Settings.SV)
 }
 
 func (s *PersistedSQLStats) getTimeNow() time.Time {
@@ -295,7 +268,7 @@ SET
 func doFlushTxnStats(
 	ctx context.Context,
 	stats []*appstatspb.CollectedTransactionStatistics,
-	bucket *flushBucket,
+	nodeID base.SQLInstanceID,
 	db isql.DB,
 ) error {
 	var args []interface{}
@@ -319,13 +292,13 @@ func doFlushTxnStats(
 		placeholders = append(placeholders, fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)",
 			i*7+1, i*7+2, i*7+3, i*7+4, i*7+5, i*7+6, i*7+7))
 		args = append(args,
-			bucket.aggregatedTs,     // aggregated_ts
-			serializedFingerprintID, // fingerprint_id
-			stat.App,                // app_name
-			bucket.nodeID,           // node_id
-			bucket.aggInterval,      // agg_interval
-			metadata,                // metadata
-			statistics,              // statistics
+			stat.AggregatedTs,        // aggregated_ts
+			serializedFingerprintID,  // fingerprint_id
+			stat.App,                 // app_name
+			nodeID,                   // node_id
+			stat.AggregationInterval, // agg_interval
+			metadata,                 // metadata
+			statistics,               // statistics
 		)
 	}
 
@@ -353,7 +326,7 @@ SET
 func doFlushStmtStats(
 	ctx context.Context,
 	stats []*appstatspb.CollectedStatementStatistics,
-	flushBucket *flushBucket,
+	nodeID base.SQLInstanceID,
 	db isql.DB,
 ) error {
 	var args []interface{}
@@ -389,13 +362,13 @@ func doFlushStmtStats(
 			i*11+1, i*11+2, i*11+3, i*11+4, i*11+5, i*11+6, i*11+7, i*11+8, i*11+9, i*11+10, i*11+11))
 
 		args = append(args,
-			flushBucket.aggregatedTs,           // aggregated_ts
+			stat.AggregatedTs,                  // aggregated_ts
 			serializedFingerprintID,            // fingerprint_id
 			serializedTransactionFingerprintID, // transaction_fingerprint_id
 			serializedPlanHash,                 // plan_hash
 			stat.Key.App,                       // app_name
-			flushBucket.nodeID,                 // node_id
-			flushBucket.aggInterval,            // agg_interval
+			nodeID,                             // node_id
+			stat.AggregationInterval,           // agg_interval
 			metadata,                           // metadata
 			statistics,                         // statistics
 			plan,                               // plan

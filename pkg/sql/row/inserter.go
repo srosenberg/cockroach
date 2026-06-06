@@ -10,13 +10,12 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/keys"
-	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
-	"github.com/cockroachdb/cockroach/pkg/util/encoding"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
@@ -38,20 +37,17 @@ type Inserter struct {
 // insertCols must contain every column in the primary key. Virtual columns must
 // be present if they are part of any index.
 func MakeInserter(
-	ctx context.Context,
-	txn *kv.Txn,
 	codec keys.SQLCodec,
 	tableDesc catalog.TableDescriptor,
 	uniqueWithTombstoneIndexes []catalog.Index,
 	insertCols []catalog.Column,
-	alloc *tree.DatumAlloc,
+	sd *sessiondata.SessionData,
 	sv *settings.Values,
-	internal bool,
 	metrics *rowinfra.Metrics,
 ) (Inserter, error) {
 	ri := Inserter{
 		Helper: NewRowHelper(
-			codec, tableDesc, tableDesc.WritableNonPrimaryIndexes(), uniqueWithTombstoneIndexes, sv, internal, metrics,
+			codec, tableDesc, tableDesc.WritableNonPrimaryIndexes(), uniqueWithTombstoneIndexes, sd, sv, metrics,
 		),
 
 		InsertCols:            insertCols,
@@ -83,10 +79,11 @@ func insertCPutFn(
 	key *roachpb.Key,
 	value *roachpb.Value,
 	traceKV bool,
-	keyEncodingDirs []encoding.Direction,
+	rh *RowHelper,
+	dirs lazyIndexDirs,
 ) {
 	if traceKV {
-		log.VEventfDepth(ctx, 1, 2, "CPut %s -> %s", keys.PrettyPrint(keyEncodingDirs, *key), value.PrettyPrint())
+		log.VEventfDepth(ctx, 1, 2, "CPut %s -> %s", keys.PrettyPrint(dirs.compute(rh), *key), value.PrettyPrint())
 	}
 	b.CPut(key, value, nil /* expValue */)
 }
@@ -98,10 +95,11 @@ func insertPutFn(
 	key *roachpb.Key,
 	value *roachpb.Value,
 	traceKV bool,
-	keyEncodingDirs []encoding.Direction,
+	rh *RowHelper,
+	dirs lazyIndexDirs,
 ) {
 	if traceKV {
-		log.VEventfDepth(ctx, 1, 2, "Put %s -> %s", keys.PrettyPrint(keyEncodingDirs, *key), value.PrettyPrint())
+		log.VEventfDepth(ctx, 1, 2, "Put %s -> %s", keys.PrettyPrint(dirs.compute(rh), *key), value.PrettyPrint())
 	}
 	b.Put(key, value)
 }
@@ -115,10 +113,11 @@ func insertPutMustAcquireExclusiveLockFn(
 	key *roachpb.Key,
 	value *roachpb.Value,
 	traceKV bool,
-	keyEncodingDirs []encoding.Direction,
+	rh *RowHelper,
+	dirs lazyIndexDirs,
 ) {
 	if traceKV {
-		log.VEventfDepth(ctx, 1, 2, "Put (locking) %s -> %s", keys.PrettyPrint(keyEncodingDirs, *key), value.PrettyPrint())
+		log.VEventfDepth(ctx, 1, 2, "Put (locking) %s -> %s", keys.PrettyPrint(dirs.compute(rh), *key), value.PrettyPrint())
 	}
 	b.PutMustAcquireExclusiveLock(key, value)
 }
@@ -171,7 +170,7 @@ func (ri *Inserter) InsertRow(
 	values []tree.Datum,
 	pm PartialIndexUpdateHelper,
 	vh VectorIndexUpdateHelper,
-	oth *OriginTimestampCPutHelper,
+	oth OriginTimestampCPutHelper,
 	kvOp KVInsertOp,
 	traceKV bool,
 ) error {
@@ -198,12 +197,12 @@ func (ri *Inserter) InsertRow(
 		return err
 	}
 
-	// Add the new values.
-	ri.valueBuf, err = prepareInsertOrUpdateBatch(ctx, b,
-		&ri.Helper, primaryIndexKey, ri.InsertCols,
-		values, ri.InsertColIDtoRowIndex,
-		ri.InsertColIDtoRowIndex,
-		&ri.key, &ri.value, ri.valueBuf, oth, nil /* oldValues */, kvOp, traceKV)
+	// Add the new values to the primary index.
+	ri.valueBuf, err = prepareInsertOrUpdateBatch(
+		ctx, b, &ri.Helper, primaryIndexKey, ri.InsertCols, values, ri.InsertColIDtoRowIndex,
+		ri.InsertColIDtoRowIndex, &ri.key, &ri.value, ri.valueBuf, oth, nil, /* oldValues */
+		kvOp, false /* mustValidateOldPKValues */, traceKV,
+	)
 	if err != nil {
 		return err
 	}
@@ -215,17 +214,40 @@ func (ri *Inserter) InsertRow(
 	// For determinism, add the entries for the secondary indexes in the same
 	// order as they appear in the helper.
 	for idx, index := range ri.Helper.Indexes {
-		entries, ok := secondaryIndexEntries[ri.Helper.Indexes[idx]]
+		entries, ok := secondaryIndexEntries[index]
 		if ok {
+			var putFn func(context.Context, Putter, *roachpb.Key, *roachpb.Value, bool, *RowHelper, lazyIndexDirs)
+			if index.ForcePut() {
+				// See the comment on (catalog.Index).ForcePut() for more
+				// details.
+				// TODO(#140695): re-evaluate the lock need when we enable
+				// buffered writes with DDLs.
+				putFn = insertPutFn
+			} else if index.IsUnique() || ri.Helper.sd.UseCPutsOnNonUniqueIndexes {
+				// For unique indexes we need to ensure that the key doesn't
+				// exist already. This will also acquire the lock on the key.
+				//
+				// For non-unique indexes we'll use CPuts if the session
+				// variable dictates that.
+				putFn = insertCPutFn
+			} else {
+				// For non-unique indexes we don't care whether there exists an
+				// entry already, so we can just use the Put. (In fact, since we
+				// always include the PK columns into the non-unique secondary
+				// index key, the current key should never already exist (unless
+				// we have a duplicate PK which will be detected when inserting
+				// into the primary index).)
+				//
+				// We also don't need the lock (unless the session variable
+				// tells us to acquire it).
+				putFn = insertPutFn
+				if ri.Helper.sd.BufferedWritesUseLockingOnNonUniqueIndexes {
+					putFn = insertPutMustAcquireExclusiveLockFn
+				}
+			}
 			for i := range entries {
 				e := &entries[i]
-
-				if ri.Helper.Indexes[idx].ForcePut() {
-					// See the comment on (catalog.Index).ForcePut() for more details.
-					insertPutFn(ctx, b, &e.Key, &e.Value, traceKV, ri.Helper.secIndexValDirs[idx])
-				} else {
-					insertCPutFn(ctx, b, &e.Key, &e.Value, traceKV, ri.Helper.secIndexValDirs[idx])
-				}
+				putFn(ctx, b, &e.Key, &e.Value, traceKV, &ri.Helper, secondaryIndexDirs(idx))
 			}
 
 			// If a row does not satisfy a partial index predicate, it will have no

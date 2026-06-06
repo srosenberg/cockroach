@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/humanizeutil"
+	"github.com/cockroachdb/cockroach/pkg/util/optional"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 	humanize "github.com/dustin/go-humanize"
@@ -76,11 +77,17 @@ func emitInternal(
 	e := makeEmitter(ob, spanFormatFn)
 	var walk func(n *Node) error
 	walk = func(n *Node) error {
+		if n == nil {
+			return nil
+		}
 		// In non-verbose mode, we skip all projections.
 		// In verbose mode, we only skip trivial projections (which just rearrange
 		// or rename the columns).
 		if !ob.flags.Verbose {
 			if n.op == serializingProjectOp || n.op == simpleProjectOp {
+				if len(n.children) == 0 {
+					return nil
+				}
 				return walk(n.children[0])
 			}
 		}
@@ -98,6 +105,7 @@ func emitInternal(
 				return err
 			}
 		}
+		e.emitNodeFootnotes(n)
 		ob.LeaveNode()
 		return nil
 	}
@@ -231,6 +239,9 @@ func omitTrivialProjections(n *Node) (*Node, colinfo.ResultColumns, colinfo.Colu
 		return n, n.Columns(), n.Ordering()
 	}
 
+	if len(n.children) == 0 {
+		return n, n.Columns(), n.Ordering()
+	}
 	input, inputColumns, inputOrdering := omitTrivialProjections(n.children[0])
 
 	// Check if the projection is a bijection (i.e. permutation of all input
@@ -270,14 +281,17 @@ func makeEmitter(ob *OutputBuilder, spanFormatFn SpanFormatFn) emitter {
 	return emitter{ob: ob, spanFormatFn: spanFormatFn}
 }
 
+func usedStreamer(n *Node) bool {
+	if stats, ok := n.annotations[exec.ExecutionStatsID]; ok && !omitStats(n) {
+		return stats.(*exec.ExecutionStats).UsedStreamer
+	}
+	return false
+}
+
 func (e *emitter) nodeName(n *Node) (name string, _ error) {
-	defer func() {
-		if stats, ok := n.annotations[exec.ExecutionStatsID]; ok && !omitStats(n) {
-			if stats.(*exec.ExecutionStats).UsedStreamer {
-				name += " (streamer)"
-			}
-		}
-	}()
+	if usedStreamer(n) {
+		defer func() { name += " (streamer)" }()
+	}
 
 	switch n.op {
 	case scanOp:
@@ -394,6 +408,7 @@ var nodeNames = [...]string{
 	createViewOp:           "create view",
 	deleteOp:               "delete",
 	deleteRangeOp:          "delete range",
+	deleteSwapOp:           "delete swap",
 	distinctOp:             "distinct",
 	errorIfRowsOp:          "error if rows",
 	explainOp:              "explain",
@@ -431,6 +446,7 @@ var nodeNames = [...]string{
 	sortOp:                 "sort",
 	topKOp:                 "top-k",
 	updateOp:               "update",
+	updateSwapOp:           "update swap",
 	upsertOp:               "upsert",
 	valuesOp:               "", // This node does not have a fixed name.
 	vectorSearchOp:         "vector search",
@@ -480,34 +496,52 @@ func omitStats(n *Node) bool {
 	switch n.op {
 	case simpleProjectOp,
 		serializingProjectOp,
-		renderOp,
 		limitOp:
 		return true
+	case renderOp:
+		// If renderOp has actual render expressions to evaluate AND we're
+		// collecting execution stats, then it's handled by a separate no-op
+		// processor so that separate - from its inputs - exec stats are
+		// collected, and we do want to show them.
+		var needRendering bool
+		// This logic matches what we do in PhysicalPlan.AddRendering.
+		for _, expr := range n.args.(*renderArgs).Exprs {
+			if _, ok := expr.(*tree.IndexedVar); !ok {
+				needRendering = true
+				break
+			}
+		}
+		return !needRendering
 	}
 	return false
 }
 
 func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context, n *Node) error {
+	timeIfNonZero := func(d optional.Duration, key string) {
+		if d.HasValue() {
+			if t := string(humanizeutil.Duration(d.Value())); t != "0µs" {
+				e.ob.AddField(key, t)
+			}
+		}
+	}
 	var actualRowCount uint64
 	var hasActualRowCount bool
 	if stats, ok := n.annotations[exec.ExecutionStatsID]; ok && !omitStats(n) {
 		s := stats.(*exec.ExecutionStats)
-		if len(s.SQLNodes) > 0 {
-			e.ob.AddFlakyField(DeflakeNodes, "sql nodes", strings.Join(s.SQLNodes, ", "))
-		}
-		if len(s.KVNodes) > 0 {
-			e.ob.AddFlakyField(DeflakeNodes, "kv nodes", strings.Join(s.KVNodes, ", "))
-		}
-		if len(s.Regions) > 0 {
-			e.ob.AddFlakyField(DeflakeNodes, "regions", strings.Join(s.Regions, ", "))
+		if n.op != renderOp {
+			// renderOp shares these stats with its input, so we omit them.
+			if len(s.SQLNodes) > 0 {
+				e.ob.AddFlakyField(DeflakeNodes, "sql nodes", strings.Join(s.SQLNodes, ", "))
+			}
+			if len(s.KVNodes) > 0 {
+				e.ob.AddFlakyField(DeflakeNodes, "kv nodes", strings.Join(s.KVNodes, ", "))
+			}
+			if len(s.Regions) > 0 {
+				e.ob.AddFlakyField(DeflakeNodes, "regions", strings.Join(s.Regions, ", "))
+			}
 		}
 		if s.UsedFollowerRead {
 			e.ob.AddField("used follower read", "")
-		}
-		if s.RowCount.HasValue() {
-			actualRowCount = s.RowCount.Value()
-			hasActualRowCount = true
-			e.ob.AddField("actual row count", string(humanizeutil.Count(actualRowCount)))
 		}
 		// Omit vectorized batches in non-verbose mode.
 		if e.ob.flags.Verbose {
@@ -519,13 +553,13 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 		if s.KVTime.HasValue() {
 			e.ob.AddField("KV time", string(humanizeutil.Duration(s.KVTime.Value())))
 		}
-		if s.KVContentionTime.HasValue() {
-			e.ob.AddField("KV contention time", string(humanizeutil.Duration(s.KVContentionTime.Value())))
-		}
+		timeIfNonZero(s.KVContentionTime, "KV contention time")
+		timeIfNonZero(s.KVLockWaitTime, "KV lock wait time")
+		timeIfNonZero(s.KVLatchWaitTime, "KV latch wait time")
 		if s.KVRowsRead.HasValue() {
 			e.ob.AddField("KV rows decoded", string(humanizeutil.Count(s.KVRowsRead.Value())))
 		}
-		if s.KVPairsRead.HasValue() {
+		if e.ob.flags.Verbose && s.KVPairsRead.HasValue() {
 			pairs := s.KVPairsRead.Value()
 			rows := s.KVRowsRead.Value()
 			if pairs != rows || e.ob.flags.Verbose {
@@ -535,16 +569,19 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 				e.ob.AddField("KV pairs read", string(humanizeutil.Count(s.KVPairsRead.Value())))
 			}
 		}
-		if s.KVBytesRead.HasValue() {
+		if e.ob.flags.Verbose && s.KVBytesRead.HasValue() {
 			e.ob.AddField("KV bytes read", humanize.IBytes(s.KVBytesRead.Value()))
 		}
-		if s.KVBatchRequestsIssued.HasValue() {
+		if e.ob.flags.Verbose && s.KVBatchRequestsIssued.HasValue() {
 			e.ob.AddField("KV gRPC calls", string(humanizeutil.Count(s.KVBatchRequestsIssued.Value())))
 		}
-		if s.MaxAllocatedMem.HasValue() {
+		if s.ExecTime.HasValue() {
+			e.ob.AddField("execution time", string(humanizeutil.Duration(s.ExecTime.Value())))
+		}
+		if e.ob.flags.Verbose && s.MaxAllocatedMem.HasValue() {
 			e.ob.AddField("estimated max memory allocated", humanize.IBytes(s.MaxAllocatedMem.Value()))
 		}
-		if s.MaxAllocatedDisk.HasValue() {
+		if e.ob.flags.Verbose && s.MaxAllocatedDisk.HasValue() {
 			e.ob.AddField("estimated max sql temp disk usage", humanize.IBytes(s.MaxAllocatedDisk.Value()))
 		}
 		if s.SQLCPUTime.HasValue() {
@@ -562,8 +599,14 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 				))
 			}
 		}
+		if s.RowCount.HasValue() {
+			actualRowCount = s.RowCount.Value()
+			hasActualRowCount = true
+			e.ob.AddField("actual row count", string(humanizeutil.Count(actualRowCount)))
+		}
 	}
 
+	// Note: This is the same inaccuracy criteria as DistSQLReceiver.maybeLogMisestimates.
 	var inaccurateEstimate bool
 	const inaccurateFactor = 2
 	const inaccurateAdditive = 100
@@ -592,8 +635,9 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 			}
 		}
 
-		// Show the estimated row count (except Values, where it is redundant).
-		if n.op != valuesOp && !e.ob.flags.OnlyShape {
+		// Show the estimated row count (except Values, where it is redundant,
+		// and renderOp which shares them with its input).
+		if n.op != valuesOp && n.op != renderOp && !e.ob.flags.OnlyShape {
 			if s.TableStatsAvailable {
 				if n.op == scanOp && s.TableStatsRowCount != 0 {
 					percentage := s.RowCount / float64(s.TableStatsRowCount) * 100
@@ -664,6 +708,12 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 				}
 			}
 		}
+		// Canary window is a table property, shown regardless of whether
+		// the current stats path found usable stats (e.g. helps explain
+		// "missing stats" on the stable path).
+		if n.op == scanOp && s.CanaryStatsActive {
+			e.ob.AddField("canary window", s.CanaryWindowSize.String())
+		}
 		// TODO(radu): we may want to emit estimated cost in Verbose mode.
 	}
 
@@ -729,12 +779,8 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 
 	case limitOp:
 		a := n.args.(*limitArgs)
-		if a.Limit != nil {
-			ob.Expr("count", a.Limit, nil /* columns */)
-		}
-		if a.Offset != nil {
-			ob.Expr("offset", a.Offset, nil /* columns */)
-		}
+		ob.Expr("count", a.Limit, nil /* columns */)
+		ob.Expr("offset", a.Offset, nil /* columns */)
 
 	case sortOp:
 		a := n.args.(*sortArgs)
@@ -770,6 +816,9 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 		}
 		ob.VAttr("key columns", strings.Join(cols, ", "))
 		e.emitLockingPolicy(a.Locking)
+		if a.Parallelize { // should always be true
+			ob.VAttr("parallel", "")
+		}
 
 	case groupByOp:
 		a := n.args.(*groupByArgs)
@@ -837,9 +886,7 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 
 	case applyJoinOp:
 		a := n.args.(*applyJoinArgs)
-		if a.OnCond != nil {
-			ob.Expr("pred", a.OnCond, appendColumns(a.Left.Columns(), a.RightColumns...))
-		}
+		ob.Expr("pred", a.OnCond, appendColumns(a.Left.Columns(), a.RightColumns...))
 
 	case lookupJoinOp:
 		a := n.args.(*lookupJoinArgs)
@@ -866,6 +913,9 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 		ob.Expr("remote lookup condition", a.RemoteLookupExpr, appendColumns(inputCols, tableColumns(a.Table, a.LookupCols)...))
 		ob.Expr("pred", a.OnCond, appendColumns(inputCols, tableColumns(a.Table, a.LookupCols)...))
 		e.emitLockingPolicy(a.Locking)
+		if a.Parallelize || usedStreamer(n) {
+			ob.VAttr("parallel", "")
+		}
 
 	case zigzagJoinOp:
 		a := n.args.(*zigzagJoinArgs)
@@ -936,10 +986,15 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 		a := n.args.(*vectorSearchArgs)
 		e.emitTableAndIndex("table", a.Table, a.Index, "" /* suffix */)
 		ob.Attr("target count", a.TargetNeighborCount)
-		if ob.flags.Verbose {
-			if !a.PrefixKey.IsEmpty() {
-				ob.Attr("prefix key", a.PrefixKey)
+		if a.PrefixConstraint != nil {
+			params := exec.ScanParams{
+				NeededCols:      a.OutCols,
+				IndexConstraint: a.PrefixConstraint,
 			}
+			e.emitSpans("prefix spans", a.Table, a.Index, params)
+		}
+		if ob.flags.Verbose {
+			// Vectors can have many dimensions, so don't print them unless verbose.
 			ob.Expr("query vector", a.QueryVector, nil /* varColumns */)
 		}
 
@@ -1097,8 +1152,44 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 		}
 		e.emitPolicies(ob, a.Table, n)
 
+	case updateSwapOp:
+		a := n.args.(*updateSwapArgs)
+		ob.Attrf("table", "%s", a.Table.Name())
+		ob.Attr("set", printColumns(tableColumns(a.Table, a.UpdateCols)))
+		if a.AutoCommit {
+			ob.Attr("auto commit", "")
+		}
+		beforeTriggers := cat.GetRowLevelTriggers(
+			a.Table, tree.TriggerActionTimeBefore, tree.MakeTriggerEventTypeSet(tree.TriggerEventUpdate),
+		)
+		if len(beforeTriggers) > 0 {
+			ob.EnterMetaNode("before-triggers")
+			for _, trigger := range beforeTriggers {
+				ob.Attrf("trigger", "%s", trigger.Name())
+			}
+			ob.LeaveNode()
+		}
+		e.emitPolicies(ob, a.Table, n)
+
 	case deleteOp:
 		a := n.args.(*deleteArgs)
+		ob.Attrf("from", "%s", a.Table.Name())
+		if a.AutoCommit {
+			ob.Attr("auto commit", "")
+		}
+		beforeTriggers := cat.GetRowLevelTriggers(
+			a.Table, tree.TriggerActionTimeBefore, tree.MakeTriggerEventTypeSet(tree.TriggerEventDelete),
+		)
+		if len(beforeTriggers) > 0 {
+			ob.EnterMetaNode("before-triggers")
+			for _, trigger := range beforeTriggers {
+				ob.Attrf("trigger", "%s", trigger.Name())
+			}
+			ob.LeaveNode()
+		}
+
+	case deleteSwapOp:
+		a := n.args.(*deleteSwapArgs)
 		ob.Attrf("from", "%s", a.Table.Name())
 		if a.AutoCommit {
 			ob.Attr("auto commit", "")
@@ -1172,7 +1263,14 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 
 	case callOp:
 		a := n.args.(*callArgs)
-		ob.Expr("procedure", a.Proc, nil /* columns */)
+		if a.Proc != nil {
+			// Unlike other expressions, we store Proc as *tree.RoutineExpr, so
+			// the nil value in Proc is different from the nil value that is
+			// checked in Expr:
+			//  (*tree.RoutineExpr)(nil)  vs (tree.TypedExpr)(nil)
+			// so we need an explicit nil check.
+			ob.Expr("procedure", a.Proc, nil /* columns */)
+		}
 
 	case simpleProjectOp,
 		serializingProjectOp,
@@ -1205,6 +1303,35 @@ func (e *emitter) emitNodeAttributes(ctx context.Context, evalCtx *eval.Context,
 	return nil
 }
 
+// emitNodeFootnotes populates the Node's information after having recursed into
+// the Node's children.
+func (e *emitter) emitNodeFootnotes(n *Node) {
+	switch n.op {
+	case applyJoinOp:
+		a := n.args.(*applyJoinArgs)
+		if a.RightSideForExplainFn != nil {
+			e.ob.EnterNode("inner loop (unoptimized)" /* name */, nil /* columns */, nil /* ordering */)
+			defer e.ob.LeaveNode()
+			// RightSideForExplainFn can produce multiple lines that correspond
+			// to the unoptimized right side plan.
+			lines := strings.Split(a.RightSideForExplainFn(e.ob.flags.RedactValues), "\n")
+			var enteredNode bool
+			for _, l := range lines {
+				if len(l) == 0 {
+					continue
+				}
+				if !enteredNode {
+					e.ob.EnterNode(l /* name */, nil /* columns */, nil /* ordering */)
+					defer e.ob.LeaveNode() //nolint:deferloop
+					enteredNode = true
+				} else {
+					e.ob.Attr(l, "")
+				}
+			}
+		}
+	}
+}
+
 func (e *emitter) emitTableAndIndex(field string, table cat.Table, index cat.Index, suffix string) {
 	partial := ""
 	if _, isPartial := index.Predicate(); isPartial {
@@ -1225,7 +1352,7 @@ func (e *emitter) spansStr(table cat.Table, index cat.Index, scanParams exec.Sca
 		if scanParams.HardLimit != 0 {
 			return "LIMITED SCAN"
 		}
-		if scanParams.SoftLimit > 0 {
+		if scanParams.SoftLimit != 0 {
 			return "FULL SCAN (SOFT LIMIT)"
 		}
 		return "FULL SCAN"
@@ -1399,18 +1526,22 @@ func (e *emitter) emitPolicies(ob *OutputBuilder, table cat.Table, n *Node) {
 
 	if applied.PoliciesSkippedForRole {
 		ob.AddField("policies", "exempt for role")
+	} else if applied.PoliciesFilteredAllRows {
+		ob.AddField("policies", "applied (filtered all rows)")
 	} else if applied.Policies.Len() == 0 {
 		ob.AddField("policies", "row-level security enabled, no policies applied.")
 	} else {
 		var sb strings.Builder
-		policies := table.Policies()
-		for _, grp := range [][]cat.Policy{policies.Permissive, policies.Restrictive} {
-			for _, policy := range grp {
-				if applied.Policies.Contains(policy.ID) {
-					if sb.Len() > 0 {
-						sb.WriteString(", ")
+		if table != nil {
+			policies := table.Policies()
+			for _, grp := range [][]cat.Policy{policies.Permissive, policies.Restrictive} {
+				for _, policy := range grp {
+					if applied.Policies.Contains(policy.ID) {
+						if sb.Len() > 0 {
+							sb.WriteString(", ")
+						}
+						sb.WriteString(policy.Name.Normalize())
 					}
-					sb.WriteString(policy.Name.Normalize())
 				}
 			}
 		}

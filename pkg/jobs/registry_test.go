@@ -108,6 +108,10 @@ func TestRegistryGC(t *testing.T) {
 
 	ctx := context.Background()
 	srv, sqlDB, kvDB := serverutils.StartServer(t, base.TestServerArgs{
+		// This test directly manipulates table descriptors at the KV layer
+		// using keys.SystemSQLCodec, which is incompatible with secondary
+		// tenants.
+		DefaultTestTenant: base.TestIsSpecificToStorageLayerAndNeedsASystemTenant,
 		Knobs: base.TestingKnobs{
 			SpanConfig: &spanconfig.TestingKnobs{
 				// This test directly modifies `system.jobs` and makes over its contents
@@ -196,9 +200,14 @@ INSERT INTO t."%s" VALUES('a', 'foo');
 			t.Fatal(err)
 		}
 
+		finishedOpt := &finished
+		if finished == (time.Time{}) {
+			finishedOpt = nil
+		}
+
 		var id jobspb.JobID
 		db.QueryRow(t,
-			`INSERT INTO system.jobs (status, created, job_type) VALUES ($1, $2, 'SCHEMA CHANGE') RETURNING id`, state, created).Scan(&id)
+			`INSERT INTO system.jobs (status, created, job_type, finished) VALUES ($1, $2, 'SCHEMA CHANGE', $3) RETURNING id`, state, created, finishedOpt).Scan(&id)
 		db.Exec(t, `INSERT INTO system.job_info (job_id, info_key, value) VALUES ($1, $2, $3)`, id, GetLegacyPayloadKey(), payload)
 		db.Exec(t, `INSERT INTO system.job_info (job_id, info_key, value) VALUES ($1, $2, $3)`, id, GetLegacyProgressKey(), progress)
 		return strconv.Itoa(int(id))
@@ -251,8 +260,7 @@ INSERT INTO t."%s" VALUES('a', 'foo');
 			if err := s.JobRegistry().(*Registry).cleanupOldJobs(ctx, ts.Add(time.Minute*-10)); err != nil {
 				t.Fatal(err)
 			}
-			db.CheckQueryResults(t, selectJobsQuery, [][]string{
-				{oldRunningJob}, {oldRevertFailedJob}, {newRunningJob}, {newRevertFailedJob}})
+			db.CheckQueryResults(t, selectJobsQuery, [][]string{{oldRunningJob}, {oldRevertFailedJob}, {newRunningJob}, {newRevertFailedJob}})
 
 			// Delete the revert failed, and running jobs for the next run of the
 			// test.
@@ -300,7 +308,7 @@ func TestRegistryGCPagination(t *testing.T) {
 		require.NoError(t, err)
 		var jobID jobspb.JobID
 		db.QueryRow(t,
-			`INSERT INTO system.jobs (status, created) VALUES ($1, $2) RETURNING id`,
+			`INSERT INTO system.jobs (status, created, finished) VALUES ($1, $2, $2::timestamptz) RETURNING id`,
 			StateCanceled, timeutil.Now().Add(-time.Hour)).Scan(&jobID)
 		db.Exec(t, `INSERT INTO system.job_info (job_id, info_key, value) VALUES ($1, $2, $3)`,
 			jobID, GetLegacyPayloadKey(), payload)
@@ -644,7 +652,8 @@ func TestRegistryUsePartialIndex(t *testing.T) {
 		queryArgs []interface{}
 	}{
 		{"remove claims", RemoveClaimsQuery, []interface{}{sid, lim}},
-		{"claim jobs", AdoptQuery, []interface{}{sid, iid, lim}},
+		{"get claimable jobs", GetClaimableJobsQuery, []interface{}{lim}},
+		{"claim jobs legacy", legacyClaimQuery, []interface{}{sid, iid, lim}},
 		{"process claimed jobs", ProcessJobsQuery, []interface{}{sid, iid}},
 		{"serve cancel and pause", CancelQuery, []interface{}{sid, iid}},
 	} {
@@ -706,13 +715,21 @@ func TestJitterCalculation(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			interval := jitter(test.input)
+			interval := test.input
+			testutils.SucceedsSoon(t, func() error {
+				interval = jitter(test.input)
+				// This check will sometimes fail due to a randomly picking a value
+				// that rounds to 1/2. The frequency of this is a bit higher than one
+				// would expect because the rounding behavior depends on the width of
+				// the duration, not the width of a float64.
+				if interval == test.input && test.input != 0 {
+					return errors.New("jitter returned same value as input")
+				}
+				return nil
+			})
 			rangeMin, rangeMax := outputRange(test.input)
 			require.GreaterOrEqual(t, rangeMax, interval)
 			require.LessOrEqual(t, rangeMin, interval)
-			if test.input != 0 {
-				require.NotEqual(t, test.input, interval)
-			}
 		})
 	}
 }
@@ -864,7 +881,39 @@ func TestDeleteTerminalJobByID(t *testing.T) {
 		require.NoError(t, r.DeleteTerminalJobByID(ctx, j.ID()))
 		assertValidDeletion(j.ID())
 	})
+}
 
+func TestCleanupCorruptJobs(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer s.Stopper().Stop(ctx)
+
+	db := sqlutils.MakeSQLRunner(sqlDB)
+	r := s.ApplicationLayer().JobRegistry().(*Registry)
+
+	// Create a SQL STATS COMPACTION job in running state with proper job_info records.
+	jobID := r.MakeJobID()
+	db.Exec(t, `INSERT INTO system.jobs (id, status, created, job_type) VALUES ($1, 'running', now(), $2)`, jobID, jobspb.TypeAutoSQLStatsCompaction.String())
+	db.Exec(t, `INSERT INTO system.job_info (job_id, info_key, value) VALUES ($1, 'legacy_payload', 'payload')`, jobID)
+
+	// Job has info records, so CleanupCorruptJobs should do nothing.
+	require.NoError(t, r.CleanupCorruptJobs(ctx))
+
+	var count int
+	db.QueryRow(t, "SELECT count(*) FROM system.jobs WHERE id = $1", jobID).Scan(&count)
+	require.Equal(t, 1, count)
+
+	// Delete the job_info records to corrupt the running job.
+	db.Exec(t, "DELETE FROM system.job_info WHERE job_id = $1", jobID)
+
+	// Now CleanupCorruptJobs should delete the corrupt job.
+	require.NoError(t, r.CleanupCorruptJobs(ctx))
+
+	db.QueryRow(t, "SELECT count(*) FROM system.jobs WHERE id = $1", jobID).Scan(&count)
+	require.Zero(t, count)
 }
 
 // TestRunWithoutLoop tests that Run calls will trigger the execution of a
@@ -1073,7 +1122,6 @@ func TestJobIdleness(t *testing.T) {
 			})
 		}
 	})
-
 }
 
 // TestDisablingJobAdoptionClearsClaimSessionID tests that jobs adopted by a

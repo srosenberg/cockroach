@@ -5,6 +5,8 @@
 
 package backupbase
 
+import "time"
+
 // TODO(adityamaru): Move constants to relevant backup packages.
 const (
 	// LatestFileName is the name of a file in the collection which contains the
@@ -19,29 +21,32 @@ const (
 	// LATEST files will be stored as we no longer want to overwrite it.
 	LatestHistoryDirectory = backupMetadataDirectory + "/" + "latest"
 
+	// BackupPartitionDescriptorPrefix is the file name prefix for serialized
+	// BackupPartitionDescriptor protos.
+	BackupPartitionDescriptorPrefix = "BACKUP_PART"
+
 	// DateBasedIncFolderName is the date format used when creating sub-directories
 	// storing incremental backups for auto-appendable backups.
 	// It is exported for testing backup inspection tooling.
 	DateBasedIncFolderName = "/20060102/150405.00"
+
+	// DateBasedIncFolderNameSuffix is the date format appended to incremental
+	// backup directories to ensure uniqueness among incrementals with the same
+	// end time. It is set to the start time of the backup's coverage.
+	// This is used for all backups taken on or after v25.2.
+	DateBasedIncFolderNameSuffix = "20060102-150405.00"
 
 	// DateBasedIntoFolderName is the date format used when creating sub-directories
 	// for storing backups in a collection.
 	// Also exported for testing backup inspection tooling.
 	DateBasedIntoFolderName = "/2006/01/02-150405.00"
 
-	// BackupOldManifestName is an old name for the serialized BackupManifest
-	// proto. It is used by 20.1 nodes and earlier.
+	// DeprecatedBackupManifestName is the file name used for serialized
+	// BackupManifest protos.
 	//
-	// TODO(adityamaru): Remove this in 22.2 as part of disallowing backups
-	// from >1 major version in the past.
-	BackupOldManifestName = "BACKUP"
-
-	// BackupManifestName is the file name used for serialized BackupManifest
-	// protos.
-	//
-	// TODO(adityamaru): Remove in 23.2 since at that point all nodes will be
-	// writing a SlimBackupManifest instead.
-	BackupManifestName = "BACKUP_MANIFEST"
+	// TODO(msbutler): Remove 26.3 when we're guaranteed that no backup wrote
+	// exclusively the backup_manifest, and not the slim manifest.
+	DeprecatedBackupManifestName = "BACKUP_MANIFEST"
 
 	// BackupMetadataName is the file name used for serialized BackupManifest
 	// protos written by 23.1 nodes and later. This manifest has the alloc heavy
@@ -57,4 +62,18 @@ const (
 	// and groups all the data sst files in each backup, which start with "data/",
 	// into a single result that can be skipped over quickly.
 	ListingDelimDataSlash = "data/"
+
+	// BackupIndexDirectoryName is the path from the root of the backup collection
+	// to the directory containing the index files for the backup collection.
+	BackupIndexDirectoryPath = backupMetadataDirectory + "/index/"
+
+	// BackupIndexFilenameTimestampFormat is the format used for the human
+	// readable start and end times in the index file names.
+	// NB: If this is for whatever reason updated, make sure to update the
+	// granularity specified by BackupIndexFilenameTimestampGranularity.
+	BackupIndexFilenameTimestampFormat = "20060102-150405.00"
+
+	// BackupIndexFilenameTimestampGranularity represents the granularity of the
+	// times encoded in the backup index filenames.
+	BackupIndexFilenameTSGranularity = 10 * time.Millisecond
 )

@@ -32,7 +32,7 @@ func markTableGCed(
 		if tableProgress.ID == tableID {
 			tableProgress.Status = status
 			if log.V(2) {
-				log.Infof(ctx, "determined table %d is GC'd", tableID)
+				log.Dev.Infof(ctx, "determined table %d is GC'd", tableID)
 			}
 		}
 	}
@@ -50,7 +50,7 @@ func markIndexGCed(
 		indexToUpdate := &progress.Indexes[i]
 		if indexToUpdate.IndexID == garbageCollectedIndexID {
 			indexToUpdate.Status = nextStatus
-			log.Infof(ctx, "marked index %d as GC'd", garbageCollectedIndexID)
+			log.Dev.Infof(ctx, "marked index %d as GC'd", garbageCollectedIndexID)
 		}
 	}
 }
@@ -63,7 +63,8 @@ func initDetailsAndProgress(
 	var details jobspb.SchemaChangeGCDetails
 	var progress *jobspb.SchemaChangeGCProgress
 	if err := execCfg.InternalDB.Txn(ctx, func(ctx context.Context, txn isql.Txn) error {
-		return job.WithTxn(txn).Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+		//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+		return job.DeprecatedWithTxn(txn).Update(ctx, func(txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 			details = *md.Payload.GetSchemaChangeGC()
 			progress = md.Progress.GetSchemaChangeGC()
 			if err := validateDetails(&details); err != nil {
@@ -258,7 +259,8 @@ func persistProgress(
 	status jobs.StatusMessage,
 ) {
 	if err := execCfg.InternalDB.Txn(ctx, func(ctx context.Context, txn isql.Txn) error {
-		return job.WithTxn(txn).Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+		//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+		return job.DeprecatedWithTxn(txn).Update(ctx, func(txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 			if err := md.CheckRunningOrReverting(); err != nil {
 				return err
 			}
@@ -268,9 +270,9 @@ func persistProgress(
 			return nil
 		})
 	}); err != nil {
-		log.Warningf(ctx, "failed to update job's progress payload or running status err: %+v", err)
+		log.Dev.Warningf(ctx, "failed to update job's progress payload or running status err: %+v", err)
 	}
-	log.Infof(ctx, "updated progress status: %s, payload: %+v", status, progress)
+	log.Dev.Infof(ctx, "updated progress status: %s, payload: %+v", status, progress)
 }
 
 // getDropTimes returns the data stored in details as a map for convenience.

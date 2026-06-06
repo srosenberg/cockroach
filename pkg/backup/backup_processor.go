@@ -8,6 +8,7 @@ package backup
 import (
 	"context"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backuppb"
@@ -53,21 +54,18 @@ var (
 		"bulkio.backup.read_with_priority_after",
 		"amount of time since the read-as-of time above which a BACKUP should use priority when retrying reads",
 		time.Minute,
-		settings.NonNegativeDuration,
 		settings.WithPublic)
 	delayPerAttempt = settings.RegisterDurationSetting(
 		settings.ApplicationLevel,
 		"bulkio.backup.read_retry_delay",
 		"amount of time since the read-as-of time, per-prior attempt, to wait before making another attempt",
 		time.Second*5,
-		settings.NonNegativeDuration,
 	)
 	timeoutPerAttempt = settings.RegisterDurationSetting(
 		settings.ApplicationLevel,
 		"bulkio.backup.read_timeout",
 		"amount of time after which a read attempt is considered timed out, which causes the backup to fail",
 		time.Minute*5,
-		settings.NonNegativeDuration,
 		settings.WithPublic)
 
 	preSplitExports = settings.RegisterBoolSetting(
@@ -207,7 +205,7 @@ func (bp *backupDataProcessor) Start(ctx context.Context) {
 		for range bp.progCh {
 		}
 	}
-	log.Infof(ctx, "starting backup data")
+	log.Dev.Infof(ctx, "starting backup data")
 	if err := bp.FlowCtx.Stopper().RunAsyncTaskEx(ctx, stop.TaskOpts{
 		TaskName: "backupDataProcessor.runBackupProcessor",
 		SpanOpt:  stop.ChildSpan,
@@ -235,7 +233,7 @@ func (bp *backupDataProcessor) constructProgressProducerMeta(
 	// Annotate the progress with the fraction completed by this backupDataProcessor.
 	progDetails := backuppb.BackupManifest_Progress{}
 	if err := gogotypes.UnmarshalAny(&prog.ProgressDetails, &progDetails); err != nil {
-		log.Warningf(bp.Ctx(), "failed to unmarshal progress details %v", err)
+		log.Dev.Warningf(bp.Ctx(), "failed to unmarshal progress details %v", err)
 	} else {
 		totalSpans := int32(len(bp.spec.Spans) + len(bp.spec.IntroducedSpans))
 		bp.completedSpans += progDetails.CompletedSpans
@@ -264,7 +262,6 @@ func (bp *backupDataProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.Producer
 		}
 		return nil, bp.constructProgressProducerMeta(prog)
 	case <-bp.aggTimer.C:
-		bp.aggTimer.Read = true
 		bp.aggTimer.Reset(15 * time.Second)
 		return nil, bulk.ConstructTracingAggregatorProducerMeta(bp.Ctx(),
 			bp.FlowCtx.NodeID.SQLInstanceID(), bp.FlowCtx.ID, bp.agg)
@@ -294,6 +291,14 @@ type spanAndTime struct {
 	attempts     int
 	lastTried    time.Time
 	finishesSpec bool
+}
+
+type errInjectingStorage struct {
+	cloud.ExternalStorage
+}
+
+func (e errInjectingStorage) Writer(_ context.Context, _ string) (io.WriteCloser, error) {
+	return nil, errors.New("injected error")
 }
 
 func runBackupProcessor(
@@ -350,37 +355,13 @@ func runBackupProcessor(
 		return err
 	}
 
-	log.Infof(ctx, "backup processor is assigned %d spans covering %d ranges", totalSpans, len(requestSpans))
+	log.Dev.Infof(ctx, "backup processor is assigned %d spans covering %d ranges", totalSpans, len(requestSpans))
 
-	destURI := spec.DefaultURI
-	var destLocalityKV string
-
-	if len(spec.URIsByLocalityKV) > 0 {
-		var localitySinkURI string
-		// When matching, more specific KVs in the node locality take precedence
-		// over less specific ones so search back to front.
-		for i := len(flowCtx.EvalCtx.Locality.Tiers) - 1; i >= 0; i-- {
-			tier := flowCtx.EvalCtx.Locality.Tiers[i].String()
-			if dest, ok := spec.URIsByLocalityKV[tier]; ok {
-				localitySinkURI = dest
-				destLocalityKV = tier
-				break
-			}
-		}
-		if localitySinkURI != "" {
-			log.Infof(ctx, "backing up %d spans to destination specified by locality %s", totalSpans, destLocalityKV)
-			destURI = localitySinkURI
-		} else {
-			nodeLocalities := make([]string, 0, len(flowCtx.EvalCtx.Locality.Tiers))
-			for _, i := range flowCtx.EvalCtx.Locality.Tiers {
-				nodeLocalities = append(nodeLocalities, i.String())
-			}
-			backupLocalities := make([]string, 0, len(spec.URIsByLocalityKV))
-			for i := range spec.URIsByLocalityKV {
-				backupLocalities = append(backupLocalities, i)
-			}
-			log.Infof(ctx, "backing up %d spans to default locality because backup localities %s have no match in node's localities %s", totalSpans, backupLocalities, nodeLocalities)
-		}
+	destURI, destLocalityKV, err := selectLocalityMatchingURI(
+		ctx, spec.DefaultURI, spec.URIsByLocalityKV, spec.StrictLocality, flowCtx.EvalCtx.Locality,
+	)
+	if err != nil {
+		return errors.Wrap(err, "selecting locality matching uri")
 	}
 	if testingDiscardBackupData {
 		destURI = "null:///discard"
@@ -397,11 +378,18 @@ func runBackupProcessor(
 		Settings:  &flowCtx.Cfg.Settings.SV,
 		ElideMode: spec.ElidePrefix,
 	}
+
 	storage, err := flowCtx.Cfg.ExternalStorage(ctx, dest, cloud.WithClientName("backup"))
 	if err != nil {
 		return err
 	}
 	defer logClose(ctx, storage, "external storage")
+
+	if backupKnobs, ok := flowCtx.TestingKnobs().BackupRestoreTestingKnobs.(*sql.BackupRestoreTestingKnobs); ok {
+		if fn := backupKnobs.InjectErrorsInBackupRowDataStorage; fn != nil && fn() {
+			storage = errInjectingStorage{storage}
+		}
+	}
 
 	// Start start a group of goroutines which each pull spans off of `todo` and
 	// send export requests. Any spans that encounter lock conflict errors during
@@ -410,7 +398,7 @@ func runBackupProcessor(
 	if err != nil {
 		return err
 	}
-	log.Infof(ctx, "starting %d backup export workers", numSenders)
+	log.Dev.Infof(ctx, "starting %d backup export workers", numSenders)
 	defer release()
 
 	todo := make(chan []spanAndTime, len(requestSpans))
@@ -439,32 +427,21 @@ func runBackupProcessor(
 		todo <- chunk
 	}
 	return ctxgroup.GroupWorkers(ctx, numSenders, func(ctx context.Context, _ int) error {
+		ctx, sp := tracing.ChildSpan(ctx, "backup.worker")
+		defer sp.Finish()
+
 		readTime := spec.BackupEndTime.GoTime()
 
-		// Passing a nil pacer is effectively a noop if CPU control is disabled.
-		var pacer *admission.Pacer = nil
-		if fileSSTSinkElasticCPUControlEnabled.Get(&clusterSettings.SV) {
-			tenantID, ok := roachpb.ClientTenantFromContext(ctx)
-			if !ok {
-				tenantID = roachpb.SystemTenantID
-			}
-			pacer = flowCtx.Cfg.AdmissionPacerFactory.NewPacer(
-				100*time.Millisecond,
-				admission.WorkInfo{
-					TenantID:        tenantID,
-					Priority:        admissionpb.BulkNormalPri,
-					CreateTime:      timeutil.Now().UnixNano(),
-					BypassAdmission: false,
-				},
-			)
-		}
+		pacer := newBackupPacer(
+			ctx, flowCtx.Cfg.AdmissionPacerFactory, clusterSettings,
+		)
 		// It is safe to close a nil pacer.
 		defer pacer.Close()
 
 		sink := backupsink.MakeFileSSTSink(sinkConf, storage, pacer)
 		defer func() {
 			if err := sink.Flush(ctx); err != nil {
-				log.Warningf(ctx, "failed to flush SST sink: %s", err)
+				log.Dev.Warningf(ctx, "failed to flush SST sink: %s", err)
 			}
 			logClose(ctx, sink, "SST sink")
 		}()
@@ -503,12 +480,11 @@ func runBackupProcessor(
 							// a similar or later time anyway.
 							if delay := delayPerAttempt.Get(&clusterSettings.SV) - timeutil.Since(span.lastTried); delay > 0 {
 								timer.Reset(delay)
-								log.Infof(ctx, "waiting %s to start attempt %d of remaining spans", delay, span.attempts+1)
+								log.Dev.Infof(ctx, "waiting %s to start attempt %d of remaining spans", delay, span.attempts+1)
 								select {
 								case <-ctxDone:
 									return ctx.Err()
 								case <-timer.C:
-									timer.Read = true
 								}
 							}
 
@@ -522,6 +498,8 @@ func runBackupProcessor(
 							TargetBytes:                 1,
 							Timestamp:                   span.end,
 							ReturnElasticCPUResumeSpans: true,
+							WorkloadID:                  flowCtx.EvalCtx.WorkloadID,
+							WorkloadType:                flowCtx.EvalCtx.WorkloadType.ToUint32(),
 						}
 						if priority {
 							// This re-attempt is reading far enough in the past that we just want
@@ -562,7 +540,7 @@ func runBackupProcessor(
 									tracer = flowCtx.Cfg.Tracer
 								}
 								if tracer == nil {
-									log.Warning(ctx, "nil tracer in backup processor")
+									log.Dev.Warning(ctx, "nil tracer in backup processor")
 								}
 								opts := make([]tracing.SpanOption, 0)
 								opts = append(opts, tracing.WithParent(sp))
@@ -579,16 +557,31 @@ func runBackupProcessor(
 								return nil
 							})
 						if exportRequestErr != nil {
-							// If we got a write intent error because we requested it rather
-							// than blocking, either put the request on the back of the queue
-							// to revisit later or, if the request was resuming in the middle
-							// of a key, reattempt it immediately.
-							if lockErr, ok := pErr.GetDetail().(*kvpb.WriteIntentError); ok && header.WaitPolicy == lock.WaitPolicy_Error {
+							// Check if this is a timeout from the intent resolver
+							// batcher, which indicates the span has unresolved intents.
+							// Ideally KV would surface these as WriteIntentErrors
+							// directly, but for now the intent resolver returns a
+							// TimeoutError whose operation name identifies it.
+							var isIrBatcherTimeout bool
+							if te := (*timeutil.TimeoutError)(nil); errors.As(exportRequestErr, &te) {
+								isIrBatcherTimeout = strings.Contains(string(te.Operation()), "intent_resolver")
+							}
+							// If we got a write intent error (or an intent resolver
+							// batcher timeout) because we requested non-blocking intent
+							// handling, either put the request on the back of the queue
+							// to revisit later or, if the request was resuming in the
+							// middle of a key, reattempt it immediately.
+							lockErr, isWriteIntentErr := pErr.GetDetail().(*kvpb.WriteIntentError)
+							if (isWriteIntentErr && header.WaitPolicy == lock.WaitPolicy_Error) || isIrBatcherTimeout {
 								// TODO(dt): send a progress update to update job progress to note
 								// the intents being hit.
 								span.lastTried = timeutil.Now()
 								span.attempts++
-								log.VEventf(ctx, 1, "retrying ExportRequest for span %s; encountered WriteIntentError: %s", span.span, lockErr.Error())
+								if isWriteIntentErr {
+									log.VEventf(ctx, 1, "retrying ExportRequest for span %s; encountered WriteIntentError: %s", span.span, lockErr.Error())
+								} else {
+									log.VEventf(ctx, 1, "retrying ExportRequest for span %s; intent resolver batcher timed out: %s", span.span, exportRequestErr)
+								}
 								// If we're not mid-span we can put this on the the queue to
 								// give it time to resolve on its own while we work on other
 								// spans; if we've flushed any of this span though we finish it
@@ -603,7 +596,7 @@ func runBackupProcessor(
 							// message so use that instead.
 							if errors.HasType(exportRequestErr, (*timeutil.TimeoutError)(nil)) {
 								if recording != nil {
-									log.Errorf(ctx, "failed export request for span %s\n trace:\n%s", span.span, recording)
+									log.Dev.Errorf(ctx, "failed export request for span %s\n trace:\n%s", span.span, recording)
 								}
 								return errors.Wrap(exportRequestErr, "KV storage layer did not respond to BACKUP within timeout")
 							}
@@ -621,7 +614,7 @@ func runBackupProcessor(
 							}
 
 							if recording != nil {
-								log.Errorf(ctx, "failed export request %s\n trace:\n%s", span.span, recording)
+								log.Dev.Errorf(ctx, "failed export request %s\n trace:\n%s", span.span, recording)
 							}
 							return errors.Wrapf(exportRequestErr, "exporting %s", span.span)
 						}
@@ -658,27 +651,42 @@ func runBackupProcessor(
 						}
 
 						if len(resp.Files) > 1 {
-							log.Warning(ctx, "unexpected multi-file response using header.TargetBytes = 1")
+							log.Dev.Warning(ctx, "unexpected multi-file response using header.TargetBytes = 1")
 						}
 
 						// Even if the ExportRequest did not export any data we want to report
 						// the span as completed for accurate progress tracking.
 						if len(resp.Files) == 0 {
-							sink.WriteWithNoData(backupsink.ExportedSpan{CompletedSpans: completedSpans})
+							var revStart hlc.Timestamp
+							if spec.MVCCFilter == kvpb.MVCCFilter_All {
+								// Even if no data is written, we need to track the revision
+								// start time.
+								revStart = spec.BackupStartTime
+							}
+							sink.WriteWithNoData(
+								backupsink.ExportedSpan{CompletedSpans: completedSpans, RevStart: revStart},
+							)
 						}
 						for i, file := range resp.Files {
 							entryCounts := countRows(file.Exported, spec.PKIDs)
+
+							fileMeta := backuppb.BackupManifest_File{
+								Span:                    file.Span,
+								EntryCounts:             entryCounts,
+								LocalityKV:              destLocalityKV,
+								ApproximatePhysicalSize: uint64(len(file.SST)),
+							}
+							if backupKnobs, ok := flowCtx.TestingKnobs().BackupRestoreTestingKnobs.(*sql.BackupRestoreTestingKnobs); ok {
+								if backupKnobs.BackupProcessFileOverride != nil {
+									fileMeta = backupKnobs.BackupProcessFileOverride(fileMeta)
+								}
+							}
 
 							ret := backupsink.ExportedSpan{
 								// BackupManifest_File just happens to contain the exact fields
 								// to store the metadata we need, but there's no actual File
 								// on-disk anywhere yet.
-								Metadata: backuppb.BackupManifest_File{
-									Span:                    file.Span,
-									EntryCounts:             entryCounts,
-									LocalityKV:              destLocalityKV,
-									ApproximatePhysicalSize: uint64(len(file.SST)),
-								},
+								Metadata: fileMeta,
 								DataSST:  file.SST,
 								RevStart: resp.StartTime,
 							}
@@ -699,7 +707,7 @@ func runBackupProcessor(
 							var writeErr error
 							resumeSpan.span.Key, writeErr = sink.Write(ctx, ret)
 							if writeErr != nil {
-								return err
+								return writeErr
 							}
 						}
 						// Emit the stats for the processed ExportRequest.
@@ -716,6 +724,46 @@ func runBackupProcessor(
 			}
 		}
 	})
+}
+
+func selectLocalityMatchingURI(
+	ctx context.Context,
+	defaultURI string,
+	urisByLocalityKV map[string]string,
+	strict bool,
+	processorLocality roachpb.Locality,
+) (string, string, error) {
+	destURI := defaultURI
+	var destLocalityKV string
+
+	if len(urisByLocalityKV) > 0 {
+		var localitySinkURI string
+		// When matching, more specific KVs in the node locality take precedence
+		// over less specific ones so search back to front.
+		for i := len(processorLocality.Tiers) - 1; i >= 0; i-- {
+			tier := processorLocality.Tiers[i].String()
+			if dest, ok := urisByLocalityKV[tier]; ok {
+				localitySinkURI = dest
+				destLocalityKV = tier
+				break
+			}
+		}
+		if localitySinkURI != "" {
+			destURI = localitySinkURI
+			log.Dev.Infof(ctx,
+				"processor backing up to destination URI %s with locality %s",
+				destURI, destLocalityKV,
+			)
+		} else if strict {
+			// This shouldn't happen unless there was a bug in distsql planning.
+			return "", "", errors.Errorf(
+				"sql processor locality %s does not match any of the backup localities %v: cannot proceed with strict locality",
+				processorLocality, urisByLocalityKV,
+			)
+		}
+	}
+
+	return destURI, destLocalityKV, nil
 }
 
 // recordExportStats emits a StructuredEvent containing the stats about the
@@ -757,7 +805,7 @@ func reserveWorkerMemory(
 	workerCount := minimumWorkerCount
 	for i := 0; i < (maxWorkerCount - minimumWorkerCount); i++ {
 		if err := memAcc.Grow(ctx, perWorkerMemory); err != nil {
-			log.Warningf(ctx, "backup worker count restricted by memory limit")
+			log.Dev.Warningf(ctx, "backup worker count restricted by memory limit")
 			break
 		}
 		workerCount++
@@ -767,8 +815,35 @@ func reserveWorkerMemory(
 
 func logClose(ctx context.Context, c io.Closer, desc string) {
 	if err := c.Close(); err != nil {
-		log.Warningf(ctx, "failed to close %s: %s", redact.SafeString(desc), err.Error())
+		log.Dev.Warningf(ctx, "failed to close %s: %s", redact.SafeString(desc), err.Error())
 	}
+}
+
+// newBackupPacer creates a new AC pacer for backup. It may return nil if CPU
+// control is disabled, which is effectively a noop.
+func newBackupPacer(
+	ctx context.Context, factory admission.PacerFactory, settings *cluster.Settings,
+) *admission.Pacer {
+	var pacer *admission.Pacer
+	if fileSSTSinkElasticCPUControlEnabled.Get(&settings.SV) {
+		tenantID, ok := roachpb.ClientTenantFromContext(ctx)
+		if !ok {
+			tenantID = roachpb.SystemTenantID
+		}
+		wid, wtype := kv.WorkloadInfoFromContext(ctx)
+		pacer = factory.NewPacer(
+			100*time.Millisecond,
+			admission.WorkInfo{
+				TenantID:        tenantID,
+				Priority:        admissionpb.BulkNormalPri,
+				CreateTime:      timeutil.Now().UnixNano(),
+				BypassAdmission: false,
+				WorkloadID:      wid,
+				WorkloadType:    wtype,
+			},
+		)
+	}
+	return pacer
 }
 
 func init() {

@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
+	"github.com/cockroachdb/cockroach/pkg/sql/execinfra/execexpr"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra/execopnode"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execstats"
@@ -94,7 +95,7 @@ func newInvertedFilterer(
 	evalCtx := flowCtx.EvalCtx
 	if spec.PreFiltererSpec != nil {
 		// Only make a copy of the eval context if we're going to pass it to the
-		// ExprHelper later.
+		// execexpr.Helper later.
 		evalCtx = flowCtx.NewEvalCtx()
 	}
 	if err := ifr.ProcessorBase.InitWithEvalCtx(
@@ -111,9 +112,10 @@ func newInvertedFilterer(
 	}
 
 	// Initialize memory monitor and row container for input rows.
-	ifr.MemMonitor = execinfra.NewLimitedMonitor(ctx, flowCtx.Mon, flowCtx, "inverted-filterer-limited")
-	ifr.unlimitedMemMonitor = execinfra.NewMonitor(ctx, flowCtx.Mon, "inverted-filterer-unlimited")
-	ifr.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "inverted-filterer-disk")
+	mn := mon.MakeName("inverted-filterer")
+	ifr.MemMonitor = execinfra.NewLimitedMonitor(ctx, flowCtx.Mon, flowCtx, mn.Limited())
+	ifr.unlimitedMemMonitor = execinfra.NewMonitor(ctx, flowCtx.Mon, mn.Unlimited())
+	ifr.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, mn.Disk())
 	ifr.rc = rowcontainer.NewDiskBackedNumberedRowContainer(
 		true, /* deDup */
 		rcColTypes,
@@ -131,7 +133,7 @@ func newInvertedFilterer(
 
 	if spec.PreFiltererSpec != nil {
 		semaCtx := flowCtx.NewSemaContext(flowCtx.Txn)
-		var exprHelper execinfrapb.ExprHelper
+		var exprHelper execexpr.Helper
 		colTypes := []*types.T{spec.PreFiltererSpec.Type}
 		if err := exprHelper.Init(ctx, spec.PreFiltererSpec.Expression, colTypes, semaCtx, evalCtx); err != nil {
 			return nil, err
@@ -172,7 +174,7 @@ func (ifr *invertedFilterer) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMe
 		case ifrEmittingRows:
 			ifr.runningState, row, meta = ifr.emitRow()
 		default:
-			log.Fatalf(ifr.Ctx(), "unsupported state: %d", ifr.runningState)
+			log.Dev.Fatalf(ifr.Ctx(), "unsupported state: %d", ifr.runningState)
 		}
 		if row == nil && meta == nil {
 			continue

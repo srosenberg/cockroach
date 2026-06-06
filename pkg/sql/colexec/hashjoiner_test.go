@@ -996,7 +996,7 @@ func runHashJoinTestCase(
 	} else {
 		runner = colexectestutils.RunTestsWithTyps
 	}
-	log.Infof(context.Background(), "%s", tc.description)
+	log.Dev.Infof(context.Background(), "%s", tc.description)
 	runner(t, testAllocator, inputs, typs, tc.expected, verifier, hjOpConstructor)
 }
 
@@ -1140,7 +1140,7 @@ func BenchmarkHashJoiner(b *testing.B) {
 									hj.Init(ctx)
 
 									b.StartTimer()
-									for hj.Next().Length() != 0 {
+									for colexecop.NextNoMeta(hj).Length() != 0 {
 									}
 									b.StopTimer()
 									leftSource.Reset(ctx)
@@ -1219,7 +1219,7 @@ func TestHashJoinerProjection(t *testing.T) {
 	hjOp, err := colexecargs.TestNewColOperator(ctx, flowCtx, args)
 	require.NoError(t, err)
 	hjOp.Root.Init(ctx)
-	for b := hjOp.Root.Next(); b.Length() > 0; b = hjOp.Root.Next() {
+	for b := colexecop.NextNoMeta(hjOp.Root); b.Length() > 0; b = colexecop.NextNoMeta(hjOp.Root) {
 		// The output types should be {Int64, Int64, Bool, Decimal, Float64, Bytes}
 		// and we check this explicitly.
 		b.ColVec(0).Int64()

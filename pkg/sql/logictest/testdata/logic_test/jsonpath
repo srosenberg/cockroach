@@ -1,5 +1,3 @@
-# LogicTest: !local-mixed-24.3 !local-mixed-25.1
-
 query T
 SELECT pg_typeof(JSONPATH '$.a')
 ----
@@ -10,11 +8,14 @@ SELECT '$.a'::JSONPATH
 ----
 $."a"
 
-statement error pq: value type jsonpath cannot be used for table columns
+statement error pq: unimplemented: jsonpath unsupported as column type
 CREATE TABLE a (j JSONPATH)
 
-statement error pq: value type jsonpath cannot be used for table columns
+statement error pq: unimplemented: arrays of jsonpath unsupported as column type
 CREATE TABLE a (j JSONPATH[])
+
+statement error pq: unimplemented: jsonpath cannot be used in a composite type
+CREATE TYPE typ AS (j JSONPATH);
 
 query T
 SELECT '$'::JSONPATH
@@ -26,8 +27,20 @@ SELECT 'strict $'::JSONPATH
 ----
 strict $
 
+# Ensure keyword ("strict") is parsed case-insensitively.
+query T
+SELECT 'sTrict $'::JSONPATH
+----
+strict $
+
 query T
 SELECT 'lax $'::JSONPATH
+----
+$
+
+# Ensure keyword ("lax") is parsed case-insensitively.
+query T
+SELECT 'LaX $'::JSONPATH
 ----
 $
 
@@ -100,6 +113,122 @@ SELECT bpchar('$.   abc    [*]':::JSONPATH::JSONPATH)::BPCHAR FROM t ORDER BY 1 
 ----
 $."abc"[*]
 
+query T
+SELECT '$.a[*] ? (@.b == 1 && @.c != 1)'::JSONPATH;
+----
+$."a"[*]?(@."b" == 1 && @."c" != 1)
+
+query T
+SELECT '$.a[*] ? (@.b != 1)'::JSONPATH;
+----
+$."a"[*]?(@."b" != 1)
+
+query T
+SELECT '$.a[*] ? (@.b < 1)'::JSONPATH;
+----
+$."a"[*]?(@."b" < 1)
+
+query T
+SELECT '$.a[*] ? (@.b <= 1)'::JSONPATH;
+----
+$."a"[*]?(@."b" <= 1)
+
+query T
+SELECT '$.a[*] ? (@.b > 1)'::JSONPATH;
+----
+$."a"[*]?(@."b" > 1)
+
+query T
+SELECT '$.a[*] ? (@.b >= 1)'::JSONPATH;
+----
+$."a"[*]?(@."b" >= 1)
+
+query T
+SELECT '$.a ? ($.b == 1)'::JSONPATH;
+----
+$."a"?($."b" == 1)
+
+query T
+SELECT '$.a ? (@.b == 1).c ? (@.d == 2)'::JSONPATH;
+----
+$."a"?(@."b" == 1)."c"?(@."d" == 2)
+
+query T
+SELECT '$.a?(@.b==1).c?(@.d==2)'::JSONPATH;
+----
+$."a"?(@."b" == 1)."c"?(@."d" == 2)
+
+query T
+SELECT '$  .  a  ?  (  @  .  b  ==  1  )  .  c  ?  (  @  .  d  ==  2  )  '::JSONPATH;
+----
+$."a"?(@."b" == 1)."c"?(@."d" == 2)
+
+statement error pgcode 2201B pq: could not parse .* invalid regular expression: error parsing regexp: missing closing \)
+SELECT '$ ? (@ like_regex "(invalid pattern")'::JSONPATH
+
+statement error pgcode 42601 pq: could not parse "last" as type jsonpath: LAST is allowed only in array subscripts
+SELECT 'last'::JSONPATH
+
+statement error pgcode 42601 pq: could not parse "@" as type jsonpath: @ is not allowed in root expressions
+SELECT '@'::JSONPATH
+
+statement error unimplemented
+SELECT '$.keyvalue()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.bigint()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.boolean()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.date()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.double()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.integer()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.number()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.string()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.**'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.decimal()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.datetime()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.time()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.time_tz()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.timestamp()'::JSONPATH;
+
+statement error unimplemented
+SELECT '$.timestamp_tz()'::JSONPATH;
+
+query T
+SELECT '$.*'::JSONPATH
+----
+$.*
+
+# keyword "strict" is case-insensitive, but a key ("STRIcT") will never be normalized
+# even if it matches the same spelling of a keyword.
+query T
+SELECT 'strIct $.STRIcT'::JSONPATH
+----
+strict $."STRIcT"
+
 ## When we allow table creation
 
 # statement ok
@@ -124,65 +253,3 @@ $."abc"[*]
 
 # statement error unsupported comparison operator
 # SELECT * FROM a WHERE j = '$.a'
-
-## Unsupported Jsonpath
-
-# query T
-# SELECT '$.*'::JSONPATH
-# ----
-# $.*
-
-# query T
-# SELECT '$.a[*] ? (@.b == 1 && @.c != 1)'::JSONPATH
-# ----
-# $.a[*] ? (@.b == 1 && @.c != 1)
-
-# query T
-# SELECT '$.a[*] ? (@.b != 1)'::JSONPATH
-# ----
-# $.a[*] ? (@.b != 1)
-
-# query T
-# SELECT '$.a[*] ? (@.b < 1)'::JSONPATH
-# ----
-# $.a[*] ? (@.b < 1)
-
-# query T
-# SELECT '$.a[*] ? (@.b <= 1)'::JSONPATH
-# ----
-# $.a[*] ? (@.b <= 1)
-
-# query T
-# SELECT '$.a[*] ? (@.b > 1)'::JSONPATH
-# ----
-# $.a[*] ? (@.b > 1)
-
-# query T
-# SELECT '$.a[*] ? (@.b >= 1)'::JSONPATH
-# ----
-# $.a[*] ? (@.b >= 1)
-
-# query T
-# SELECT '$.a ? (@.b == 1).c ? (@.d == 2)'::JSONPATH
-# ----
-# $.a ? (@.b == 1).c ? (@.d == 2)
-
-# query T
-# SELECT '$.a?(@.b==1).c?(@.d==2)'::JSONPATH
-# ----
-# $.a?(@.b==1).c?(@.d==2)
-
-# query T
-# SELECT '$  .  a  ?  (  @  .  b  ==  1  )  .  c  ?  (  @  .  d  ==  2  )  '::JSONPATH
-# ----
-# $  .  a  ?  (  @  .  b  ==  1  )  .  c  ?  (  @  .  d  ==  2  )
-
-# query T
-# SELECT '$.a.type()'::JSONPATH
-# ----
-# $.a.type()
-
-# query T
-# SELECT '$.a ? ($.b == 1)'::JSONPATH
-# ----
-# $.a ? ($.b == 1)

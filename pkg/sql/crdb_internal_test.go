@@ -9,7 +9,6 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
-	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,9 +28,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/kvcoord"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
-	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptstorage"
+	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilitiespb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/scheduledjobs"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
@@ -65,6 +64,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
+	"github.com/cockroachdb/cockroach/pkg/util/log/logpb"
+	"github.com/cockroachdb/cockroach/pkg/util/log/logtestutils"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
@@ -83,9 +85,7 @@ func TestGetAllNamesInternal(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	params, _ := createTestServerParamsAllowTenants()
-
-	s, _ /* sqlDB */, kvDB := serverutils.StartServer(t, params)
+	s, _ /* sqlDB */, kvDB := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
 
 	err := kvDB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
@@ -122,7 +122,8 @@ func TestRangeLocalityBasedOnNodeIDs(t *testing.T) {
 	tc := testcluster.StartTestCluster(t, 1,
 		base.TestClusterArgs{
 			ServerArgs: base.TestServerArgs{
-				Locality: roachpb.Locality{Tiers: []roachpb.Tier{{Key: "node", Value: "1"}}},
+				Locality:          roachpb.Locality{Tiers: []roachpb.Tier{{Key: "node", Value: "1"}}},
+				DefaultTestTenant: base.TestIsSpecificToStorageLayerAndNeedsASystemTenant,
 			},
 			ReplicationMode: base.ReplicationAuto,
 		},
@@ -168,17 +169,16 @@ func TestGossipAlertsTable(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
-	params, _ := createTestServerParamsAllowTenants()
-	s := serverutils.StartServerOnly(t, params)
+	s := serverutils.StartServerOnly(t, base.TestServerArgs{})
 	defer s.Stop(context.Background())
 	ctx := context.Background()
 
 	if err := s.StorageLayer().GossipI().(*gossip.Gossip).AddInfoProto(gossip.MakeNodeHealthAlertKey(456), &statuspb.HealthCheckResult{
 		Alerts: []statuspb.HealthAlert{{
-			StoreID:     123,
-			Category:    statuspb.HealthAlert_METRICS,
-			Description: "foo",
-			Value:       100.0,
+			StoreID:         123,
+			Category:        statuspb.HealthAlert_METRICS,
+			SafeDescription: "foo",
+			Value:           100.0,
 		}},
 	}, time.Hour); err != nil {
 		t.Fatal(err)
@@ -209,13 +209,8 @@ func TestOldBitColumnMetadata(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	params, _ := createTestServerParamsAllowTenants()
-	s, sqlDB, kvDB := serverutils.StartServer(t, params)
+	s, sqlDB, kvDB := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(ctx)
-
-	// The descriptor changes made must have an immediate effect
-	// so disable leases on tables.
-	defer lease.TestingDisableTableLeases()()
 
 	if _, err := sqlDB.Exec(`
 CREATE DATABASE t;
@@ -231,8 +226,8 @@ CREATE TABLE t.test (k INT);
 		kvDB, s.Codec(), "t", "test")
 	for i := range tableDesc.Columns {
 		if tableDesc.Columns[i].Name == "k" {
-			tableDesc.Columns[i].Type.InternalType.VisibleType = 4 // Pre-2.1 BIT.
-			tableDesc.Columns[i].Type.InternalType.Width = 12      // Arbitrary non-std INT size.
+			tableDesc.Columns[i].Type.InternalType.Oid = 0    // Pre-2.1 types don't have an OID.
+			tableDesc.Columns[i].Type.InternalType.Width = 12 // Arbitrary non-std INT size.
 			break
 		}
 	}
@@ -263,10 +258,19 @@ CREATE TABLE t.test (k INT);
 	tableDesc.PrimaryIndex.StoreColumnIDs = append(tableDesc.PrimaryIndex.StoreColumnIDs, col.ID)
 	tableDesc.PrimaryIndex.StoreColumnNames = append(tableDesc.PrimaryIndex.StoreColumnNames, col.Name)
 
-	// Write the modified descriptor.
+	// Write the modified descriptor. Bump the version so the lease manager
+	// recognizes the change.
+	tableDesc.Version++
 	if err := kvDB.Txn(context.Background(), func(ctx context.Context, txn *kv.Txn) error {
 		return txn.Put(ctx, catalogkeys.MakeDescMetadataKey(s.Codec(), tableDesc.ID), tableDesc.DescriptorProto())
 	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Force the lease manager to acquire a fresh descriptor from the store,
+	// since we wrote it directly via KV above.
+	lm := s.LeaseManager().(*lease.Manager)
+	if err := lm.AcquireFreshestFromStore(ctx, tableDesc.GetID()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -327,10 +331,6 @@ SELECT column_name, character_maximum_length, numeric_precision, numeric_precisi
 	for i := range tableDesc.Columns {
 		col := &tableDesc.Columns[i]
 		if col.Name == "k" {
-			// TODO(knz): post-2.2, visible types for integer types are gone.
-			if col.Type.InternalType.VisibleType != 0 {
-				t.Errorf("unexpected visible type: got %d, expected 0", col.Type.InternalType.VisibleType)
-			}
 			if col.Type.Width() != 64 {
 				t.Errorf("unexpected width: got %d, expected 64", col.Type.Width())
 			}
@@ -430,7 +430,7 @@ func TestInvalidObjects(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	params, _ := createTestServerParamsAllowTenants()
+	params := base.TestServerArgs{}
 	params.Knobs = base.TestingKnobs{
 		Store: &kvserver.StoreTestingKnobs{
 			DisableMergeQueue: true,
@@ -438,10 +438,6 @@ func TestInvalidObjects(t *testing.T) {
 	}
 	s, sqlDB, _ := serverutils.StartServer(t, params)
 	defer s.Stopper().Stop(ctx)
-
-	// The descriptor changes made must have an immediate effect
-	// so disable leases on tables.
-	defer lease.TestingDisableTableLeases()()
 
 	tdb := sqlutils.MakeSQLRunner(sqlDB)
 
@@ -470,7 +466,7 @@ CREATE TABLE nojob (k INT8);
 
 	// Now introduce some inconsistencies.
 	tdb.Exec(t, fmt.Sprintf(`
-INSERT INTO system.users VALUES ('node', NULL, true, 3);
+INSERT INTO system.users VALUES ('node', NULL, true, 3, NULL);
 GRANT node TO root;
 DELETE FROM system.descriptor WHERE id = %d;
 DELETE FROM system.descriptor WHERE id = %d;
@@ -583,6 +579,11 @@ func TestDistSQLFlowsVirtualTables(t *testing.T) {
 		ServerArgs:      params,
 	})
 	defer tc.Stopper().Stop(context.Background())
+
+	if tc.DefaultTenantDeploymentMode().IsExternal() {
+		tc.GrantTenantCapabilities(context.Background(), t, serverutils.TestTenantID(),
+			map[tenantcapabilitiespb.ID]string{tenantcapabilitiespb.CanAdminRelocateRange: "true"})
+	}
 
 	// Create a table with 3 rows, split them into 3 ranges with each node
 	// having one.
@@ -830,6 +831,89 @@ func TestIsAtLeastVersion(t *testing.T) {
 	}
 }
 
+// TestContentionLoggingIntegration verifies that structured contention event
+// logs (AggregatedContentionInfo on SQL_EXEC channel) contain decoded key
+// information including table/index/database/schema names and key column
+// details.
+func TestContentionLoggingIntegration(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+
+	// Set up log spy to capture AggregatedContentionInfo events.
+	spy := logtestutils.NewStructuredLogSpy(
+		t,
+		[]logpb.Channel{logpb.Channel_SQL_EXEC},
+		[]string{"aggregated_contention_info"},
+		func(entry logpb.Entry) (eventpb.AggregatedContentionInfo, error) {
+			return logtestutils.FromLogEntry[eventpb.AggregatedContentionInfo](entry)
+		},
+		func(_ logpb.Entry, e eventpb.AggregatedContentionInfo) bool {
+			return e.TableName == "t_contention_log_test"
+		},
+	)
+	cleanup := log.InterceptWith(ctx, spy)
+	defer cleanup()
+
+	// log.InterceptWith only captures logs in the current process, so we
+	// need to prevent external process virtual cluster injection.
+	s, conn, _ := serverutils.StartServer(t, base.TestServerArgs{
+		DefaultTestTenant: base.TestIsSpecificToStorageLayerAndNeedsASystemTenant,
+		Knobs: base.TestingKnobs{
+			KVClient: &kvcoord.ClientTestingKnobs{
+				DisableTxnAnchorKeyRandomization: true,
+			},
+		},
+	})
+	defer s.Stopper().Stop(ctx)
+
+	sqlDB := sqlutils.MakeSQLRunner(conn)
+	sqlDB.Exec(t, `SET CLUSTER SETTING sql.contention.event_store.resolution_interval = '100ms'`)
+	sqlDB.Exec(t, `CREATE TABLE t_contention_log_test (id STRING PRIMARY KEY, s STRING)`)
+
+	causeContention(t, conn, "t_contention_log_test", "insert1", "update1")
+
+	registry := s.ExecutorConfig().(sql.ExecutorConfig).ContentionRegistry
+	testutils.SucceedsSoon(t, func() error {
+		if err := registry.FlushEventsForTest(ctx); err != nil {
+			return err
+		}
+		events := spy.GetLogs(logpb.Channel_SQL_EXEC)
+		if len(events) == 0 {
+			return errors.New("no contention log events captured yet")
+		}
+		return nil
+	})
+
+	events := spy.GetLogs(logpb.Channel_SQL_EXEC)
+	require.NotEmpty(t, events)
+	for _, e := range events {
+		require.Equal(t, "defaultdb", e.DatabaseName,
+			"expected DatabaseName=defaultdb, got %s", e.DatabaseName)
+		require.Equal(t, "public", e.SchemaName,
+			"expected SchemaName=public, got %s", e.SchemaName)
+		require.Equal(t, "t_contention_log_test", e.TableName,
+			"expected TableName=t_contention_log_test, got %s", e.TableName)
+		require.Equal(t, "t_contention_log_test_pkey", e.IndexName,
+			"expected IndexName=t_contention_log_test_pkey, got %s", e.IndexName)
+		require.NotZero(t, e.TableId, "expected non-zero TableId")
+		require.Equal(t, uint32(1), e.IndexId,
+			"expected IndexId=1 (primary index), got %d", e.IndexId)
+		require.NotEmpty(t, e.KeyColumnNames, "expected non-empty KeyColumnNames")
+		require.Equal(t, len(e.KeyColumnNames), len(e.KeyColumnTypes),
+			"KeyColumnNames and KeyColumnTypes should have same length")
+		require.Equal(t, len(e.KeyColumnNames), len(e.KeyColumnValues),
+			"KeyColumnNames and KeyColumnValues should have same length")
+		require.Equal(t, "id", e.KeyColumnNames[0],
+			"expected first key column name to be 'id', got %s", e.KeyColumnNames[0])
+		require.Equal(t, "STRING", e.KeyColumnTypes[0],
+			"expected first key column type to be 'STRING', got %s", e.KeyColumnTypes[0])
+		require.NotEmpty(t, e.KeyColumnValues[0],
+			"expected non-empty key column value")
+	}
+}
+
 func TestTxnContentionEventsTable(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
@@ -858,13 +942,20 @@ func TestTxnContentionEventsTableWithRangeDescriptor(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{})
-	defer s.Stopper().Stop(ctx)
+	// This test requires system tenant because it tests contention event
+	// handling for range descriptor keys, which are KV-internal keys that
+	// secondary tenants never interact with.
+	srv, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{
+		DefaultTestTenant: base.TestIsSpecificToStorageLayerAndNeedsASystemTenant,
+	})
+	defer srv.Stopper().Stop(ctx)
+	s := srv.ApplicationLayer()
+
 	_, err := sqlDB.Exec("SET CLUSTER SETTING sql.contention.event_store.resolution_interval = '10ms'")
 	require.NoError(t, err)
 	rangeKey := "/Local/Range/Table/106/1/-1704619207610523008/RangeDescriptor"
 	rangeKeyEscaped := fmt.Sprintf("\"%s\"", rangeKey)
-	s.ApplicationLayer().ExecutorConfig().(sql.ExecutorConfig).ContentionRegistry.AddContentionEvent(contentionpb.ExtendedContentionEvent{
+	s.ExecutorConfig().(sql.ExecutorConfig).ContentionRegistry.AddContentionEvent(contentionpb.ExtendedContentionEvent{
 		BlockingEvent: kvpb.ContentionEvent{
 			Key: roachpb.Key(rangeKey),
 			TxnMeta: enginepb.TxnMeta{
@@ -931,6 +1022,19 @@ func TestTxnContentionEventsTableMultiTenant(t *testing.T) {
 func causeContention(
 	t *testing.T, conn *gosql.DB, table string, insertValue string, updateValue string,
 ) {
+	// Given the schema of the table we expect to experience the contention on
+	// the non-unique secondary index. By default, with write buffering we no
+	// longer acquire the lock on those, so we need to tweak the session
+	// variable.
+	if _, err := conn.Exec("SET use_cputs_on_non_unique_indexes = true"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if _, err := conn.Exec("RESET use_cputs_on_non_unique_indexes"); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
 	// Create a new connection, and then in a go routine have it start a
 	// transaction, update a row, sleep for a time, and then complete the
 	// transaction. With original connection attempt to update the same row
@@ -1313,7 +1417,7 @@ func TestInternalSystemJobsTableMirrorsSystemJobsTable(t *testing.T) {
 	assert.NoError(t, err)
 
 	tdb.Exec(t,
-		"INSERT INTO system.jobs (id, status, created) values ($1, $2, $3)",
+		"INSERT INTO system.jobs (id, status, created, owner) values ($1, $2, $3, 'root')",
 		1, jobs.StateRunning, timeutil.Now(),
 	)
 	tdb.Exec(t,
@@ -1322,9 +1426,9 @@ func TestInternalSystemJobsTableMirrorsSystemJobsTable(t *testing.T) {
 	)
 
 	tdb.Exec(t,
-		`INSERT INTO system.jobs (id, status, created, created_by_type, created_by_id, 
-                         claim_session_id, claim_instance_id, num_runs, last_run, job_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		2, jobs.StateRunning, timeutil.Now(), "created by", 2, []byte("claim session id"),
+		`INSERT INTO system.jobs (id, status, created, owner, created_by_type, created_by_id,
+                         claim_session_id, claim_instance_id, num_runs, last_run, job_type) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		2, jobs.StateRunning, timeutil.Now(), "root", "created by", 2, []byte("claim session id"),
 		2, 2, timeutil.Now(), jobspb.TypeImport.String(),
 	)
 	tdb.Exec(t,
@@ -1357,33 +1461,27 @@ func TestInternalSystemJobsAccess(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
-	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
+	srv, db, _ := serverutils.StartServer(t, base.TestServerArgs{
 		Knobs: base.TestingKnobs{
 			KeyVisualizer: &keyvisualizer.TestingKnobs{SkipJobBootstrap: true},
 		},
 	})
 	ctx := context.Background()
-	defer s.Stopper().Stop(ctx)
+	defer srv.Stopper().Stop(ctx)
+	s := srv.ApplicationLayer()
 	rootDB := sqlutils.MakeSQLRunner(db)
 
 	// Even though this test modifies the system.jobs table and asserts its contents, we
 	// do not disable background job creation nor job adoption. This is because creating
 	// users requires jobs to be created and run. Thus, this test only creates jobs of type
 	// jobspb.TypeImport and overrides the import resumer.
-	registry := s.ApplicationLayer().JobRegistry().(*jobs.Registry)
+	registry := s.JobRegistry().(*jobs.Registry)
 	registry.TestingWrapResumerConstructor(jobspb.TypeImport, func(r jobs.Resumer) jobs.Resumer {
 		return &fakeResumer{}
 	})
 
 	asUser := func(user string, f func(userDB *sqlutils.SQLRunner)) {
-		pgURL := url.URL{
-			Scheme: "postgres",
-			User:   url.UserPassword(user, "test"),
-			Host:   s.AdvSQLAddr(),
-		}
-		db2, err := gosql.Open("postgres", pgURL.String())
-		assert.NoError(t, err)
-		defer db2.Close()
+		db2 := s.SQLConn(t, serverutils.UserPassword(user, "test"), serverutils.ClientCerts(false))
 		userDB := sqlutils.MakeSQLRunner(db2)
 
 		f(userDB)
@@ -1440,13 +1538,13 @@ func TestInternalSystemJobsAccess(t *testing.T) {
 // worker goroutine returns "query canceled error".
 //
 // In particular, the following setup is used:
-//   - issue SHOW JOBS query which internally issues a query against
-//     crdb_internal.system_jobs virtual table
-//   - that virtual table is generated by issuing "system-jobs-scan" internal
+//   - issue SHOW ZONE CONFIGURATIONS query which internally issues a query against
+//     crdb_internal.zones virtual table
+//   - that virtual table is generated by issuing "crdb-internal-zones-table" internal
 //     query
-//   - during that "system-jobs-scan" query we're injecting the query canceled
+//   - during that "crdb-internal-zones-table" query we're injecting the query canceled
 //     error (in other words, the error is injected during the generation of
-//     crdb_internal.system_jobs virtual table).
+//     crdb_internal.zones virtual table).
 //
 // The injection is achieved by adding a callback to DistSQLReceiver.Push which
 // replaces the first piece of metadata it sees with the error.
@@ -1468,7 +1566,7 @@ func TestVirtualTableDoesntHangOnQueryCanceledError(t *testing.T) {
 							return nil
 						}
 						opName, ok := sql.GetInternalOpName(ctx)
-						if !ok || !(opName == "system-jobs-scan" || opName == "system-jobs-join") {
+						if !ok || !(opName == "crdb-internal-zones-table") {
 							return nil
 						}
 						numCallbacksAdded.Add(1)
@@ -1490,7 +1588,7 @@ func TestVirtualTableDoesntHangOnQueryCanceledError(t *testing.T) {
 	sqlDB := sqlutils.MakeSQLRunner(db)
 
 	addCallback.Store(true)
-	sqlDB.ExpectErr(t, err.Error(), "SHOW JOBS")
+	sqlDB.ExpectErr(t, err.Error(), "SHOW ZONE CONFIGURATIONS")
 	addCallback.Store(false)
 
 	// Sanity check that the callback was added at least once.
@@ -1560,47 +1658,6 @@ func scanRecord(
 	return systemRowData, virtualRowData
 }
 
-func TestVirtualPTSTableDeprecated(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	defer log.Scope(t).Close(t)
-
-	ctx2 := context.Background()
-
-	var testServerArgs base.TestServerArgs
-	ptsKnobs := &protectedts.TestingKnobs{}
-	ptsKnobs.DisableProtectedTimestampForMultiTenant = true
-	testServerArgs.Knobs.ProtectedTS = ptsKnobs
-	srv, conn, _ := serverutils.StartServer(t, testServerArgs)
-	defer srv.Stopper().Stop(ctx2)
-	s := srv.ApplicationLayer()
-
-	sqlDB := sqlutils.MakeSQLRunner(conn)
-	internalDB := s.InternalDB().(isql.DB)
-	ptm := ptstorage.New(s.ClusterSettings(), ptsKnobs)
-
-	t.Run("nil-targets", func(t *testing.T) {
-		rec := &ptpb.Record{
-			ID:        uuid.MakeV4().GetBytes(),
-			Timestamp: s.Clock().Now(),
-			Mode:      ptpb.PROTECT_AFTER,
-			DeprecatedSpans: []roachpb.Span{
-				{
-					Key:    keys.SystemSQLCodec.TablePrefix(42),
-					EndKey: keys.SystemSQLCodec.TablePrefix(42).PrefixEnd(),
-				},
-			},
-			MetaType: "foo",
-		}
-
-		protect(t, ctx2, internalDB, ptm, rec)
-		_, virtualRow := scanRecord(t, sqlDB, rec.ID)
-		require.Equal(t, []byte(nil), virtualRow.decodedMeta)
-		require.Equal(t, []byte(nil), virtualRow.internalMeta)
-		require.Equal(t, []byte(nil), virtualRow.decodedTargets)
-		require.Equal(t, -1, virtualRow.numRanges)
-	})
-}
-
 // TestVirtualPTSTable asserts the behavior of
 // crdb_internal.kv_protected_ts_records, which includes showing records from
 // the underlying system table and decoding them.
@@ -1661,7 +1718,6 @@ func TestVirtualPTSTable(t *testing.T) {
 			uuid.MakeV4(),
 			int64(job.ID()),
 			s.Clock().Now(),
-			[]roachpb.Span{},
 			jobsprotectedts.Jobs,
 			tableTargets(),
 		)
@@ -1705,7 +1761,6 @@ func TestVirtualPTSTable(t *testing.T) {
 			uuid.MakeV4(),
 			int64(sj.ScheduleID()),
 			s.Clock().Now(),
-			[]roachpb.Span{},
 			jobsprotectedts.Schedules,
 			tableTargets(),
 		)
@@ -1822,5 +1877,51 @@ func TestMVCCValueHeaderSystemColumns(t *testing.T) {
 				sqlDB.CheckQueryResults(t, q, exp)
 			})
 		})
+	}
+}
+
+// TestSupportedCRDBInternalTablesNotChanged verifies that the
+// SupportedCRDBInternalTables map has not changed from its expected values.
+// This test ensures no tables are inadvertently added to this locked list.
+func TestSupportedCRDBInternalTablesNotChanged(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Hardcoded expected values for SupportedCRDBInternalTables
+	// IMPORTANT: This list is LOCKED and should NOT be modified.
+	// New tables should be added to information_schema instead.
+	expectedTables := map[string]struct{}{
+		`cluster_contended_indexes`:     {},
+		`cluster_contended_keys`:        {},
+		`cluster_contended_tables`:      {},
+		`cluster_contention_events`:     {},
+		`cluster_locks`:                 {},
+		`cluster_queries`:               {},
+		`cluster_sessions`:              {},
+		`cluster_transactions`:          {},
+		`index_usage_statistics`:        {},
+		`statement_statistics`:          {},
+		`transaction_contention_events`: {},
+		`transaction_statistics`:        {},
+		`zones`:                         {},
+	}
+
+	// Check that the actual map matches the expected map
+	if len(sql.SupportedCRDBInternalTables) != len(expectedTables) {
+		t.Fatalf("FAILURE: SupportedCRDBInternalTables has been modified!\n"+
+			"This list is LOCKED and should NOT be changed.\n"+
+			"New crdb_internal tables should be added to information_schema instead.\n"+
+			"Expected %d tables, but found %d tables.\n"+
+			"See: https://docs.google.com/document/d/1STbb8bljTzK_jXRIJrxtijWsPhGErdH1vZdunzPwXvs/edit",
+			len(expectedTables), len(sql.SupportedCRDBInternalTables))
+	}
+
+	// Check each expected table is present
+	for table := range expectedTables {
+		if _, ok := sql.SupportedCRDBInternalTables[table]; !ok {
+			t.Fatalf("FAILURE: SupportedCRDBInternalTables has been modified!\n" +
+				"This list is LOCKED and should NOT be changed.\n" +
+				"New crdb_internal tables should be added to information_schema instead.\n" +
+				"See: https://docs.google.com/document/d/1STbb8bljTzK_jXRIJrxtijWsPhGErdH1vZdunzPwXvs/edit")
+		}
 	}
 }

@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
-	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationutils"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
@@ -40,9 +38,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlclustersettings"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
+	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
@@ -64,8 +64,8 @@ SELECT
 			id AS job_id,
 			crdb_internal.pb_to_json(
 				'cockroach.sql.jobs.jobspb.Payload',
-				payload)->'logicalReplicationDetails'->>'parentId' AS parent_id 
-		FROM crdb_internal.system_jobs 
+				payload)->'logicalReplicationDetails'->>'parentId' AS parent_id
+		FROM crdb_internal.system_jobs
 		WHERE job_type = 'LOGICAL REPLICATION'
 	) AS t
 	WHERE t.parent_id = $1
@@ -95,15 +95,8 @@ func createLogicalReplicationStreamPlanHook(
 		ctx, span := tracing.ChildSpan(ctx, stmt.StatementTag())
 		defer span.Finish()
 
-		if err := utilccl.CheckEnterpriseEnabled(
-			p.ExecCfg().Settings,
-			"CREATE LOGICAL REPLICATION",
-		); err != nil {
-			return err
-		}
-
 		if stmt.From.Database != "" {
-			return errors.UnimplementedErrorf(errors.IssueLink{}, "logical replication streams on databases are unsupported")
+			return unimplemented.New("logical_replication.database", "logical replication streams on databases are unsupported")
 		}
 		if len(stmt.From.Tables) != len(stmt.Into.Tables) {
 			return pgerror.New(pgcode.InvalidParameterValue, "the same number of source and destination tables must be specified")
@@ -116,6 +109,12 @@ func createLogicalReplicationStreamPlanHook(
 
 		hasUDF := len(options.userFunctions) > 0 || options.defaultFunction != nil && options.defaultFunction.FunctionId != 0
 
+		if hasUDF && !crosscluster.LogicalReplicationUDFWriterEnabled.Get(&p.ExecCfg().Settings.SV) {
+			return pgerror.Newf(pgcode.FeatureNotSupported,
+				"UDF-based logical replication is disabled and will be deleted in a future CockroachDB release. "+
+					"Enable with SET CLUSTER SETTING logical_replication.deprecated_udf_writer.enabled = true")
+		}
+
 		mode := jobspb.LogicalReplicationDetails_Immediate
 		if m, ok := options.GetMode(); ok {
 			switch m {
@@ -125,6 +124,8 @@ func createLogicalReplicationStreamPlanHook(
 				}
 			case "validated":
 				mode = jobspb.LogicalReplicationDetails_Validated
+			case "transactional":
+				mode = jobspb.LogicalReplicationDetails_Transactional
 			default:
 				return pgerror.Newf(pgcode.InvalidParameterValue, "unknown mode %q", m)
 			}
@@ -156,10 +157,6 @@ func createLogicalReplicationStreamPlanHook(
 
 		if !p.ExtendedEvalContext().TxnIsSingleStmt {
 			return errors.New("cannot CREATE LOGICAL REPLICATION STREAM in a multi-statement transaction")
-		}
-
-		if !p.ExecCfg().Settings.Version.ActiveVersion(ctx).AtLeast(clusterversion.V25_1.Version()) {
-			return errors.New("cannot create ldr stream until finalizing on 25.1")
 		}
 
 		// Commit the planner txn because several operations below may take several
@@ -323,10 +320,12 @@ func createLogicalReplicationStreamPlanHook(
 				ReverseStreamCommand:      reverseStreamCmd,
 				ParentID:                  int64(options.ParentID),
 				Command:                   stmt.String(),
+				SkipSchemaCheck:           options.SkipSchemaCheck(),
+				SkipForeignKeys:           options.SkipForeignKeys(),
 			},
 			Progress: progress,
 		}
-		if err := doLDRPlan(ctx, p.User(), p.ExecCfg(), jr, spec.ExternalCatalog, resolvedDestObjects, options.SkipSchemaCheck()); err != nil {
+		if err := doLDRPlan(ctx, p.User(), p.ExecCfg(), jr, spec.ExternalCatalog, resolvedDestObjects); err != nil {
 			return err
 		}
 		resultsCh <- tree.Datums{tree.NewDInt(tree.DInt(jr.JobID))}
@@ -357,10 +356,12 @@ func (r *ResolvedDestObjects) TargetDescription() string {
 	return targetDescription
 }
 
+// TargetTableNames returns the fully qualified names of the resolved target
+// tables.
 func (r *ResolvedDestObjects) TargetTableNames() []string {
-	var targetTableNames []string
+	targetTableNames := make([]string, len(r.TableNames))
 	for i := range r.TableNames {
-		targetTableNames = append(targetTableNames, r.TableNames[i].Table())
+		targetTableNames[i] = r.TableNames[i].FQString()
 	}
 	return targetTableNames
 }
@@ -430,7 +431,6 @@ func doLDRPlan(
 	jr jobs.Record,
 	srcExternalCatalog externalpb.ExternalCatalog,
 	resolvedDestObjects ResolvedDestObjects,
-	skipSchemaCheck bool,
 ) error {
 	details := jr.Details.(jobspb.LogicalReplicationDetails)
 	return execCfg.InternalDB.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
@@ -443,7 +443,7 @@ func doLDRPlan(
 			for i := range resolvedDestObjects.TableNames {
 				ingestingTableNames[i] = resolvedDestObjects.TableNames[i].Table()
 			}
-			ingestedCatalog, err = externalcatalog.IngestExternalCatalog(ctx, execCfg, user, srcExternalCatalog, txn, txn.Descriptors(), resolvedDestObjects.ParentDatabaseID, resolvedDestObjects.ParentSchemaID, true /* setOffline */, ingestingTableNames)
+			ingestedCatalog, err = externalcatalog.IngestExternalCatalog(ctx, execCfg, user, srcExternalCatalog, txn, txn.Descriptors(), resolvedDestObjects.ParentDatabaseID, resolvedDestObjects.ParentSchemaID, true /* setOffline */, ingestingTableNames, details.SkipForeignKeys)
 			if err != nil {
 				return err
 			}
@@ -475,15 +475,30 @@ func doLDRPlan(
 				return errors.AssertionFailedf("srcTableDescs and dstTableDescs should have the same length")
 			}
 		}
+
+		var writer sqlclustersettings.LDRWriterType
+		if details.Mode != jobspb.LogicalReplicationDetails_Transactional {
+			writer, err = getWriterType(ctx, details.Mode, execCfg.Settings)
+			if err != nil {
+				return err
+			}
+		}
+
 		for i := range srcExternalCatalog.Tables {
 			destTableDesc := dstTableDescs[i]
-			if details.Mode != jobspb.LogicalReplicationDetails_Validated {
+			if details.Mode == jobspb.LogicalReplicationDetails_Immediate {
 				if len(destTableDesc.OutboundForeignKeys()) > 0 || len(destTableDesc.InboundForeignKeys()) > 0 {
-					return pgerror.Newf(pgcode.InvalidParameterValue, "foreign keys are only supported with MODE = 'validated'")
+					return pgerror.Newf(pgcode.InvalidParameterValue, "foreign keys are not supported with MODE = 'immediate'")
 				}
 			}
 
-			err := tabledesc.CheckLogicalReplicationCompatibility(&srcExternalCatalog.Tables[i], destTableDesc.TableDesc(), skipSchemaCheck || details.CreateTable)
+			err := tabledesc.CheckLogicalReplicationCompatibility(
+				&srcExternalCatalog.Tables[i],
+				destTableDesc.TableDesc(),
+				details.SkipSchemaCheck || details.CreateTable,
+				writer == sqlclustersettings.LDRWriterTypeLegacyKV,
+				details.Mode == jobspb.LogicalReplicationDetails_Transactional,
+			)
 			if err != nil {
 				return err
 			}
@@ -520,6 +535,7 @@ func createLogicalReplicationStreamTypeCheck(
 		exprutil.Ints{stmt.Options.ParentID},
 		exprutil.Bools{
 			stmt.Options.SkipSchemaCheck,
+			stmt.Options.SkipForeignKeys,
 			stmt.Options.Unidirectional,
 		},
 	}
@@ -540,6 +556,7 @@ type resolvedLogicalReplicationOptions struct {
 	userFunctions    map[string]int32
 	discard          string
 	skipSchemaCheck  bool
+	skipForeignKeys  bool
 	metricsLabel     string
 	bidirectionalURI string
 	ParentID         catpb.JobID
@@ -635,6 +652,9 @@ func evalLogicalReplicationOptions(
 	if options.SkipSchemaCheck == tree.DBoolTrue {
 		r.skipSchemaCheck = true
 	}
+	if options.SkipForeignKeys == tree.DBoolTrue {
+		r.skipForeignKeys = true
+	}
 	if options.ParentID != nil {
 		parentID, err := eval.Int(ctx, options.ParentID)
 		if err != nil {
@@ -724,6 +744,13 @@ func (r *resolvedLogicalReplicationOptions) SkipSchemaCheck() bool {
 		return false
 	}
 	return r.skipSchemaCheck
+}
+
+func (r *resolvedLogicalReplicationOptions) SkipForeignKeys() bool {
+	if r == nil {
+		return false
+	}
+	return r.skipForeignKeys
 }
 
 func (r *resolvedLogicalReplicationOptions) BidirectionalURI() string {

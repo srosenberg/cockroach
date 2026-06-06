@@ -65,7 +65,7 @@ func TestStreamerMemoryAccounting(t *testing.T) {
 	}
 
 	monitor := mon.NewMonitor(mon.Options{
-		Name:     mon.MakeMonitorName("streamer"),
+		Name:     mon.MakeName("streamer"),
 		Settings: cluster.MakeTestingClusterSettings(),
 	})
 	monitor.Start(ctx, nil /* pool */, mon.NewStandaloneBudget(math.MaxInt64))
@@ -76,11 +76,11 @@ func TestStreamerMemoryAccounting(t *testing.T) {
 	getStreamer := func(reverse bool) *Streamer {
 		require.Zero(t, acc.Used())
 		rootTxn := kv.NewTxn(ctx, s.DB(), s.DistSQLPlanningNodeID())
-		leafInputState, err := rootTxn.GetLeafTxnInputState(ctx)
+		leafInputState, err := rootTxn.GetLeafTxnInputState(ctx, nil /* readsTree */)
 		if err != nil {
 			panic(err)
 		}
-		leafTxn := kv.NewLeafTxn(ctx, s.DB(), s.DistSQLPlanningNodeID(), leafInputState)
+		leafTxn := kv.NewLeafTxn(ctx, s.DB(), s.DistSQLPlanningNodeID(), leafInputState, nil /* header */)
 		metrics := MakeMetrics()
 		s := NewStreamer(
 			s.DistSenderI().(*kvcoord.DistSender),
@@ -100,9 +100,12 @@ func TestStreamerMemoryAccounting(t *testing.T) {
 			math.MaxInt64,
 			&acc,
 			nil, /* kvPairsRead */
+			nil, /* kvCPUTime */
 			lock.None,
 			lock.Unreplicated,
 			reverse,
+			0, /* workloadID */
+			0, /* workloadType */
 		)
 		s.Init(OutOfOrder, Hints{UniqueRequests: true}, 1 /* maxKeysPerRow */, nil /* diskBuffer */)
 		return s

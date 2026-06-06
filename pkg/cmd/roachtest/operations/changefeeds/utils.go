@@ -9,6 +9,10 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
+	"math/rand"
+	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +43,11 @@ type jobDetails struct {
 	highWaterTimestamp hlc.Timestamp             // high watermark timestamp
 }
 
+// configSetter defines a callback function used by parseConfigs to apply each
+// parsed sink and its associated percentage. This allows custom handling of
+// each config entry during parsing (e.g., storing in a map or validating).
+type configSetter func(key string, value int) error
+
 // getJobsUpdatedWithPayload fetches additional changefeed payload details for specific jobs from the database.
 // This returns a new slice of jobDetails with the updated payload details without mutating the one in input.
 func getJobsUpdatedWithPayload(
@@ -65,7 +74,7 @@ func getJobsUpdatedWithPayload(
 
 	// Execute query and process results.
 	err := helpers.ExecuteQuery(ctx, func(rowValues []string) error {
-		var payload *jobspb.Payload
+		payload := &jobspb.Payload{}
 		err := protoutil.Unmarshal([]byte(rowValues[1]), payload)
 		if err != nil {
 			return err
@@ -166,12 +175,21 @@ func changeStateOrCreateChangefeed(
 		return nil
 	}
 
-	// Initialize a random number generator to select a job randomly.
-	r, _ := randutil.NewPseudoRand()
-
-	// Randomly pick a job to perform the action on.
-	jobIndex := randutil.RandIntInRange(r, 0, len(cfJobs))
-	jobToAction := cfJobs[jobIndex]
+	// For RESUME, pick the longest-paused job (lowest high_water_timestamp) to
+	// prevent one changefeed from staying paused indefinitely while newer pauses
+	// get resumed first, which causes protected_age_sec to grow unboundedly.
+	// For other actions, pick a random job.
+	var jobToAction *jobDetails
+	if action == "RESUME" {
+		slices.SortFunc(cfJobs, func(a, b *jobDetails) int {
+			return a.highWaterTimestamp.Compare(b.highWaterTimestamp)
+		})
+		jobToAction = cfJobs[0]
+	} else {
+		r, _ := randutil.NewPseudoRand()
+		jobIndex := randutil.RandIntInRange(r, 0, len(cfJobs))
+		jobToAction = cfJobs[jobIndex]
+	}
 
 	// Execute the action (e.g., PAUSE or CANCEL) on the chosen job.
 	o.Status(fmt.Sprintf("Executing %s on job %s", action, jobToAction.jobID))
@@ -332,16 +350,105 @@ func createChangefeed(
 	o.Status(fmt.Sprintf("creating changefeed job to sink %s with options %v on table %s.%s",
 		sink, options, dbName, tableName))
 
+	// Ensure rangefeeds are enabled, as they are required for changefeeds.
+	_, err = conn.ExecContext(ctx, "SET CLUSTER SETTING kv.rangefeed.enabled = true")
+	if err != nil {
+		return err
+	}
+
 	// Construct and execute the SQL statement to create the changefeed.
 	_, err = conn.ExecContext(ctx, fmt.Sprintf("CREATE CHANGEFEED FOR TABLE %s.%s INTO '%s' WITH %s;",
 		dbName, tableName, sink, strings.Join(options, ",")))
 	return err
 }
 
+// ParseConfigs exported for testing
+func ParseConfigs(config string, cb configSetter) error {
+	if config == "" {
+		return fmt.Errorf("config string cannot be empty")
+	}
+
+	configsArr := strings.Split(config, ",")
+	totalCount := 0
+
+	for _, c := range configsArr {
+		parts := strings.Split(c, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid config format: %s", c)
+		}
+
+		key := parts[0]
+		valueStr := parts[1]
+
+		value, err := strconv.Atoi(valueStr)
+		if err != nil {
+			return fmt.Errorf("invalid percentage value in config '%s'", c)
+		}
+
+		if value < 0 || value > 100 {
+			return fmt.Errorf("percentage value out of range in config '%s': must be between 0 and 100", c)
+		}
+
+		err = cb(key, value)
+		if err != nil {
+			return err
+		}
+
+		totalCount += value
+	}
+
+	if totalCount != 100 {
+		return fmt.Errorf("all sinks must sum to 100%%, but total is %d%%", totalCount)
+	}
+
+	return nil
+}
+
+func selectSink(sinks map[string]int) string {
+	choice := rand.Intn(100)
+	sum := 0
+	for sink, pct := range sinks {
+		sum += pct
+		if choice < sum {
+			return sink
+		}
+	}
+	return "null" // Default fallback if no valid selection
+}
+
 // getSinkConfigs returns the sink uri along with the options for creating the changefeed.
 // this will be extended later for more sinks
 func getSinkConfigs(_ context.Context, _ []*jobDetails) (string, []string, error) {
-	return "null://", make([]string, 0), nil
+	sinkConfigEnv := os.Getenv("SINK_CONFIG")
+	if sinkConfigEnv == "" {
+		return "null://", []string{}, nil // Default to null sink if env is not set
+	}
+
+	sinks := make(map[string]int)
+	uris := make(map[string]string)
+
+	err := ParseConfigs(sinkConfigEnv, func(sink string, value int) error {
+		sinks[sink] = value
+		uriEnv := fmt.Sprintf("SINK_CONFIG_%s", strings.ToUpper(sink))
+		uri, exists := os.LookupEnv(uriEnv)
+		if !exists {
+			return fmt.Errorf("environment variable %s not found for sink %s", uriEnv, sink)
+		}
+		uris[sink] = uri
+		return nil
+	})
+	if err != nil {
+		// Default to null sink on parsing error
+		return "null://", []string{}, nil //nolint:returnerrcheck
+	}
+
+	selectedSink := selectSink(sinks)
+	selectedURI, exists := uris[selectedSink]
+	if !exists {
+		return "null://", []string{}, nil // Default to null sink if selection fails
+	}
+
+	return selectedURI, []string{}, nil
 }
 
 // calculateScanOption determines whether the new changefeed should have an initial scan based on existing jobs.
@@ -351,6 +458,9 @@ func calculateScanOption(allCFJobs []*jobDetails) (string, error) {
 		scanOnCount := 0
 		// Count the number of jobs that have initial scan set to 'yes' or "only".
 		for _, j := range allCFJobs {
+			if j.payload == nil {
+				continue
+			}
 			if v, ok := j.payload.Opts[changefeedbase.OptInitialScan]; ok {
 				if v == "yes" || v == "only" {
 					scanOnCount++

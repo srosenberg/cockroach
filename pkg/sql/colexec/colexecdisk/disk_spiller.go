@@ -13,10 +13,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/colexecerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/colexecop"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra/execopnode"
+	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
+	"github.com/cockroachdb/cockroach/pkg/util/mon"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/redact"
 )
 
 // oneInputDiskSpiller is an Operator that manages the fallback from a one
@@ -80,7 +81,7 @@ import (
 func NewOneInputDiskSpiller(
 	input colexecop.Operator,
 	inMemoryOp colexecop.BufferingInMemoryOperator,
-	inMemoryMemMonitorName redact.SafeString,
+	inMemoryMemMonitorName mon.Name,
 	diskBackedOpConstructor func(input colexecop.Operator) colexecop.Operator,
 	diskBackedReuseMode colexecop.BufferingOpReuseMode,
 	spillingCallbackFn func(),
@@ -92,7 +93,7 @@ func NewOneInputDiskSpiller(
 	op.diskSpillerBase = diskSpillerBase{
 		inputs:                  []colexecop.Operator{input},
 		inMemoryOp:              inMemoryOp,
-		inMemoryMemMonitorNames: []string{string(inMemoryMemMonitorName)},
+		inMemoryMemMonitorNames: [2]mon.Name{inMemoryMemMonitorName, mon.EmptyName},
 		diskBackedOpConstructor: op.constructDiskBackedOp,
 		spillingCallbackFn:      spillingCallbackFn,
 	}
@@ -169,21 +170,17 @@ func (d *oneInputDiskSpiller) constructDiskBackedOp() colexecop.Operator {
 func NewTwoInputDiskSpiller(
 	inputOne, inputTwo colexecop.Operator,
 	inMemoryOp colexecop.BufferingInMemoryOperator,
-	inMemoryMemMonitorNames []redact.SafeString,
+	inMemoryMemMonitorNames [2]mon.Name,
 	diskBackedOpConstructor func(inputOne, inputTwo colexecop.Operator) colexecop.Operator,
 	spillingCallbackFn func(),
 ) colexecop.ClosableOperator {
 	op := &twoInputDiskSpiller{
 		diskBackedOpConstructor: diskBackedOpConstructor,
 	}
-	names := make([]string, len(inMemoryMemMonitorNames))
-	for i := range names {
-		names[i] = string(inMemoryMemMonitorNames[i])
-	}
 	op.diskSpillerBase = diskSpillerBase{
 		inputs:                  []colexecop.Operator{inputOne, inputTwo},
 		inMemoryOp:              inMemoryOp,
-		inMemoryMemMonitorNames: names,
+		inMemoryMemMonitorNames: inMemoryMemMonitorNames,
 		diskBackedOpConstructor: op.constructDiskBackedOp,
 		spillingCallbackFn:      spillingCallbackFn,
 	}
@@ -217,7 +214,7 @@ type diskSpillerBase struct {
 	spilled bool
 
 	inMemoryOp              colexecop.BufferingInMemoryOperator
-	inMemoryMemMonitorNames []string
+	inMemoryMemMonitorNames [2]mon.Name
 	// diskBackedOp is created lazily when the diskSpillerBase spills to disk
 	// for the first time throughout its lifetime.
 	diskBackedOp            colexecop.Operator
@@ -240,21 +237,25 @@ func (d *diskSpillerBase) Init(ctx context.Context) {
 	d.inMemoryOp.Init(d.Ctx)
 }
 
-func (d *diskSpillerBase) Next() coldata.Batch {
+func (d *diskSpillerBase) Next() (coldata.Batch, *execinfrapb.ProducerMetadata) {
 	if d.spilled {
 		return d.diskBackedOp.Next()
 	}
 	var batch coldata.Batch
+	var meta *execinfrapb.ProducerMetadata
+	// TODO(yuzefovich): now that we have streaming metadata propagation, we
+	// could consider modifying our panic-catch mechanism.
 	if err := colexecerror.CatchVectorizedRuntimeError(
 		func() {
-			batch = d.inMemoryOp.Next()
+			batch, meta = d.inMemoryOp.Next()
 		},
 	); err != nil {
 		if sqlerrors.IsOutOfMemoryError(err) {
 			// Check if this error is from one of our memory monitors.
 			var found bool
 			for i := range d.inMemoryMemMonitorNames {
-				if strings.Contains(err.Error(), d.inMemoryMemMonitorNames[i]) {
+				name := &d.inMemoryMemMonitorNames[i]
+				if !name.Empty() && strings.Contains(err.Error(), name.String()) {
 					found = true
 					break
 				}
@@ -279,7 +280,7 @@ func (d *diskSpillerBase) Next() coldata.Batch {
 		// different operator, so we propagate it further.
 		colexecerror.InternalError(err)
 	}
-	return batch
+	return batch, meta
 }
 
 func (d *diskSpillerBase) Reset(ctx context.Context) {
@@ -399,7 +400,7 @@ func (b *bufferExportingOperator) Init(context.Context) {
 	// already been initialized.
 }
 
-func (b *bufferExportingOperator) Next() coldata.Batch {
+func (b *bufferExportingOperator) Next() (coldata.Batch, *execinfrapb.ProducerMetadata) {
 	if b.firstSourceDone {
 		if !b.firstSourceReleasedAfter && b.firstSourceReuseMode == colexecop.BufferingOpNoReuse {
 			b.firstSourceReleasedAfter = true
@@ -416,7 +417,7 @@ func (b *bufferExportingOperator) Next() coldata.Batch {
 		b.firstSourceDone = true
 		return b.secondSource.Next()
 	}
-	return batch
+	return batch, nil
 }
 
 func (b *bufferExportingOperator) Reset(ctx context.Context) {

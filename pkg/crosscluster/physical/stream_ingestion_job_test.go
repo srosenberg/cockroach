@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl"
@@ -27,13 +28,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlinstance"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/jobutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/pgurlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
-	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
@@ -199,21 +200,19 @@ func TestTenantStreamingFailback(t *testing.T) {
 	var ts1 string
 	sqlA.QueryRow(t, "SELECT cluster_logical_timestamp()").Scan(&ts1)
 
+	t.Logf("waiting for g@%s", ts1)
+	replicationtestutils.WaitUntilReplicatedTime(t,
+		replicationtestutils.DecimalTimeToHLC(t, ts1),
+		sqlB,
+		jobspb.JobID(consumerGJobID))
+
 	// Randomize query execution to verify fast failback works for both
 	// `COMPLETE REPLICATION TO LATEST` and `COMPLETE REPLICATION TO SYSTEM TIME`
 	rng, _ := randutil.NewPseudoRand()
 	if rng.Intn(2) == 0 {
-		t.Logf("waiting for g@%s", ts1)
-		replicationtestutils.WaitUntilReplicatedTime(t,
-			replicationtestutils.DecimalTimeToHLC(t, ts1),
-			sqlB,
-			jobspb.JobID(consumerGJobID))
-
 		t.Logf("completing replication on g@%s", ts1)
 		sqlB.Exec(t, fmt.Sprintf("ALTER VIRTUAL CLUSTER g COMPLETE REPLICATION TO SYSTEM TIME '%s'", ts1))
 	} else {
-		t.Log("waiting for initial scan on g")
-		replicationtestutils.WaitUntilStartTimeReached(t, sqlB, jobspb.JobID(consumerGJobID))
 		t.Log("completing replication on g to latest")
 		sqlB.Exec(t, "ALTER VIRTUAL CLUSTER g COMPLETE REPLICATION TO LATEST")
 	}
@@ -495,7 +494,8 @@ func TestCutoverFractionProgressed(t *testing.T) {
 	jobID := registry.MakeJobID()
 	replicationJob, err := registry.CreateJobWithTxn(ctx, mockReplicationJobRecord, jobID, nil)
 	require.NoError(t, err)
-	require.NoError(t, replicationJob.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+	//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+	require.NoError(t, replicationJob.DeprecatedNoTxn().Update(ctx, func(txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 		if err := md.CheckRunningOrReverting(); err != nil {
 			return err
 		}
@@ -647,6 +647,84 @@ func TestCutoverCheckpointing(t *testing.T) {
 	require.Equal(t, getCutoverRemainingSpans().String(), roachpb.Spans{}.String())
 }
 
+// TestWatchForCutoverRangefeedWake verifies that watchForCutover returns
+// promptly when a cutover-reaching progress write occurs, relying on the
+// rangefeed wake-up rather than the (deliberately long) poll interval.
+func TestCutoverRangefeedNudgesPoller(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	srv := serverutils.StartServerOnly(t, base.TestServerArgs{
+		DefaultTestTenant: base.TestIsSpecificToStorageLayerAndNeedsASystemTenant,
+	})
+	defer srv.Stopper().Stop(ctx)
+
+	// Set the poll interval to something effectively infinite so that a return
+	// from the poller within the test's timeout can only be explained by the
+	// rangefeed nudging it.
+	sysSQL := sqlutils.MakeSQLRunner(srv.SystemLayer().SQLConn(t))
+	sysSQL.Exec(t,
+		`SET CLUSTER SETTING physical_replication.consumer.failover_signal_poll_interval = '1h'`)
+
+	cutover := hlc.Timestamp{WallTime: timeutil.Now().UnixNano()}
+
+	execCfg := srv.SystemLayer().ExecutorConfig().(sql.ExecutorConfig)
+	registry := execCfg.JobRegistry
+	jobID := registry.MakeJobID()
+	record := jobs.Record{
+		Details: jobspb.StreamIngestionDetails{},
+		Progress: jobspb.StreamIngestionProgress{
+			// CutoverTime is set but ReplicatedTime is not, so cutoverReached
+			// initially returns false.
+			CutoverTime: cutover,
+		},
+		Username: username.RootUserName(),
+	}
+	job, err := registry.CreateJobWithTxn(ctx, record, jobID, nil)
+	require.NoError(t, err)
+
+	resumer := &streamIngestionResumer{job: job}
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	nudge := make(chan struct{}, 1)
+	resultCh := make(chan error, 1)
+	go func() {
+		resultCh <- ctxgroup.GoAndWait(runCtx,
+			func(ctx context.Context) error {
+				return cutoverSignalRangefeed(ctx, &execCfg, job.ID(), nudge)
+			},
+			func(ctx context.Context) error {
+				return resumer.pollForCutoverSignal(ctx, &execCfg, nudge)
+			},
+		)
+	}()
+
+	// Give the rangefeed a moment to establish itself before triggering the
+	// cutover write. Without this, the write could race with rangefeed setup
+	// and we would have to wait for the (1h) poll to catch up.
+	time.Sleep(500 * time.Millisecond)
+
+	//lint:ignore SA1019 mirrors TestCutoverFractionProgressed; legacy API is the
+	// available path for in-test progress edits.
+	require.NoError(t, job.DeprecatedNoTxn().Update(ctx,
+		func(_ isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
+			progress := md.Progress
+			progress.Details.(*jobspb.Progress_StreamIngest).StreamIngest.ReplicatedTime = cutover
+			ju.UpdateProgress(progress)
+			return nil
+		}))
+
+	select {
+	case err := <-resultCh:
+		require.True(t, errors.Is(err, errCutoverSignaled),
+			"expected errCutoverSignaled, got %v", err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("poller did not return within 30s of cutover write; " +
+			"rangefeed nudge appears not to be firing")
+	}
+}
+
 // ALTER VIRTUAL CLUSTER STOP SERVICE does not block until the service
 // is stopped. But, we need to wait until the SQLServer is stopped to
 // ensure that nothing is writing to the relevant keyspace.
@@ -705,13 +783,9 @@ func TestPhysicalReplicationGatewayRoute(t *testing.T) {
 		DefaultTestTenant: base.TestControlsTenantsExplicitly,
 		Knobs: base.TestingKnobs{
 			Streaming: &sql.StreamingTestingKnobs{
-				OnGetSQLInstanceInfo: func(node *roachpb.NodeDescriptor) *roachpb.NodeDescriptor {
-					copy := *node
-					copy.SQLAddress = util.UnresolvedAddr{
-						NetworkField: "tcp",
-						AddressField: blackhole.Addr().String(),
-					}
-					return &copy
+				OnGetSQLInstanceInfo: func(node sqlinstance.InstanceInfo) sqlinstance.InstanceInfo {
+					node.InstanceSQLAddr = blackhole.Addr().String()
+					return node
 				},
 			},
 		},
@@ -743,4 +817,70 @@ func TestPhysicalReplicationGatewayRoute(t *testing.T) {
 
 	progress := jobutils.GetJobProgress(t, systemDB, jobspb.JobID(jobID))
 	require.Empty(t, progress.Details.(*jobspb.Progress_StreamIngest).StreamIngest.PartitionConnUris)
+}
+
+func TestPhysicalReplicationCancelsProducerOnCutoverFromSystem(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	// This test verifies that the span reconciliation job on a promoted standby
+	// tenant that was streaming from a system tenant is able to make progress.
+	// See https://github.com/cockroachdb/cockroach/issues/155444 for more
+	// details.
+	ctx := context.Background()
+	args := replicationtestutils.DefaultTenantStreamingClustersArgs
+	args.MultitenantSingleClusterNumNodes = 1
+	args.SrcTenantID = roachpb.SystemTenantID
+	args.SrcTenantName = "system"
+
+	c, cleanup := replicationtestutils.CreateMultiTenantStreamingCluster(ctx, t, args)
+	defer cleanup()
+
+	producerJobID, consumerJobID := c.StartStreamReplication(ctx)
+	jobutils.WaitForJobToRun(c.T, c.SrcSysSQL, jobspb.JobID(producerJobID))
+	jobutils.WaitForJobToRun(c.T, c.DestSysSQL, jobspb.JobID(consumerJobID))
+
+	replicationtestutils.WaitUntilStartTimeReached(t, c.DestSysSQL, jobspb.JobID(consumerJobID))
+	srcTime := c.SrcCluster.Server(0).Clock().Now()
+	c.Cutover(ctx, producerJobID, consumerJobID, srcTime.GoTime(), false /* async */)
+	destCleanup := c.StartDestTenant(ctx, nil /* withTestingKnobs */, 0 /* server */)
+	defer destCleanup()
+
+	// We speed up the span config reconciliation job manager so that it will
+	// quickly detect the missing reconciliation job on the tenant (the previous
+	// one was canceled as it was replicated) and spin up a new one.
+	c.DestSysSQL.Exec(t, "ALTER TENANT ALL SET CLUSTER SETTING spanconfig.reconciliation_job.check_interval = '10ms'")
+
+	registry := c.DestTenantServer.JobRegistry().(*jobs.Registry)
+	// We nudge the adoption queue to pick up the replicated stream producer job
+	// so that it will be dropped.
+	registry.TestingNudgeAdoptionQueue()
+
+	now := c.DestSysServer.Clock().Now()
+	testutils.SucceedsWithin(t, func() error {
+		var spanConfigJobID jobspb.JobID
+		rows := c.DestTenantSQL.Query(
+			t, `SELECT id FROM system.jobs WHERE job_type = 'AUTO SPAN CONFIG RECONCILIATION' AND status = 'running'`,
+		)
+		defer rows.Close()
+		if !rows.Next() {
+			return errors.New("no running span config reconciliation job found")
+		}
+		if err := rows.Scan(&spanConfigJobID); err != nil {
+			return err
+		}
+		spanConfigJob, err := registry.LoadJob(ctx, spanConfigJobID)
+		require.NoError(t, err)
+		spanConfigProg := spanConfigJob.Progress().
+			Details.(*jobspb.Progress_AutoSpanConfigReconciliation).
+			AutoSpanConfigReconciliation
+
+		if spanConfigProg.Checkpoint.Less(now) {
+			return errors.Newf(
+				"waiting for span config reconciliation job to checkpoint past %v, at %v",
+				now, spanConfigProg.Checkpoint,
+			)
+		}
+		return nil
+	}, 2*time.Minute)
 }

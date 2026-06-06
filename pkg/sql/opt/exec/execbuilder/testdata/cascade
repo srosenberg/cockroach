@@ -172,7 +172,7 @@ SELECT message FROM [SHOW TRACE FOR SESSION]
 WHERE message LIKE '%executing cascade %' OR message LIKE 'Del%' OR message LIKE 'CPut%' OR message LIKE 'Scan%updated%'
 ----
 Scan /Table/112/1/"updated"/0 lock Exclusive (Block, Unreplicated)
-Del (locking) /Table/112/1/"updated"/0
+Del /Table/112/1/"updated"/0
 CPut /Table/112/1/"latest"/0 -> /TUPLE/
 executing cascade for constraint b1_update_cascade_fkey
 Scan /Table/113/2/"updated"/0
@@ -384,7 +384,7 @@ SELECT message FROM [SHOW TRACE FOR SESSION]
 WHERE message LIKE '%executing cascade %' OR message LIKE 'Del%' OR message LIKE 'CPut%' OR message LIKE 'Scan%original%'
 ----
 Scan /Table/129/1/"original"/0 lock Exclusive (Block, Unreplicated)
-Del (locking) /Table/129/1/"original"/0
+Del /Table/129/1/"original"/0
 CPut /Table/129/1/"updated"/0 -> /TUPLE/
 executing cascade for constraint b1_update_set_null_fkey
 executing cascade for constraint b2_update_set_null_fkey
@@ -466,7 +466,7 @@ SELECT message FROM [SHOW TRACE FOR SESSION]
 WHERE message LIKE '%executing cascade %' OR message LIKE 'Del%' OR message LIKE 'CPut%' OR message LIKE 'Scan%original%'
 ----
 Scan /Table/134/1/"original"/0 lock Exclusive (Block, Unreplicated)
-Del (locking) /Table/134/1/"original"/0
+Del /Table/134/1/"original"/0
 CPut /Table/134/1/"updated"/0 -> /TUPLE/
 executing cascade for constraint b1_update_cascade_fkey
 Scan /Table/135/2/"original"/0
@@ -677,7 +677,7 @@ SELECT message FROM [SHOW TRACE FOR SESSION]
 WHERE message LIKE '%executing cascade %' OR message LIKE 'Del%' OR message LIKE 'CPut%' OR message LIKE 'Scan%original%'
 ----
 Scan /Table/151/1/"original"/0 lock Exclusive (Block, Unreplicated)
-Del (locking) /Table/151/1/"original"/0
+Del /Table/151/1/"original"/0
 CPut /Table/151/1/"updated"/0 -> /TUPLE/
 executing cascade for constraint b1_update_set_null_fkey
 executing cascade for constraint b2_update_set_null_fkey
@@ -759,7 +759,7 @@ SELECT message FROM [SHOW TRACE FOR SESSION]
 WHERE message LIKE '%executing cascade %' OR message LIKE 'Del%' OR message LIKE 'CPut%' OR message LIKE 'Scan%original%'
 ----
 Scan /Table/156/1/"original"/0 lock Exclusive (Block, Unreplicated)
-Del (locking) /Table/156/1/"original"/0
+Del /Table/156/1/"original"/0
 CPut /Table/156/1/"updated"/0 -> /TUPLE/
 executing cascade for constraint b1_update_cascade_fkey
 Scan /Table/157/2/"original"/0
@@ -821,6 +821,7 @@ CREATE TABLE delrng1 (
   data INT,
   FAMILY (p, data)
 );
+INSERT INTO delrng1 VALUES (1, 1), (15, 15);
 CREATE TABLE delrng2 (
   p INT,
   q INT,
@@ -848,7 +849,6 @@ query T
 EXPLAIN DELETE FROM delrng1 WHERE p = 1
 ----
 distribution: local
-vectorized: true
 ·
 • root
 │
@@ -906,7 +906,6 @@ query T
 EXPLAIN DELETE FROM self WHERE a = 4
 ----
 distribution: local
-vectorized: true
 ·
 • root
 │
@@ -991,7 +990,6 @@ query T
 EXPLAIN DELETE FROM loop_a WHERE id = 'loop_a-pk1';
 ----
 distribution: local
-vectorized: true
 ·
 • root
 │
@@ -1068,27 +1066,23 @@ EXPLAIN ANALYZE DELETE FROM loop_a WHERE id = 'loop_a-pk1';
 planning time: 10µs
 execution time: 100µs
 distribution: <hidden>
-vectorized: <hidden>
 plan type: custom
 rows decoded from KV: 9 (72 B, 18 KVs, 9 gRPC calls)
-maximum memory usage: <hidden>
-network usage: <hidden>
 regions: <hidden>
-isolation level: serializable
-priority: normal
-quality of service: regular
 ·
 • root
 │
 ├── • delete
 │   │ sql nodes: <hidden>
 │   │ regions: <hidden>
+│   │ execution time: 0µs
 │   │ actual row count: 1
 │   │ from: loop_a
 │   │
 │   └── • buffer
 │       │ sql nodes: <hidden>
 │       │ regions: <hidden>
+│       │ execution time: 0µs
 │       │ actual row count: 1
 │       │ label: buffer 1
 │       │
@@ -1096,14 +1090,9 @@ quality of service: regular
 │             sql nodes: <hidden>
 │             kv nodes: <hidden>
 │             regions: <hidden>
-│             actual row count: 1
 │             KV time: 0µs
-│             KV contention time: 0µs
 │             KV rows decoded: 1
-│             KV pairs read: 2
-│             KV bytes read: 8 B
-│             KV gRPC calls: 1
-│             estimated max memory allocated: 0 B
+│             actual row count: 1
 │             missing stats
 │             table: loop_a@loop_a_pkey
 │             spans: [/'loop_a-pk1' - /'loop_a-pk1']
@@ -1117,34 +1106,31 @@ quality of service: regular
         ├── • delete
         │   │ sql nodes: <hidden>
         │   │ regions: <hidden>
-        │   │ actual row count: 0
+        │   │ execution time: 0µs
+        │   │ actual row count: 1
         │   │ from: loop_b
         │   │
         │   └── • buffer
         │       │ sql nodes: <hidden>
         │       │ regions: <hidden>
+        │       │ execution time: 0µs
         │       │ actual row count: 1
         │       │ label: buffer 1
         │       │
         │       └── • hash join (semi)
         │           │ sql nodes: <hidden>
         │           │ regions: <hidden>
+        │           │ execution time: 0µs
         │           │ actual row count: 1
-        │           │ estimated max memory allocated: 0 B
         │           │ equality: (cascade_delete) = (id)
         │           │
         │           ├── • scan
         │           │     sql nodes: <hidden>
         │           │     kv nodes: <hidden>
         │           │     regions: <hidden>
-        │           │     actual row count: 3
         │           │     KV time: 0µs
-        │           │     KV contention time: 0µs
         │           │     KV rows decoded: 3
-        │           │     KV pairs read: 6
-        │           │     KV bytes read: 24 B
-        │           │     KV gRPC calls: 3
-        │           │     estimated max memory allocated: 0 B
+        │           │     actual row count: 3
         │           │     missing stats
         │           │     table: loop_b@loop_b_pkey
         │           │     spans: FULL SCAN
@@ -1152,6 +1138,7 @@ quality of service: regular
         │           └── • scan buffer
         │                 sql nodes: <hidden>
         │                 regions: <hidden>
+        │                 execution time: 0µs
         │                 actual row count: 1
         │                 estimated row count: 1
         │                 label: buffer 1000000
@@ -1164,12 +1151,14 @@ quality of service: regular
                 ├── • delete
                 │   │ sql nodes: <hidden>
                 │   │ regions: <hidden>
-                │   │ actual row count: 0
+                │   │ execution time: 0µs
+                │   │ actual row count: 1
                 │   │ from: loop_a
                 │   │
                 │   └── • buffer
                 │       │ sql nodes: <hidden>
                 │       │ regions: <hidden>
+                │       │ execution time: 0µs
                 │       │ actual row count: 1
                 │       │ label: buffer 1
                 │       │
@@ -1177,28 +1166,25 @@ quality of service: regular
                 │           │ sql nodes: <hidden>
                 │           │ kv nodes: <hidden>
                 │           │ regions: <hidden>
-                │           │ actual row count: 1
                 │           │ KV time: 0µs
-                │           │ KV contention time: 0µs
                 │           │ KV rows decoded: 1
-                │           │ KV pairs read: 2
-                │           │ KV bytes read: 8 B
-                │           │ KV gRPC calls: 1
-                │           │ estimated max memory allocated: 0 B
+                │           │ execution time: 0µs
+                │           │ actual row count: 1
                 │           │ table: loop_a@loop_a_cascade_delete_idx
                 │           │ equality: (id) = (cascade_delete)
                 │           │
                 │           └── • distinct
                 │               │ sql nodes: <hidden>
                 │               │ regions: <hidden>
+                │               │ execution time: 0µs
                 │               │ actual row count: 1
-                │               │ estimated max memory allocated: 0 B
                 │               │ estimated row count: 1
                 │               │ distinct on: id
                 │               │
                 │               └── • scan buffer
                 │                     sql nodes: <hidden>
                 │                     regions: <hidden>
+                │                     execution time: 0µs
                 │                     actual row count: 1
                 │                     estimated row count: 1
                 │                     label: buffer 1000000
@@ -1242,7 +1228,6 @@ query T
 EXPLAIN DELETE FROM t3 WHERE id3 = 1
 ----
 distribution: local
-vectorized: true
 ·
 • root
 │
@@ -1425,7 +1410,6 @@ query T
 EXPLAIN DELETE FROM p138974 WHERE v = 1;
 ----
 distribution: local
-vectorized: true
 ·
 • root
 │
@@ -1473,32 +1457,29 @@ EXPLAIN ANALYZE DELETE FROM p138974 WHERE v = 1;
 planning time: 10µs
 execution time: 100µs
 distribution: <hidden>
-vectorized: <hidden>
 plan type: custom
-maximum memory usage: <hidden>
-network usage: <hidden>
 regions: <hidden>
-isolation level: serializable
-priority: normal
-quality of service: regular
 ·
 • root
 │
 ├── • delete
 │   │ sql nodes: <hidden>
 │   │ regions: <hidden>
+│   │ execution time: 0µs
 │   │ actual row count: 0
 │   │ from: p138974
 │   │
 │   └── • buffer
 │       │ sql nodes: <hidden>
 │       │ regions: <hidden>
+│       │ execution time: 0µs
 │       │ actual row count: 0
 │       │ label: buffer 1
 │       │
 │       └── • filter
 │           │ sql nodes: <hidden>
 │           │ regions: <hidden>
+│           │ execution time: 0µs
 │           │ actual row count: 0
 │           │ filter: v = 1
 │           │
@@ -1506,13 +1487,9 @@ quality of service: regular
 │                 sql nodes: <hidden>
 │                 kv nodes: <hidden>
 │                 regions: <hidden>
-│                 actual row count: 0
 │                 KV time: 0µs
-│                 KV contention time: 0µs
 │                 KV rows decoded: 0
-│                 KV bytes read: 0 B
-│                 KV gRPC calls: 0
-│                 estimated max memory allocated: 0 B
+│                 actual row count: 0
 │                 missing stats
 │                 table: p138974@p138974_pkey
 │                 spans: FULL SCAN

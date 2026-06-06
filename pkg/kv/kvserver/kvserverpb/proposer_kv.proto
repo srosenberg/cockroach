@@ -226,6 +226,13 @@ message ReplicatedEvalResult {
   }
   AddSSTable add_sstable = 17 [(gogoproto.customname) = "AddSSTable"];
 
+  // See ExciseRequest.
+  message Excise {
+    roachpb.Span span = 1 [(gogoproto.nullable) = false];
+    roachpb.Span lock_table_span = 2 [(gogoproto.nullable) = false];
+  }
+  Excise excise = 30 [(gogoproto.customname) = "Excise"];
+  
   // This is the proposal timestamp for the active lease while evaluating a lease request.
   // It will be used to make sure we know if a lease was extended after we sent out the request
   // but before we tried to apply it.
@@ -264,7 +271,7 @@ message ReplicatedEvalResult {
   // has empty payload.
   message LinkExternalSSTable {
     roachpb.Span span = 1 [(gogoproto.nullable) = false];
-    string remote_file_loc = 2;
+    string remote_file_loc = 2 [(gogoproto.nullable) = false, (gogoproto.customtype) = "github.com/cockroachdb/redact.RedactableString"];;
     string remote_file_path = 3;
     uint64 backing_file_size = 4;
     uint64 approximate_physical_size = 5;
@@ -292,6 +299,7 @@ message ReplicatedEvalResult {
 // can be distinguished from a zero-length batch, and so structs
 // containing pointers to it can be compared with the == operator.
 message WriteBatch {
+  option (gogoproto.goproto_getters) = true;
   bytes data = 1;
 }
 

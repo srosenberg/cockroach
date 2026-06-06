@@ -19,12 +19,28 @@ if [[ ! -f ~/.ssh/id_rsa.pub ]]; then
   ssh-keygen -q -C "roachtest-nightly-bazel $(date)" -N "" -f ~/.ssh/id_rsa
 fi
 
+arm_probability="${ARM_PROBABILITY:-0.5}"
+fips_probability="${FIPS_PROBABILITY:-0.02}"
+export ROACHTEST_BUILD_CACHE=true
+
 arch=amd64
-if [[ ${FIPS_ENABLED:-0} == 1 ]]; then
-  arch=amd64-fips
+if [[ ${CLOUD} == "ibm" ]]; then
+  arch=s390x
 fi
 $root/build/teamcity/cockroach/nightlies/roachtest_compile_bits.sh $arch
-$root/build/teamcity/cockroach/nightlies/roachtest_compile_bits.sh arm64
+if [[ $arch != "s390x" ]]; then
+  # Do not build arm64 if the probability is 0.
+  # Using `awk` because bash only supports integer comparison, and `bc` is not installed.
+  if awk -v n="$arm_probability" 'BEGIN { exit (n+0 > 0) ? 0 : 1 }'; then
+    $root/build/teamcity/cockroach/nightlies/roachtest_compile_bits.sh arm64
+  fi
+  # N.B. FIPS is metamoprhically always on as of PR#139510
+  # Do not build fips if the probability is 0.
+  # Using `awk` because bash only supports integer comparison, and `bc` is not installed.
+  if awk -v n="$fips_probability" 'BEGIN { exit (n+0 > 0) ? 0 : 1 }'; then
+    $root/build/teamcity/cockroach/nightlies/roachtest_compile_bits.sh amd64-fips
+  fi
+fi
 
 artifacts=/artifacts
 source $root/build/teamcity/util/roachtest_util.sh
@@ -79,12 +95,17 @@ if [[ "${selective_tests}" == "true" && "${select_probability:-}" != "" ]]; then
   echo "SELECTIVE_TESTS=true and SELECT_PROBABILITY are incompatible. Disable one of them."
   exit 1
 fi
-
+#
+# N.B. Recall, the conditional probability of FIPS is P(fips) * (1 - P(arm64)).
+# Hence, with the given defaults, FIPS is effectively enabled with probability 0.01 (= 0.02 * 0.5)
+#
 build/teamcity-roachtest-invoke.sh \
   --metamorphic-encryption-probability=0.5 \
-  --metamorphic-arm64-probability="${ARM_PROBABILITY:-0.5}" \
+  --metamorphic-arm64-probability="$arm_probability" \
+  --metamorphic-fips-probability="$fips_probability" \
   --metamorphic-cockroach-ea-probability="${COCKROACH_EA_PROBABILITY:-0.2}" \
   ${select_probability:-} \
+  --always-collect-artifacts="${ALWAYS_COLLECT_ARTIFACTS:-false}" \
   --use-spot="${USE_SPOT:-auto}" \
   --cloud="${CLOUD}" \
   --count="${COUNT-1}" \
@@ -98,8 +119,7 @@ build/teamcity-roachtest-invoke.sh \
   --slack-token="${SLACK_TOKEN}" \
   --suite nightly \
   --selective-tests="${selective_tests:-false}" \
-  --side-eye-token="${SIDE_EYE_API_TOKEN}" \
   --export-openmetrics="${EXPORT_OPENMETRICS:-false}" \
-  --openmetrics-labels="branch=$(tc_build_branch), cpu-arch=${arch}, suite=nightly" \
+  --openmetrics-labels="branch=$(tc_build_branch), goarch=${arch}, goos=linux, commit=${COMMIT_SHA}, suite=nightly" \
   ${EXTRA_ROACHTEST_ARGS:+$EXTRA_ROACHTEST_ARGS} \
   "${TESTS}"

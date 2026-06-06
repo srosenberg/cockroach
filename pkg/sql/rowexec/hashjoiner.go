@@ -147,9 +147,10 @@ func newHashJoiner(
 
 	// Limit the memory use by creating a child monitor with a hard limit.
 	// The hashJoiner will overflow to disk if this limit is not enough.
-	h.MemMonitor = execinfra.NewLimitedMonitor(ctx, flowCtx.Mon, flowCtx, "hashjoiner-limited")
-	h.unlimitedMemMonitor = execinfra.NewMonitor(ctx, flowCtx.Mon, "hashjoiner-unlimited")
-	h.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "hashjoiner-disk")
+	mn := mon.MakeName("hashjoiner")
+	h.MemMonitor = execinfra.NewLimitedMonitor(ctx, flowCtx.Mon, flowCtx, mn.Limited())
+	h.unlimitedMemMonitor = execinfra.NewMonitor(ctx, flowCtx.Mon, mn.Unlimited())
+	h.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, mn.Disk())
 	h.hashTable = rowcontainer.NewHashDiskBackedRowContainer(
 		h.FlowCtx.EvalCtx, h.MemMonitor, h.unlimitedMemMonitor, h.diskMonitor, h.FlowCtx.Cfg.TempStorage,
 	)
@@ -194,7 +195,7 @@ func (h *hashJoiner) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) 
 		case hjEmittingRightUnmatched:
 			h.runningState, row, meta = h.emitRightUnmatched()
 		default:
-			log.Fatalf(h.Ctx(), "unsupported state: %d", h.runningState)
+			log.Dev.Fatalf(h.Ctx(), "unsupported state: %d", h.runningState)
 		}
 
 		if row == nil && meta == nil {

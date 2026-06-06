@@ -19,6 +19,9 @@ go_test(
     data = [
         "//c-deps:libgeos",  # keep
     ],
+    exec_properties = select({
+        "//conditions:default": {"test.Pool": "large"},
+    }),
     shard_count = 16,
     deps = [
         "//pkg/base",
@@ -31,6 +34,7 @@ go_test(
         "//pkg/kv/kvpb",
         "//pkg/kv/kvserver",
         "//pkg/kv/kvserver/concurrency/isolation",
+        "//pkg/kv/kvserver/concurrency/lock",
         "//pkg/kv/kvserver/protectedts/ptpb",
         "//pkg/multitenant/mtinfopb",
         "//pkg/roachpb",
@@ -41,8 +45,6 @@ go_test(
         "//pkg/settings/cluster",
         "//pkg/spanconfig",
         "//pkg/sql",
-        "//pkg/sql/catalog/lease",
-        "//pkg/sql/catalog/replication",
         "//pkg/sql/gcjob",
         "//pkg/sql/isql",
         "//pkg/sql/lexbase",

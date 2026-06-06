@@ -42,7 +42,7 @@ type applyCommittedEntriesStats struct {
 	appBatchStats
 	followerStoreWriteBytes kvadmission.FollowerStoreWriteBytes
 	numBatchesProcessed     int // TODO(sep-raft-log): numBatches
-	stateAssertions         int
+	assertionsRequested     int
 	numConfChangeEntries    int
 }
 
@@ -57,9 +57,11 @@ type applyCommittedEntriesStats struct {
 // side-effects of each command is applied to the Replica's in-memory state.
 type replicaStateMachine struct {
 	r *Replica
-	// batch is returned from NewBatch.
+	// batch is returned from NewBatch. It is non-zero between NewBatch() and the
+	// corresponding Close() call.
 	batch replicaAppBatch
-	// ephemeralBatch is returned from NewEphemeralBatch.
+	// ephemeralBatch is returned from NewEphemeralBatch. It is non-zero between
+	// NewEphemeralBatch() and the corresponding Close() call.
 	ephemeralBatch ephemeralReplicaAppBatch
 	// stats are updated during command application and reset by moveStats.
 	applyStats applyCommittedEntriesStats
@@ -128,6 +130,8 @@ func replicaApplyTestingFilters(
 func (sm *replicaStateMachine) NewEphemeralBatch() apply.EphemeralBatch {
 	r := sm.r
 	mb := &sm.ephemeralBatch
+	// NB: the batch struct is zero-initialized, which is guaranteed by the fact
+	// that its previous use ended with ephemeralReplicaAppBatch.Close().
 	mb.r = r
 	r.raftMu.AssertHeld()
 	mb.state = r.shMu.state
@@ -138,23 +142,23 @@ func (sm *replicaStateMachine) NewEphemeralBatch() apply.EphemeralBatch {
 func (sm *replicaStateMachine) NewBatch() apply.Batch {
 	r := sm.r
 	b := &sm.batch
-	// TODO(pav-kv): replicaAppBatch initialization below is bug-prone, we need to
-	// not forget resetting the fields that are local to one batch. Find a way to
-	// make it safer.
+	// NB: the batch struct is zero-initialized, which is guaranteed by the fact
+	// that its previous use ended with replicaAppBatch.Close().
 	b.r = r
 	b.applyStats = &sm.applyStats
-	b.batch = r.store.TODOEngine().NewBatch()
-	r.mu.RLock()
+	// TODO(#144627): most commands do not need to read. Use NewWriteBatch because
+	// it is more efficient. If there are exceptions, sparingly use NewReader or
+	// NewBatch (if it needs to read its own writes, which is unlikely).
+	b.batch = r.store.batchFactory.NewBatch()
+	b.sl = r.raftMu.stateLoader
+
+	r.raftMu.AssertHeld()
 	b.state = r.shMu.state
-	b.truncState = r.shMu.raftTruncState
+	b.initialForceFlushIndex = r.shMu.state.ForceFlushIndex
+	b.truncState = r.asLogStorage().shMu.trunc
 	b.state.Stats = &sm.stats
 	*b.state.Stats = *r.shMu.state.Stats
-	b.closedTimestampSetter = r.mu.closedTimestampSetter
-	r.mu.RUnlock()
-	b.changeRemovesReplica = false
-	b.changeTruncatesSideloadedFiles = false
-	b.truncatedSideloadedSize = 0
-	// TODO(pav-kv): what about b.ab and b.followerStoreWriteBytes?
+	b.closedTimestampSetter = r.raftMu.closedTimestampSetter
 	b.start = timeutil.Now()
 	return b
 }
@@ -204,17 +208,12 @@ func (sm *replicaStateMachine) ApplySideEffects(
 		// Some tests (TestRangeStatsInit) assumes that once the store has started
 		// and the first range has a lease that there will not be a later hard-state.
 		if shouldAssert {
-			// Assert that the on-disk state doesn't diverge from the in-memory
+			// Queue a check that the on-disk state doesn't diverge from the in-memory
 			// state as a result of the side effects.
-			sm.r.mu.RLock()
-			// TODO(sep-raft-log): either check only statemachine invariants or
-			// pass both engines in.
-			sm.r.assertStateRaftMuLockedReplicaMuRLocked(ctx, sm.r.store.TODOEngine())
-			sm.r.mu.RUnlock()
-			sm.applyStats.stateAssertions++
+			sm.applyStats.assertionsRequested++
 		}
 	} else if res := cmd.ReplicatedResult(); !res.IsZero() {
-		log.Fatalf(ctx, "failed to handle all side-effects of ReplicatedEvalResult: %v", res)
+		log.KvExec.Fatalf(ctx, "failed to handle all side-effects of ReplicatedEvalResult: %v", res)
 	}
 
 	// On ConfChange entries, inform the raft.RawNode.
@@ -235,7 +234,7 @@ func (sm *replicaStateMachine) ApplySideEffects(
 		rejected := cmd.Rejected()
 		higherReproposalsExist := cmd.Cmd.MaxLeaseIndex != cmd.proposal.command.MaxLeaseIndex
 		if !rejected && higherReproposalsExist {
-			log.Fatalf(ctx, "finishing proposal with outstanding reproposal at a higher max lease index")
+			log.KvExec.Fatalf(ctx, "finishing proposal with outstanding reproposal at a higher max lease index")
 		}
 		if !rejected && cmd.proposal.applied {
 			// If the command already applied then we shouldn't be "finishing" its
@@ -243,7 +242,7 @@ func (sm *replicaStateMachine) ApplySideEffects(
 			// once. We expect that when any reproposal for the same command attempts
 			// to apply it will be rejected by the below raft lease sequence or lease
 			// index check in checkForcedErr.
-			log.Fatalf(ctx, "command already applied: %+v; unexpected successful result", cmd)
+			log.KvExec.Fatalf(ctx, "command already applied: %+v; unexpected successful result", cmd)
 		}
 		// If any reproposals at a higher MaxLeaseIndex exist we know that they will
 		// never successfully apply, remove them from the map to avoid future
@@ -286,12 +285,7 @@ func (sm *replicaStateMachine) handleNonTrivialReplicatedEvalResult(
 ) (shouldAssert, isRemoved bool) {
 	// Assert that this replicatedResult implies at least one side-effect.
 	if rResult.IsZero() {
-		log.Fatalf(ctx, "zero-value ReplicatedEvalResult passed to handleNonTrivialReplicatedEvalResult")
-	}
-
-	truncState := rResult.RaftTruncatedState
-	if truncState != nil {
-		rResult.RaftTruncatedState = nil
+		log.KvExec.Fatalf(ctx, "zero-value ReplicatedEvalResult passed to handleNonTrivialReplicatedEvalResult")
 	}
 
 	if rResult.State != nil {
@@ -299,14 +293,6 @@ func (sm *replicaStateMachine) handleNonTrivialReplicatedEvalResult(
 			sm.r.handleLeaseResult(ctx, newLease, rResult.PriorReadSummary)
 			rResult.State.Lease = nil
 			rResult.PriorReadSummary = nil
-		}
-
-		if newTruncState := rResult.State.TruncatedState; newTruncState != nil {
-			if truncState != nil {
-				log.Fatalf(ctx, "double RaftTruncatedState in ReplicatedEvalResult")
-			}
-			truncState = newTruncState
-			rResult.State.TruncatedState = nil
 		}
 
 		if newVersion := rResult.State.Version; newVersion != nil {
@@ -326,17 +312,9 @@ func (sm *replicaStateMachine) handleNonTrivialReplicatedEvalResult(
 
 	// TODO(#93248): the strongly coupled truncation code will be removed once the
 	// loosely coupled truncations are the default.
-	if truncState != nil {
-		// NB: The RaftExpectedFirstIndex field is zero if this proposal is from
-		// before v22.1 that added it, when all truncations were strongly coupled.
-		// The delta in these historical proposals is accurate, but does not account
-		// for the sideloaded entries.
-		// TODO(pav-kv): remove the zero clause after any below-raft migration.
-		logDelta := rResult.RaftLogDelta - sm.batch.truncatedSideloadedSize
-		sm.r.handleTruncatedStateResultRaftMuLocked(ctx, *truncState,
-			rResult.RaftExpectedFirstIndex, logDelta, true /* isDeltaTrusted */)
-		rResult.RaftLogDelta = 0
-		rResult.RaftExpectedFirstIndex = 0
+	if rResult.GetRaftTruncatedState() != nil {
+		sm.r.finalizeTruncationRaftMuLocked(ctx)
+		rResult.DiscardRaftTruncation()
 	}
 
 	// The rest of the actions are "nontrivial" and may have large effects on the
@@ -382,7 +360,7 @@ func (sm *replicaStateMachine) handleNonTrivialReplicatedEvalResult(
 	// implemented by always catching a forced error and thus never show up in
 	// this method, which the next line will assert for us.
 	if !rResult.IsZero() {
-		log.Fatalf(ctx, "unhandled field in ReplicatedEvalResult: %s", pretty.Diff(rResult, &kvserverpb.ReplicatedEvalResult{}))
+		log.KvExec.Fatalf(ctx, "unhandled field in ReplicatedEvalResult: %s", pretty.Diff(rResult, &kvserverpb.ReplicatedEvalResult{}))
 	}
 	return true, isRemoved
 }

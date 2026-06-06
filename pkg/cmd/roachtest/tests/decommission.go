@@ -23,6 +23,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
+	"github.com/cockroachdb/cockroach/pkg/roachprod"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
@@ -37,6 +38,13 @@ import (
 // shudownGracePeriod is the default grace period (in seconds) that we
 // will wait for a graceful shutdown.
 const shutdownGracePeriod = 300
+
+// throttledStoresMsg is the substring emitted by the allocator when every
+// candidate target store is within its server.failed_reservation.timeout
+// window (default 5s) after a snapshot reservation failure. See the comment
+// in runDecommissionRandomized for why this surfaces transiently during
+// decommission.
+const throttledStoresMsg = "matching stores are currently throttled"
 
 func registerDecommission(r registry.Registry) {
 	{
@@ -117,8 +125,10 @@ func registerDecommission(r registry.Registry) {
 			Name:             "decommission/mixed-versions",
 			Owner:            registry.OwnerKV,
 			Cluster:          r.MakeClusterSpec(numNodes),
-			CompatibleClouds: registry.AllExceptAWS,
+			CompatibleClouds: registry.AllClouds.NoAWS().NoIBM(),
 			Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
+			Monitor:          true,
+			Randomized:       true,
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 				runDecommissionMixedVersions(ctx, t, c)
 			},
@@ -184,7 +194,7 @@ func runDrainAndDecommission(
 		run(`SET CLUSTER SETTING kv.snapshot_rebalance.max_rate='2GiB'`)
 
 		// Wait for initial up-replication.
-		err := roachtestutil.WaitForReplication(ctx, t.L(), db, defaultReplicationFactor, roachtestutil.AtLeastReplicationFactor)
+		err := roachtestutil.WaitForReplication(ctx, t.L(), db, defaultReplicationFactor, roachprod.AtLeastReplicationFactor)
 		require.NoError(t, err)
 	}
 
@@ -632,10 +642,55 @@ func runDecommissionRandomized(ctx context.Context, t test.Test, c cluster.Clust
 		}
 
 		// Decommission two nodes.
+		//
+		// DUCT TAPE: the substring match below is a targeted retry, not a
+		// fix. The right fix lives elsewhere and is non-trivial — see below.
+		//
+		// The CLI exits non-zero ("Cannot decommission nodes.") when the
+		// server-side pre-check (DecommissionPreCheck → AllocatorCheckRange →
+		// AllocateTarget) cannot find a target for any range on the
+		// decommissioning node. One common transient cause:
+		//
+		//   1. A replication change tries to send a snapshot to s_X.
+		//   2. s_X already holds a placeholder for that range (its prior
+		//      snapshot is still applying), so canAcceptSnapshotLocked rejects
+		//      the new one within milliseconds.
+		//   3. The sender calls StorePool.Throttle(ThrottleFailed, ...), which
+		//      marks s_X throttled for server.failed_reservation.timeout
+		//      (default 5s) and stores the rejection text in
+		//      detail.throttledBecause.
+		//   4. If the pre-check runs in that 5s window and s_X is the only
+		//      viable target, the allocator returns "N matching stores are
+		//      currently throttled: [<throttledBecause>...]", which surfaces
+		//      verbatim as the per-range blocker text — even though the
+		//      placeholder is long gone.
+		//
+		// A proper fix would have to address one of:
+		//   - the pre-check treating a transient throttle as a hard blocker
+		//     (it should distinguish "no viable target ever" from "back off
+		//     and retry"),
+		//   - the allocator's throttle reason string being stale/misleading
+		//     after the underlying snapshot has succeeded, or
+		//   - canAcceptSnapshotLocked engaging the failed-reservation throttle
+		//     for a benign "already in progress" rejection.
+		// Each of these threads through allocator/storepool/snapshot code,
+		// touches mixed-version and CLI UX, and has already burned at least
+		// one revert (#159165, fix attempt for #157973). Not something to do
+		// drive-by from a roachtest flake.
+		//
+		// With --wait=none the CLI is one-shot, so the retry has to live
+		// here. Keep it tight: substring-match only this transient and let
+		// every other CLI failure fatal as before.
 		if err := retry.WithMaxAttempts(ctx, retryOpts, maxAttempts, func() error {
-			o, err := h.decommission(ctx, c.Nodes(targetNodeA, targetNodeB), runNode,
+			o, e, err := h.decommissionExt(ctx, c.Nodes(targetNodeA, targetNodeB), runNode,
 				fmt.Sprintf("--wait=%s", waitStrategy), "--format=csv")
 			if err != nil {
+				// The blocking-range summary goes to stderr; roachprod also folds
+				// stderr into err.Error(), so check both.
+				if strings.Contains(e, throttledStoresMsg) || strings.Contains(err.Error(), throttledStoresMsg) {
+					t.L().Printf("decommission hit transient throttle, retrying: %v", err)
+					return err
+				}
 				t.Fatalf("decommission failed: %v", err)
 			}
 
@@ -998,7 +1053,8 @@ func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster, 
 		decommNodeID = numNodes
 		decommNode   = c.Node(decommNodeID)
 	)
-	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings(), c.All())
+
+	c.Start(ctx, t.L(), withDecommissionVMod(option.DefaultStartOpts()), install.MakeClusterSettings(), c.All())
 
 	h := newDecommTestHelper(t, c)
 
@@ -1023,7 +1079,7 @@ func runDecommissionDrains(ctx context.Context, t test.Test, c cluster.Cluster, 
 
 	// Decommission node 4 and poll its status during the decommission.
 	var (
-		maxAttempts = 50
+		maxAttempts = 125
 		retryOpts   = retry.Options{
 			InitialBackoff: time.Second,
 			MaxBackoff:     5 * time.Second,
@@ -1133,7 +1189,7 @@ func runDecommissionSlow(ctx context.Context, t test.Test, c cluster.Cluster) {
 		run(db, `SET CLUSTER SETTING kv.snapshot_rebalance.max_rate='2GiB'`)
 
 		// Wait for initial up-replication.
-		err := roachtestutil.WaitForReplication(ctx, t.L(), db, replicationFactor, roachtestutil.AtLeastReplicationFactor)
+		err := roachtestutil.WaitForReplication(ctx, t.L(), db, replicationFactor, roachprod.AtLeastReplicationFactor)
 		require.NoError(t, err)
 	}
 
@@ -1142,7 +1198,7 @@ func runDecommissionSlow(ctx context.Context, t test.Test, c cluster.Cluster) {
 	// since the decommissions will stall.
 	decomCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
-	m := c.NewMonitor(decomCtx)
+	m := c.NewDeprecatedMonitor(decomCtx)
 	for nodeID := 2; nodeID <= numNodes; nodeID++ {
 		id := nodeID
 		m.Go(func(ctx context.Context) error {
@@ -1193,7 +1249,7 @@ var decommissionFooter = []string{
 
 // Header from the output of `cockroach node status`.
 var statusHeader = []string{
-	"id", "address", "sql_address", "build", "started_at", "updated_at", "locality", "is_available", "is_live",
+	"id", "address", "sql_address", "build", "started_at", "updated_at", "locality", "attrs", "is_available", "is_live",
 }
 
 // Header from the output of `cockroach node status --decommission`.
@@ -1515,7 +1571,8 @@ func execCLIExt(
 // debugging failures.
 const decommissionVModuleStartOpts = `--vmodule=store_rebalancer=5,allocator=5,
   allocator_scorer=5,replicate_queue=5,replicate=6,split_queue=5,
-  replica_command=2,replica_raft=2,replica_proposal=2,replica_application_result=1`
+  replica_command=2,replica_raft=2,replica_proposal=2,replica_application_result=1,
+  replica_range_lease=3,raft=4,replica_raft_quiesce=3`
 
 func withDecommissionVMod(startOpts option.StartOpts) option.StartOpts {
 	startOpts.RoachprodOpts.ExtraArgs = append(

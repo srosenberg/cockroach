@@ -45,7 +45,7 @@ type Registry struct {
 	// <uri>/metadata/<kind>/<timestamp> contains metadata for a fixture instance
 	// <uri>/<kind>/<timestamp> contains the actual fixture data
 	//
-	// The uri ispassed to the registry at construction time. The baseURI is
+	// The uri is passed to the registry at construction time. The baseURI is
 	// expected to be of the form "scheme://<bucket>/roachprod/<version>". So a
 	// full metadata path looks like:
 	// gs://cockroach-fixtures/roachprod/v25.1/metadata/backup-tpcc-30k/20220101-1504
@@ -57,7 +57,7 @@ type Registry struct {
 // for all fixture data and metadata. See the comment on the uri field for the
 // structure of a fixture directory.
 func NewRegistry(ctx context.Context, uri url.URL) (*Registry, error) {
-	supportedSchemes := map[string]bool{"gs": true, "s3": true, "azure": true}
+	supportedSchemes := map[string]bool{"gs": true, "s3": true, "azure-blob": true}
 	if !supportedSchemes[uri.Scheme] {
 		return nil, errors.Errorf("unsupported scheme %q", uri.Scheme)
 	}
@@ -124,7 +124,7 @@ func (r *Registry) Create(
 	}
 
 	now := r.clock().UTC()
-	basename := now.Format("20060102-1504")
+	basename := now.Format("20060102-150405.000")
 
 	metadata := FixtureMetadata{
 		CreatedAt:    now,
@@ -164,6 +164,22 @@ func (r *Registry) GC(ctx context.Context, l *logger.Logger) error {
 		}
 	}
 
+	return nil
+}
+
+// MarkFailure marks the fixture at the given metadata path as having resulted
+// in a test failure. This prevents the fixture from being garbage collected,
+// providing time for investigation.
+func (r *Registry) MarkFailure(ctx context.Context, l *logger.Logger, metadataPath string) error {
+	setTime := r.clock()
+	err := r.updateMetadata(metadataPath, func(m *FixtureMetadata) error {
+		m.LastFailureAt = &setTime
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	l.Printf("fixture '%s' marked last failure at '%s'", metadataPath, setTime)
 	return nil
 }
 
@@ -217,23 +233,26 @@ func (r *Registry) listFixtures(
 	}
 	var result []FixtureMetadata
 
-	err := r.storage.List(ctx, kindPrefix /*delimiter*/, "", func(found string) error {
-		json, err := r.maybeReadFile(ctx, path.Join(kindPrefix, found))
-		if err != nil {
-			return err
-		}
-		if json == nil {
-			return nil // Skip files that don't exist (may have been GC'd)
-		}
+	err := r.storage.List(
+		ctx, kindPrefix /*delimiter*/, cloud.ListOptions{},
+		func(found string) error {
+			json, err := r.maybeReadFile(ctx, path.Join(kindPrefix, found))
+			if err != nil {
+				return err
+			}
+			if json == nil {
+				return nil // Skip files that don't exist (may have been GC'd)
+			}
 
-		metadata := FixtureMetadata{}
-		if err := metadata.UnmarshalJson(json); err != nil {
-			return err
-		}
+			metadata := FixtureMetadata{}
+			if err := metadata.UnmarshalJson(json); err != nil {
+				return err
+			}
 
-		result = append(result, metadata)
-		return nil
-	})
+			result = append(result, metadata)
+			return nil
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +274,45 @@ func (r *Registry) upsertMetadata(metadata FixtureMetadata) error {
 	if _, err := writer.Write(json); err != nil {
 		_ = writer.Close()
 		return err
+	}
+
+	return writer.Close()
+}
+
+func (r *Registry) updateMetadata(
+	metadataPath string, update func(metadata *FixtureMetadata) error,
+) error {
+	ctx := context.Background()
+	json, err := r.maybeReadFile(ctx, metadataPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to read metadata for update")
+	}
+	if json == nil {
+		return errors.New("metadata does not exist for update")
+	}
+
+	metadata := &FixtureMetadata{}
+	if err := metadata.UnmarshalJson(json); err != nil {
+		return errors.Wrap(err, "failed to unmarshal metadata for update")
+	}
+
+	if err := update(metadata); err != nil {
+		return errors.Wrap(err, "failed to update metadata")
+	}
+
+	updatedJson, err := metadata.MarshalJson()
+	if err != nil {
+		return errors.Wrap(err, "failed to marshal updated metadata")
+	}
+
+	writer, err := r.storage.Writer(ctx, metadata.MetadataPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to create writer for updated metadata")
+	}
+
+	if _, err := writer.Write(updatedJson); err != nil {
+		_ = writer.Close()
+		return errors.Wrap(err, "failed to write updated metadata")
 	}
 
 	return writer.Close()
@@ -290,7 +348,7 @@ func (r *Registry) deleteBlobsMatchingPrefix(ctx context.Context, prefix string)
 	// Producer goroutine
 	g.GoCtx(func(ctx context.Context) error {
 		defer close(paths)
-		err := r.storage.List(ctx, prefix, "", func(path string) error {
+		err := r.storage.List(ctx, prefix, cloud.ListOptions{}, func(path string) error {
 			select {
 			case paths <- path:
 				return nil
@@ -329,5 +387,18 @@ func (s *ScratchHandle) SetReadyAt(ctx context.Context) error {
 		return err
 	}
 	s.logger.Printf("fixture '%s' ready at '%s'", s.metadata.DataPath, s.metadata.ReadyAt)
+	return nil
+}
+
+// SetFingerprint sets the fingerprint for the fixture.
+func (s *ScratchHandle) SetFingerprint(
+	ctx context.Context, fingerprint map[string]string, asOf string,
+) error {
+	s.metadata.Fingerprint = fingerprint
+	s.metadata.FingerprintTime = asOf
+	if err := s.registry.upsertMetadata(s.metadata); err != nil {
+		return err
+	}
+	s.logger.Printf("fixture '%s' fingerprint set to '%s' with asOf time %s ", s.metadata.DataPath, s.metadata.Fingerprint, s.metadata.FingerprintTime)
 	return nil
 }

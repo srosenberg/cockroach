@@ -12,9 +12,11 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdcevent"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
+	"github.com/cockroachdb/cockroach/pkg/crosscluster/logical/sqlwriter"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
@@ -22,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/lease"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/lexbase"
@@ -78,6 +81,27 @@ type querier interface {
 	InsertRow(ctx context.Context, txn isql.Txn, ie isql.Executor, row cdcevent.Row, prevRow *cdcevent.Row, likelyInsert bool) (batchStats, error)
 	DeleteRow(ctx context.Context, txn isql.Txn, ie isql.Executor, row cdcevent.Row, prevRow *cdcevent.Row) (batchStats, error)
 	RequiresParsedBeforeRow(catid.DescID) bool
+	ReleaseLeases(ctx context.Context)
+}
+
+// isLwwLoser returns true if the error is a ConditionFailedError with an
+// OriginTimestampOlderThan set.
+func isLwwLoser(err error) bool {
+	if condErr := (*kvpb.ConditionFailedError)(nil); errors.As(err, &condErr) {
+		return condErr.OriginTimestampOlderThan.IsSet()
+	}
+	return false
+}
+
+// isInsertWinnerWithConflict returns true if the error is a
+// ConditionFailedError with HadNewerOriginTimestamp set, meaning the insert
+// won the LWW comparison but conflicts with an existing row. The caller
+// should fall through to the upsert path.
+func isInsertWinnerWithConflict(err error) bool {
+	if condErr := (*kvpb.ConditionFailedError)(nil); errors.As(err, &condErr) {
+		return condErr.HadNewerOriginTimestamp
+	}
+	return false
 }
 
 type queryBuilder struct {
@@ -235,7 +259,7 @@ func makeSQLProcessorFromQuerier(
 		}
 		cdcEventTargets.Add(changefeedbase.Target{
 			Type:              jobspb.ChangefeedTargetSpecification_EACH_FAMILY,
-			TableID:           srcDesc.GetID(),
+			DescID:            srcDesc.GetID(),
 			StatementTimeName: changefeedbase.StatementTimeName(srcDesc.GetName()),
 		})
 	}
@@ -248,7 +272,7 @@ func makeSQLProcessorFromQuerier(
 
 	return &sqlRowProcessor{
 		querier:  querier,
-		decoder:  cdcevent.NewEventDecoderWithCache(ctx, rfCache, false, false),
+		decoder:  cdcevent.NewEventDecoderWithCache(ctx, rfCache, false, false, cdcevent.DecoderOptions{}),
 		settings: settings,
 		db:       db,
 		ie:       ie,
@@ -260,11 +284,17 @@ func makeSQLProcessorFromQuerier(
 // ReportMutations implements the BatchHandler interface, but is a no-op for
 // sqlRowProcessor because its mutations are already reported by the queries it
 // runs when they are run.
-func (sqlRowProcessor) ReportMutations(_ *stats.Refresher) {}
+func (sqlRowProcessor) ReportMutations(context.Context, *stats.Refresher) {}
 
 // ReleaseLeases implements the BatchHandler interface but is a no-op since each
 // query does this itself.
-func (sqlRowProcessor) ReleaseLeases(_ context.Context) {}
+func (srp *sqlRowProcessor) ReleaseLeases(ctx context.Context) {
+	srp.querier.ReleaseLeases(ctx)
+}
+
+func (srp *sqlRowProcessor) BatchSize() int {
+	return int(flushBatchSize.Get(&srp.settings.SV))
+}
 
 func (*sqlRowProcessor) Close(ctx context.Context) {}
 
@@ -334,10 +364,14 @@ func (srp *sqlRowProcessor) ProcessRow(
 		return batchStats{}, errors.Wrap(err, "stripping tenant prefix")
 	}
 
-	row, err := srp.decoder.DecodeKV(ctx, kv, cdcevent.CurrentRow, kv.Value.Timestamp, false)
+	row, status, err := srp.decoder.DecodeKV(ctx, kv, cdcevent.CurrentRow, kv.Value.Timestamp, false)
 	if err != nil {
 		srp.lastRow = cdcevent.Row{}
 		return batchStats{}, errors.Wrap(err, "decoding KeyValue")
+	}
+	if status != cdcevent.DecodeOK {
+		srp.lastRow = cdcevent.Row{}
+		return batchStats{}, errors.Newf("unexpected decode status: %v", status)
 	}
 	srp.lastRow = row
 
@@ -349,12 +383,15 @@ func (srp *sqlRowProcessor) processParsedRow(
 ) (batchStats, error) {
 	var parsedBeforeRow *cdcevent.Row
 	if srp.querier.RequiresParsedBeforeRow(row.TableID) {
-		before, err := srp.decoder.DecodeKV(ctx, roachpb.KeyValue{
+		before, beforeStatus, err := srp.decoder.DecodeKV(ctx, roachpb.KeyValue{
 			Key:   key,
 			Value: prevValue,
 		}, cdcevent.PrevRow, prevValue.Timestamp, false)
 		if err != nil {
 			return batchStats{}, err
+		}
+		if beforeStatus != cdcevent.DecodeOK {
+			return batchStats{}, errors.Newf("unexpected decode status: %v", beforeStatus)
 		}
 		parsedBeforeRow = &before
 	}
@@ -370,8 +407,9 @@ func (srp *sqlRowProcessor) GetLastRow() cdcevent.Row {
 }
 
 var (
-	forceGenericPlan = sessiondatapb.PlanCacheModeForceGeneric
-	ieOverrideBase   = sessiondata.InternalExecutorOverride{
+	bufferedWritesEnabled = false
+	forceGenericPlan      = sessiondatapb.PlanCacheModeForceGeneric
+	ieOverrideBase        = sessiondata.InternalExecutorOverride{
 		// The OriginIDForLogicalDataReplication session variable will bind the
 		// origin ID 1 to each per-statement batch request header sent by the
 		// internal executor. This metadata will be plumbed to the MVCCValueHeader
@@ -388,14 +426,11 @@ var (
 		// Use generic query plans since our queries are extremely simple and
 		// won't benefit from custom plans.
 		PlanCacheMode: &forceGenericPlan,
-		// We've observed in the CPU profiles that the default goroutine stack
-		// of the connExecutor goroutine is insufficient for evaluation of the
-		// ingestion queries, so we grow the stack right away to 32KiB.
-		GrowStackSize: true,
 		// We don't get any benefits from generating plan gists for internal
 		// queries, so we disable them.
-		DisablePlanGists: true,
-		QualityOfService: &sessiondatapb.BulkLowQoS,
+		DisablePlanGists:      true,
+		QualityOfService:      &sessiondatapb.BulkLowQoS,
+		BufferedWritesEnabled: &bufferedWritesEnabled,
 	}
 )
 
@@ -448,6 +483,8 @@ func makeSQLProcessor(
 	ie isql.Executor,
 	sd *sessiondata.SessionData,
 	spec execinfrapb.LogicalReplicationWriterSpec,
+	codec keys.SQLCodec,
+	leaseMgr *lease.Manager,
 ) (*sqlRowProcessor, error) {
 
 	needUDFQuerier := false
@@ -458,11 +495,16 @@ func makeSQLProcessor(
 	}
 
 	lwwQuerier := &lwwQuerier{
+		sd:       sd,
 		settings: settings,
+		codec:    codec,
+		db:       db,
+		leaseMgr: leaseMgr,
 		queryBuffer: queryBuffer{
 			deleteQueries: make(map[catid.DescID]queryBuilder, len(tableConfigByDestID)),
 			insertQueries: make(map[catid.DescID]map[catid.FamilyID]queryBuilder, len(tableConfigByDestID)),
 		},
+		tombstoneUpdaters:          make(map[descpb.ID]*sqlwriter.TombstoneUpdater, len(tableConfigByDestID)),
 		ieOverrideOptimisticInsert: getIEOverride(replicatedOptimisticInsertOpName, jobID),
 		ieOverrideInsert:           getIEOverride(replicatedInsertOpName, jobID),
 		ieOverrideDelete:           getIEOverride(replicatedDeleteOpName, jobID),
@@ -522,6 +564,13 @@ func (m *muxQuerier) RequiresParsedBeforeRow(id catid.DescID) bool {
 	return m.shouldUseUDF[id]
 }
 
+func (m *muxQuerier) ReleaseLeases(ctx context.Context) {
+	if m.udfQuerier != nil {
+		m.udfQuerier.ReleaseLeases(ctx)
+	}
+	m.lwwQuerier.ReleaseLeases(ctx)
+}
+
 // lwwQuerier is a querier that implements partial last-write-wins
 // semantics using SQL queries.
 //
@@ -532,12 +581,17 @@ func (m *muxQuerier) RequiresParsedBeforeRow(id catid.DescID) bool {
 //
 // See the design document for possible solutions to these problems.
 type lwwQuerier struct {
-	settings    *cluster.Settings
-	queryBuffer queryBuffer
+	sd                *sessiondata.SessionData
+	settings          *cluster.Settings
+	codec             keys.SQLCodec
+	db                descs.DB
+	queryBuffer       queryBuffer
+	tombstoneUpdaters map[descpb.ID]*sqlwriter.TombstoneUpdater
 
 	ieOverrideOptimisticInsert sessiondata.InternalExecutorOverride
 	ieOverrideInsert           sessiondata.InternalExecutorOverride
 	ieOverrideDelete           sessiondata.InternalExecutorOverride
+	leaseMgr                   *lease.Manager
 }
 
 func (lww *lwwQuerier) AddTable(targetDescID int32, tc sqlProcessorTableConfig) error {
@@ -551,6 +605,15 @@ func (lww *lwwQuerier) AddTable(targetDescID int32, tc sqlProcessorTableConfig) 
 	if err != nil {
 		return err
 	}
+
+	lww.tombstoneUpdaters[td.GetID()] = sqlwriter.NewTombstoneUpdater(
+		lww.codec,
+		lww.leaseMgr,
+		catid.DescID(targetDescID),
+		lww.sd,
+		lww.settings,
+	)
+
 	return nil
 }
 
@@ -591,12 +654,19 @@ func (lww *lwwQuerier) InsertRow(
 		if !useLowPriority.Get(&lww.settings.SV) {
 			sess.QualityOfService = nil
 		}
-		if _, err = ie.ExecParsed(ctx, replicatedOptimisticInsertOpName, kvTxn, sess, stmt, datums...); err != nil {
-			// If the optimistic insert failed with unique violation, we have to
-			// fall back to the pessimistic path. If we got a different error,
-			// then we bail completely.
-			if pgerror.GetPGCode(err) != pgcode.UniqueViolation {
-				log.Warningf(ctx, "replicated optimistic insert failed (query: %s): %s", stmt.SQL, err.Error())
+		err = withSavepoint(ctx, kvTxn, func() error {
+			_, err = ie.ExecParsed(ctx, replicatedOptimisticInsertOpName, kvTxn, sess, stmt, datums...)
+			return err
+		})
+		if err != nil {
+			if isLwwLoser(err) {
+				return batchStats{}, nil
+			}
+			// If the optimistic insert failed with a unique violation or because
+			// the insert won LWW but conflicts with an existing row, fall back
+			// to the pessimistic upsert path. For any other error, bail.
+			if pgerror.GetPGCode(err) != pgcode.UniqueViolation && !isInsertWinnerWithConflict(err) {
+				log.Dev.Warningf(ctx, "replicated optimistic insert failed (query: %s): %s", stmt.SQL, err.Error())
 				return batchStats{}, err
 			}
 			optimisticInsertConflicts++
@@ -615,8 +685,15 @@ func (lww *lwwQuerier) InsertRow(
 		sess.QualityOfService = nil
 	}
 	sess.OriginTimestampForLogicalDataReplication = row.MvccTimestamp
-	if _, err = ie.ExecParsed(ctx, replicatedInsertOpName, kvTxn, sess, stmt, datums...); err != nil {
-		log.Warningf(ctx, "replicated insert failed (query: %s): %s", stmt.SQL, err.Error())
+	err = withSavepoint(ctx, kvTxn, func() error {
+		_, err = ie.ExecParsed(ctx, replicatedInsertOpName, kvTxn, sess, stmt, datums...)
+		return err
+	})
+	if isLwwLoser(err) {
+		return batchStats{}, nil
+	}
+	if err != nil {
+		log.Dev.Warningf(ctx, "replicated insert failed (query: %s): %s", stmt.SQL, err.Error())
 		return batchStats{}, err
 	}
 	return batchStats{optimisticInsertConflicts: optimisticInsertConflicts}, nil
@@ -648,11 +725,42 @@ func (lww *lwwQuerier) DeleteRow(
 		sess.QualityOfService = nil
 	}
 	sess.OriginTimestampForLogicalDataReplication = row.MvccTimestamp
-	if _, err := ie.ExecParsed(ctx, replicatedDeleteOpName, kvTxn, sess, stmt, datums...); err != nil {
-		log.Warningf(ctx, "replicated delete failed (query: %s): %s", stmt.SQL, err.Error())
+	rowCount, err := ie.ExecParsed(ctx, replicatedDeleteOpName, kvTxn, sess, stmt, datums...)
+	if err != nil {
+		log.Dev.Warningf(ctx, "replicated delete failed (query: %s): %s", stmt.SQL, err.Error())
 		return batchStats{}, err
 	}
+	if rowCount != 1 {
+		// NOTE: at this point we don't know if we are updating a tombstone or
+		// if we are losing LWW. UpdateTombstoneAny returns (true, nil) for a
+		// LWW loss, (false, nil) for a successful tombstone update, or
+		// (false, ErrStalePreviousValue) if a live row exists at the key.
+		tu := lww.tombstoneUpdaters[row.TableID]
+		var lwwLoss bool
+		if kvTxn != nil {
+			lwwLoss, err = tu.UpdateTombstoneAny(ctx, kvTxn, row.MvccTimestamp, datums)
+		} else {
+			err = lww.db.KV().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+				var txnErr error
+				lwwLoss, txnErr = tu.UpdateTombstoneAny(ctx, txn, row.MvccTimestamp, datums)
+				return txnErr
+			})
+		}
+		if err != nil {
+			return batchStats{}, err
+		}
+		if lwwLoss {
+			return batchStats{kvWriteTooOld: 1}, nil
+		}
+		return batchStats{}, nil
+	}
 	return batchStats{}, nil
+}
+
+func (lww *lwwQuerier) ReleaseLeases(ctx context.Context) {
+	for _, tu := range lww.tombstoneUpdaters {
+		tu.ReleaseLeases(ctx)
+	}
 }
 
 const (
@@ -821,7 +929,8 @@ DELETE FROM [%d as t] WHERE %s
    AND ((t.crdb_internal_mvcc_timestamp < $%[3]d
         AND t.crdb_internal_origin_timestamp IS NULL)
     OR (t.crdb_internal_origin_timestamp < $%[3]d
-        AND t.crdb_internal_origin_timestamp IS NOT NULL))`
+        AND t.crdb_internal_origin_timestamp IS NOT NULL))
+RETURNING *`
 	stmt, err := parser.ParseOne(
 		fmt.Sprintf(baseQuery, dstTableDescID, whereClause.String(), originTSIdx))
 	if err != nil {

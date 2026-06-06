@@ -1,4 +1,9 @@
-# LogicTest: !3node-tenant-default-configs !local-mixed-24.3
+# LogicTest: !3node-tenant-default-configs !local-prepared
+# cluster-opt: enable-prepared-transactions-unsafe
+
+# This test uses the enable-prepared-transactions-unsafe cluster-opt to bypass
+# the unsafe setting interlock, since the setting cannot be changed via SET
+# CLUSTER SETTING without the interlock dance.
 
 query T
 SHOW max_prepared_transactions
@@ -148,7 +153,7 @@ NoTxn
 statement ok
 COMMIT PREPARED 'duplicate'
 
-# Verify the intent for a=2 has been commited and the intent for a=3 has been
+# Verify the intent for a=2 has been committed and the intent for a=3 has been
 # rolled back.
 query I
 SELECT * FROM t ORDER BY a

@@ -23,8 +23,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationtestutils"
-	"github.com/cockroachdb/cockroach/pkg/roachprod"
-	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
@@ -41,10 +39,11 @@ func registerLDRMixedVersions(r registry.Registry) {
 
 	r.Add(registry.TestSpec{
 		Name:             "ldr/mixed-version",
-		Owner:            registry.OwnerDisasterRecovery,
+		Owner:            registry.OwnerCDC,
 		Cluster:          r.MakeClusterSpec(sp.leftNodes+sp.rightNodes+1, spec.WorkloadNode()),
 		CompatibleClouds: registry.OnlyGCE,
 		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
+		Monitor:          true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runLDRMixedVersions(ctx, t, c, sp)
 		},
@@ -53,8 +52,8 @@ func registerLDRMixedVersions(r registry.Registry) {
 
 func runLDRMixedVersions(ctx context.Context, t test.Test, c cluster.Cluster, sp multiClusterSpec) {
 	lm := InitLDRMixed(ctx, t, c, sp)
-	lm.SetupHook(ctx)
-	lm.WorkloadHook(ctx)
+	lm.SetupHook(ctx, t)
+	lm.WorkloadHook(ctx, t)
 	lm.LatencyHook(ctx)
 	lm.UpdateHook(ctx)
 	lm.Run(t)
@@ -75,6 +74,7 @@ func InitLDRMixed(
 		mixedversion.NumUpgrades(expectedMajorUpgrades),
 		mixedversion.WithTag("left"),
 		mixedversion.WithSkipVersionProbability(0),
+		mixedversion.WithWorkloadNodes(c.WorkloadNode()),
 	)
 
 	rightMvt := mixedversion.NewTest(ctx, t, t.L(), c, sp.RightNodesList(),
@@ -83,6 +83,7 @@ func InitLDRMixed(
 		mixedversion.NumUpgrades(expectedMajorUpgrades),
 		mixedversion.WithTag("right"),
 		mixedversion.WithSkipVersionProbability(0),
+		mixedversion.WithWorkloadNodes(c.WorkloadNode()),
 	)
 
 	return &ldrMixed{
@@ -95,8 +96,10 @@ func InitLDRMixed(
 	}
 }
 
-func workloadInitCmd(nodes option.NodeListOption, initRows int) *roachtestutil.Command {
-	return roachtestutil.NewCommand(`./cockroach workload init kv`).
+func workloadInitCmd(
+	nodes option.NodeListOption, initRows int, h *mixedversion.Helper, t test.Test,
+) *roachtestutil.Command {
+	return roachtestutil.NewCommand(`%s workload init kv`, h.VersionedCockroachPath(t)).
 		MaybeFlag(initRows > 0, "insert-count", initRows).
 		// Only set the max block byte values for the init command if we
 		// actually need to insert rows.
@@ -156,15 +159,7 @@ func (lm *ldrMixed) commonSetup(
 	}
 
 	node, _ := h.RandomDB(r)
-	settings := install.MakeClusterSettings()
-	addr, err := lm.c.ExternalPGUrl(ctx, l, lm.c.Node(node), roachprod.PGURLOptions{
-		VirtualClusterName: h.DefaultService().Descriptor.Name,
-	})
-	if err != nil {
-		return "", err
-	}
-
-	pgURL, err := copyPGCertsAndMakeURL(ctx, lm.t, lm.c, lm.c.Node(node), settings.PGUrlCertsDir, addr[0])
+	pgURL, err := makeInlineCertsURL(ctx, lm.t, l, lm.c, lm.c.Node(node))
 	if err != nil {
 		return "", err
 	}
@@ -181,7 +176,7 @@ var externalConnCmd = "CREATE EXTERNAL CONNECTION IF NOT EXISTS '%s' AS '%s'"
 // - Wait for this initial scan to complete
 // - Begin stream from left to right (with init scan)
 // - Wait for this initial scan to complete
-func (lm *ldrMixed) SetupHook(ctx context.Context) {
+func (lm *ldrMixed) SetupHook(ctx context.Context, t test.Test) {
 	rightPGURLChan := make(chan string)
 	leftPGURLChan := make(chan string)
 	righInitialScanComplete := make(chan struct{})
@@ -190,7 +185,7 @@ func (lm *ldrMixed) SetupHook(ctx context.Context) {
 		func(ctx context.Context, l *logger.Logger, r *rand.Rand, h *mixedversion.Helper) error {
 			close(lm.leftStartedChan)
 
-			initCmd := workloadInitCmd(lm.sp.LeftNodesList(), 1000)
+			initCmd := workloadInitCmd(lm.sp.LeftNodesList(), 1000, h, t)
 			leftPGURL, err := lm.commonSetup(ctx, l, r, h, initCmd)
 			if err != nil {
 				return err
@@ -224,7 +219,7 @@ func (lm *ldrMixed) SetupHook(ctx context.Context) {
 
 	lm.rightMvt.OnStartup("setup",
 		func(ctx context.Context, l *logger.Logger, r *rand.Rand, h *mixedversion.Helper) error {
-			initCmd := workloadInitCmd(lm.sp.RightNodesList(), 0)
+			initCmd := workloadInitCmd(lm.sp.RightNodesList(), 0, h, t)
 			rightPGURL, err := lm.commonSetup(ctx, l, r, h, initCmd)
 			if err != nil {
 				return err
@@ -255,7 +250,7 @@ func (lm *ldrMixed) SetupHook(ctx context.Context) {
 		})
 }
 
-func (lm *ldrMixed) WorkloadHook(ctx context.Context) {
+func (lm *ldrMixed) WorkloadHook(ctx context.Context, t test.Test) {
 	leftWorkloadCmd := workloadRunCmd(lm.sp.LeftNodesList())
 	lm.leftWorkloadStopper = lm.leftMvt.Workload("kv", lm.c.WorkloadNode(), nil, leftWorkloadCmd)
 
@@ -454,9 +449,9 @@ func (lm *ldrMixed) WaitForReplicatedTime(
 			return err
 		}
 		if !(replicatedTime.Valid && replicatedTime.Time.After(targetTime)) {
-			return errors.Newf("replicated time %s not yet at %s", replicatedTime, targetTime)
+			return errors.Newf("replicated time %+v not yet at %s", replicatedTime, targetTime)
 		}
-		lm.t.L().Printf("replicated time is now %s, past %s", replicatedTime, targetTime)
+		lm.t.L().Printf("replicated time is now %+v, past %+v", replicatedTime, targetTime)
 
 		return nil
 	}, timeout)

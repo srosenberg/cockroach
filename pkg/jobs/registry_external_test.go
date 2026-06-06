@@ -81,9 +81,15 @@ func TestExpiringSessionsAndClaimJobsDoesNotTouchTerminalJobs(t *testing.T) {
 	// Don't adopt, cancel rapidly.
 	adopt := 10 * time.Hour
 	cancel := 10 * time.Millisecond
-	args := base.TestServerArgs{Knobs: base.TestingKnobs{
-		JobsTestingKnobs: jobs.NewTestingKnobsWithIntervals(adopt, cancel, adopt, adopt),
-	}}
+	args := base.TestServerArgs{
+		// Under a secondary tenant, s.SQLLivenessProvider() may return a
+		// different session than the one used by the tenant's job registry to
+		// claim jobs, causing the claim_session_id check to fail.
+		DefaultTestTenant: base.TestIsForStuffThatShouldWorkWithSecondaryTenantsButDoesntYet(167929),
+		Knobs: base.TestingKnobs{
+			JobsTestingKnobs: jobs.NewTestingKnobsWithIntervals(adopt, cancel, adopt, adopt),
+		},
+	}
 
 	ctx := context.Background()
 	s, sqlDB, _ := serverutils.StartServer(t, args)
@@ -211,7 +217,7 @@ func TestRegistrySettingUpdate(t *testing.T) {
 			name:       "adopt setting",
 			setting:    jobs.AdoptIntervalSettingKey,
 			value:      shortDuration,
-			matchStmt:  jobs.AdoptQuery,
+			matchStmt:  jobs.GetAdoptableQuery,
 			initCount:  0,
 			toOverride: jobs.AdoptIntervalSetting,
 		},
@@ -219,7 +225,7 @@ func TestRegistrySettingUpdate(t *testing.T) {
 			name:       "adopt setting with base",
 			setting:    jobs.IntervalBaseSettingKey,
 			value:      shortDurationBase,
-			matchStmt:  jobs.AdoptQuery,
+			matchStmt:  jobs.GetAdoptableQuery,
 			initCount:  0,
 			toOverride: jobs.AdoptIntervalSetting,
 		},
@@ -287,12 +293,19 @@ func TestRegistrySettingUpdate(t *testing.T) {
 			// the job interval to a short duration.
 			cs := clusterSettings(ctx, test.toOverride)
 			args := base.TestServerArgs{
-				Settings: cs,
-				Knobs:    base.TestingKnobs{SQLExecutor: &sql.ExecutorTestingKnobs{StatementFilter: stmtFilter}},
+				// Under a secondary tenant, the cancel loop runs extra times
+				// during initialization, causing the exact initCount checks
+				// to fail.
+				DefaultTestTenant: base.TestIsForStuffThatShouldWorkWithSecondaryTenantsButDoesntYet(167929),
+				Settings:          cs,
+				Knobs:             base.TestingKnobs{SQLExecutor: &sql.ExecutorTestingKnobs{StatementFilter: stmtFilter}},
 			}
 			s, sdb, _ := serverutils.StartServer(t, args)
 			defer s.Stopper().Stop(ctx)
 			tdb := sqlutils.MakeSQLRunner(sdb)
+
+			// Enable SELECT FOR UPDATE in claim query.
+			tdb.Exec(t, "SET CLUSTER SETTING jobs.registry.claim_query.select_for_update.enabled = true")
 
 			// Wait for the initial job runs to finish.
 			testutils.SucceedsSoon(t, func() error {

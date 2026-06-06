@@ -10,6 +10,7 @@ import (
 	"context"
 	b64 "encoding/base64"
 	"encoding/binary"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/geo/geopb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -26,15 +27,17 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
 	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/base64"
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil"
+	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/errors"
 )
 
 func init() {
-	if numOperators != 65 {
+	if numOperators != 67 {
 		// This error occurs when an operator has been added or removed in
 		// pkg/sql/opt/exec/explain/factory.opt. If an operator is added at the
 		// end of factory.opt, simply adjust the hardcoded value above. If an
@@ -177,21 +180,7 @@ type planGistDecoder struct {
 func DecodePlanGistToRows(
 	ctx context.Context, evalCtx *eval.Context, gist string, catalog cat.Catalog,
 ) (_ []string, retErr error) {
-	defer func() {
-		if r := recover(); r != nil {
-			// This code allows us to propagate internal errors without having
-			// to add error checks everywhere throughout the code. This is only
-			// possible because the code does not update shared state and does
-			// not manipulate locks.
-			if ok, e := errorutil.ShouldCatch(r); ok {
-				retErr = e
-			} else {
-				// Other panic objects can't be considered "safe" and thus are
-				// propagated as crashes that terminate the session.
-				panic(r)
-			}
-		}
-	}()
+	defer errorutil.MaybeCatchPanic(&retErr, nil /* errCallback */)
 
 	flags := Flags{HideValues: true, Deflake: DeflakeAll, OnlyShape: true}
 	ob := NewOutputBuilder(flags)
@@ -309,10 +298,12 @@ func (d *planGistDecoder) decodeID() cat.StableID {
 }
 
 func (d *planGistDecoder) decodeTable() cat.Table {
+	// We need to consume the ID even if we don't have the catalog to actually
+	// decode the table.
+	id := d.decodeID()
 	if d.catalog == nil {
 		return &unknownTable{}
 	}
-	id := d.decodeID()
 	// TODO(mgartner): Do not use the background context.
 	ds, _, err := d.catalog.ResolveDataSourceByID(context.Background(), cat.Flags{}, id)
 	if err == nil {
@@ -643,8 +634,18 @@ func (u *unknownTable) HomeRegionColName() (colName string, ok bool) {
 	return "", false
 }
 
+// RegionalByRowUsingConstraint is part of the cat.Table interface.
+func (ot *unknownTable) RegionalByRowUsingConstraint() cat.ForeignKeyConstraint {
+	return nil
+}
+
 // GetDatabaseID is part of the cat.Table interface.
 func (u *unknownTable) GetDatabaseID() descpb.ID {
+	return 0
+}
+
+// GetSchemaID is part of the cat.Table interface.
+func (u *unknownTable) GetSchemaID() descpb.ID {
 	return 0
 }
 
@@ -671,6 +672,15 @@ func (u *unknownTable) IsRowLevelSecurityForced() bool { return false }
 
 // Policies is part of the cat.Table interface.
 func (u *unknownTable) Policies() *cat.Policies { return nil }
+
+// CanaryAndStableStatsDiffer is part of the cat.Table interface.
+func (u *unknownTable) CanaryAndStableStatsDiffer() bool { return false }
+
+// StatsCanaryWindow is part of the cat.Table interface.
+func (u *unknownTable) StatsCanaryWindow() time.Duration { return 0 }
+
+// CanaryExpiration is part of the cat.Table interface.
+func (u *unknownTable) CanaryExpiration() hlc.Timestamp { return hlc.Timestamp{} }
 
 var _ cat.Table = &unknownTable{}
 
@@ -781,6 +791,10 @@ func (u *unknownIndex) GeoConfig() geopb.Config {
 	return geopb.Config{}
 }
 
+func (u *unknownIndex) VecConfig() *vecpb.Config {
+	return nil
+}
+
 func (u *unknownIndex) Version() descpb.IndexDescriptorVersion {
 	return descpb.LatestIndexDescriptorVersion
 }
@@ -791,6 +805,10 @@ func (u *unknownIndex) PartitionCount() int {
 
 func (u *unknownIndex) Partition(i int) cat.Partition {
 	panic(errors.AssertionFailedf("not implemented"))
+}
+
+func (u *unknownIndex) IsTemporaryIndexForBackfill() bool {
+	return false
 }
 
 var _ cat.Index = &unknownIndex{}

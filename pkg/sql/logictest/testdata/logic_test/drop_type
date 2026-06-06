@@ -1,7 +1,7 @@
 statement ok
 SET sql_safe_updates = false;
 
-onlyif config local-legacy-schema-changer local-mixed-24.3
+onlyif config local-legacy-schema-changer
 statement ok
 SET enable_experimental_alter_column_type_general = true;
 
@@ -224,6 +224,10 @@ CREATE TYPE t4 AS ENUM ('cheers')
 statement ok
 SET autocommit_before_ddl = false;
 
+skipif config schema-locked-disabled
+statement ok
+ALTER TABLE expr SET (schema_locked=false)
+
 statement ok
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 ALTER TABLE expr ADD COLUMN x BOOL DEFAULT ('hello'::t1 = 'hello'::t1)
@@ -266,6 +270,10 @@ ROLLBACK
 
 statement ok
 RESET autocommit_before_ddl
+
+skipif config schema-locked-disabled
+statement ok
+ALTER TABLE expr RESET (schema_locked)
 
 # Now add all of the schema elements.
 statement ok
@@ -328,7 +336,13 @@ statement ok
 INSERT INTO tab VALUES ('hello');
 
 statement ok
+ALTER TABLE tab SET (schema_locked=false);
+
+statement ok
 TRUNCATE TABLE tab
+
+statement ok
+ALTER TABLE tab RESET (schema_locked);
 
 statement error pq: cannot drop type "ty" because other objects \(\[test.public.tab\]\) still depend on it
 DROP TYPE ty
@@ -520,7 +534,7 @@ CREATE TYPE db1.sc1.typ AS ENUM ('a');
 statement ok
 SET CLUSTER SETTING jobs.debug.pausepoints="typeschemachanger.before.exec"
 
-skipif config local-legacy-schema-changer
+onlyif config local-mixed-25.4 local-mixed-26.1 local-mixed-26.2
 statement error job \d+ was paused before it completed with reason: pause point "typeschemachanger.before.exec" hit
 ALTER TYPE db1.sc1.typ OWNER TO testuser
 
@@ -537,11 +551,27 @@ DROP SCHEMA db1.sc1 CASCADE
 statement ok
 SET CLUSTER SETTING jobs.debug.pausepoints=""
 
+onlyif config local-legacy-schema-changer local-mixed-25.4 local-mixed-26.1 local-mixed-26.2
 statement ok
 RESUME JOB (SELECT job_id FROM crdb_internal.jobs WHERE description LIKE 'ALTER TYPE%' AND status='paused' FETCH FIRST 1 ROWS ONLY);
 
+onlyif config local-legacy-schema-changer local-mixed-25.4 local-mixed-26.1 local-mixed-26.2
 statement ok
 RESUME JOB (SELECT job_id FROM crdb_internal.jobs WHERE description LIKE 'ALTER TYPE%' AND status='paused' FETCH FIRST 1 ROWS ONLY);
 
 statement ok
 RESUME JOB (SELECT job_id FROM crdb_internal.jobs WHERE description LIKE 'DROP SCHEMA%' AND status='paused' FETCH FIRST 1 ROWS ONLY);
+
+# Regression test for #64398: Test both schemachangers error on the built-in rather than the bad schema.
+subtest regression_64398
+
+statement error pgcode 42809 type "geometry" is a built-in type
+DROP TYPE noexist.geometry
+
+statement error pgcode 42809 type "geometry" is a built-in type
+DROP TYPE noexist.public.geometry
+
+statement ok
+DROP TYPE IF EXISTS noexist.geometry
+
+subtest end

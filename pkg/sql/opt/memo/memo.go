@@ -9,6 +9,7 @@ package memo
 import (
 	"bytes"
 	"context"
+	"reflect"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/isolation"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt"
@@ -16,7 +17,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/props"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/props/physical"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlclustersettings"
 	"github.com/cockroachdb/cockroach/pkg/util/duration"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil/pgdate"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -132,7 +135,7 @@ type Memo struct {
 	// rootExpr is the root expression of the memo expression forest. It is set
 	// via a call to SetRoot. After optimization, it is set to be the root of the
 	// lowest cost tree in the forest.
-	rootExpr opt.Expr
+	rootExpr RelExpr
 
 	// rootProps are the physical properties required of the root memo expression.
 	// It is set via a call to SetRoot.
@@ -143,8 +146,6 @@ type Memo struct {
 
 	// The following are selected fields from SessionData which can affect
 	// planning. We need to cross-check these before reusing a cached memo.
-	// NOTE: If you add new fields here, be sure to add them to the relevant
-	//       fields in explain_bundle.go.
 	reorderJoinsLimit                          int
 	zigzagJoinEnabled                          bool
 	useForecasts                               bool
@@ -169,6 +170,7 @@ type Memo struct {
 	testingOptimizerRandomSeed                 int64
 	testingOptimizerCostPerturbation           float64
 	testingOptimizerDisableRuleProbability     float64
+	disableOptimizerRules                      []string
 	enforceHomeRegion                          bool
 	variableInequalityLookupJoinEnabled        bool
 	allowOrdinalColumnReferences               bool
@@ -192,6 +194,7 @@ type Memo struct {
 	useImprovedTrigramSimilaritySelectivity    bool
 	trigramSimilarityThreshold                 float64
 	splitScanLimit                             int32
+	spanLimit                                  int32
 	useImprovedZigzagJoinCosting               bool
 	useImprovedMultiColumnSelectivityEstimate  bool
 	proveImplicationWithVirtualComputedCols    bool
@@ -205,18 +208,65 @@ type Memo struct {
 	minRowCount                                float64
 	checkInputMinRowCount                      float64
 	planLookupJoinsWithReverseScans            bool
+	useInsertFastPath                          bool
 	internal                                   bool
+	usePre_25_2VariadicBuiltins                bool
+	useExistsFilterHoistRule                   bool
+	disableSlowCascadeFastPathForRBRTables     bool
+	useImprovedHoistJoinProject                bool
+	rowSecurity                                bool
+	clampLowHistogramSelectivity               bool
+	clampInequalitySelectivity                 bool
+	useMaxFrequencySelectivity                 bool
+	usingHintInjection                         bool
+	useSwapMutations                           bool
+	preventUpdateSetColumnDrop                 bool
+	useImprovedRoutineDepsTriggersComputedCols bool
+	inlineAnyUnnestSubquery                    bool
+	inlinePlaceholderEqualities                bool
+	useMinRowCountAntiJoinFix                  bool
+	useBackupsWithIDs                          bool
+	pgDumpCompatibility                        string
+	// builtWithStatsRollout records the stats rollout mode under which
+	// this memo was built.
+	//
+	// Motivation: consider PREPARE with StatsRolloutStable, then SET
+	// canary_fraction = 0 (making the rollout mode Default), then
+	// EXECUTE. Without this field the prepared memo would be silently
+	// reused even though it was planned against different (older) stats.
+	//
+	// IsStale uses this field to detect Default↔Stable transitions and
+	// invalidate the memo so it is rebuilt with the correct stats.
+	//
+	// Canary↔Default is not stale because both use the newest stats.
+	//
+	// Canary↔Stable is not checked here because a canary-built memo is
+	// only cached when canary and stable stats are identical (the
+	// write-side guard prevents caching otherwise). The Stable→Canary
+	// direction is handled by the read-side guard
+	// (skipMemoReuseForCanaryExec).
+	builtWithStatsRollout eval.StatsRolloutSelection
 
 	// txnIsoLevel is the isolation level under which the plan was created. This
 	// affects the planning of some locking operations, so it must be included in
 	// memo staleness calculation.
 	txnIsoLevel isolation.Level
 
+	// skipUnderlyingViewPrivilegeChecks is the value of the
+	// SkipUnderlyingViewPrivilegeChecks cluster setting when the memo was
+	// created. This setting affects which privileges are checked when building
+	// view queries, so the memo must be invalidated when it changes.
+	skipUnderlyingViewPrivilegeChecks bool
+
 	// curRank is the highest currently in-use scalar expression rank.
 	curRank opt.ScalarRank
 
 	// curWithID is the highest currently in-use WITH ID.
 	curWithID opt.WithID
+
+	// curRoutineResultBufferID is the highest currently in-use routine result
+	// buffer ID. See the RoutineResultBufferID comment for more details.
+	curRoutineResultBufferID RoutineResultBufferID
 
 	newGroupFn func(opt.Expr)
 
@@ -226,6 +276,10 @@ type Memo struct {
 	// set to true for the optsteps test command to prevent CheckExpr from
 	// erring with partially normalized expressions.
 	disableCheckExpr bool
+
+	// optimizationStats tracks decisions made during optimization, for example,
+	// to clamp selectivity estimates to a lower bound.
+	optimizationStats OptimizationStats
 
 	// WARNING: if you add more members, add initialization code in Init (if
 	// reusing allocated data structures is desired).
@@ -266,6 +320,7 @@ func (m *Memo) Init(ctx context.Context, evalCtx *eval.Context) {
 		testingOptimizerRandomSeed:                 evalCtx.SessionData().TestingOptimizerRandomSeed,
 		testingOptimizerCostPerturbation:           evalCtx.SessionData().TestingOptimizerCostPerturbation,
 		testingOptimizerDisableRuleProbability:     evalCtx.SessionData().TestingOptimizerDisableRuleProbability,
+		disableOptimizerRules:                      evalCtx.SessionData().DisableOptimizerRules,
 		enforceHomeRegion:                          evalCtx.SessionData().EnforceHomeRegion,
 		variableInequalityLookupJoinEnabled:        evalCtx.SessionData().VariableInequalityLookupJoinEnabled,
 		allowOrdinalColumnReferences:               evalCtx.SessionData().AllowOrdinalColumnReferences,
@@ -289,6 +344,7 @@ func (m *Memo) Init(ctx context.Context, evalCtx *eval.Context) {
 		useImprovedTrigramSimilaritySelectivity:    evalCtx.SessionData().OptimizerUseImprovedTrigramSimilaritySelectivity,
 		trigramSimilarityThreshold:                 evalCtx.SessionData().TrigramSimilarityThreshold,
 		splitScanLimit:                             evalCtx.SessionData().OptSplitScanLimit,
+		spanLimit:                                  evalCtx.SessionData().OptimizerSpanLimit,
 		useImprovedZigzagJoinCosting:               evalCtx.SessionData().OptimizerUseImprovedZigzagJoinCosting,
 		useImprovedMultiColumnSelectivityEstimate:  evalCtx.SessionData().OptimizerUseImprovedMultiColumnSelectivityEstimate,
 		proveImplicationWithVirtualComputedCols:    evalCtx.SessionData().OptimizerProveImplicationWithVirtualComputedColumns,
@@ -302,8 +358,28 @@ func (m *Memo) Init(ctx context.Context, evalCtx *eval.Context) {
 		minRowCount:                                evalCtx.SessionData().OptimizerMinRowCount,
 		checkInputMinRowCount:                      evalCtx.SessionData().OptimizerCheckInputMinRowCount,
 		planLookupJoinsWithReverseScans:            evalCtx.SessionData().OptimizerPlanLookupJoinsWithReverseScans,
+		useInsertFastPath:                          evalCtx.SessionData().InsertFastPath,
 		internal:                                   evalCtx.SessionData().Internal,
+		usePre_25_2VariadicBuiltins:                evalCtx.SessionData().UsePre_25_2VariadicBuiltins,
+		useExistsFilterHoistRule:                   evalCtx.SessionData().OptimizerUseExistsFilterHoistRule,
+		disableSlowCascadeFastPathForRBRTables:     evalCtx.SessionData().OptimizerDisableCrossRegionCascadeFastPathForRBRTables,
+		useImprovedHoistJoinProject:                evalCtx.SessionData().OptimizerUseImprovedHoistJoinProject,
+		rowSecurity:                                evalCtx.SessionData().RowSecurity,
+		clampLowHistogramSelectivity:               evalCtx.SessionData().OptimizerClampLowHistogramSelectivity,
+		clampInequalitySelectivity:                 evalCtx.SessionData().OptimizerClampInequalitySelectivity,
+		useMaxFrequencySelectivity:                 evalCtx.SessionData().OptimizerUseMaxFrequencySelectivity,
+		usingHintInjection:                         evalCtx.Planner != nil && evalCtx.Planner.UsingHintInjection(),
+		useSwapMutations:                           evalCtx.SessionData().UseSwapMutations,
+		preventUpdateSetColumnDrop:                 evalCtx.SessionData().PreventUpdateSetColumnDrop,
+		useImprovedRoutineDepsTriggersComputedCols: evalCtx.SessionData().UseImprovedRoutineDepsTriggersAndComputedCols,
+		inlineAnyUnnestSubquery:                    evalCtx.SessionData().OptimizerInlineAnyUnnestSubquery,
+		inlinePlaceholderEqualities:                evalCtx.SessionData().OptimizerInlinePlaceholderEqualities,
+		useMinRowCountAntiJoinFix:                  evalCtx.SessionData().OptimizerUseMinRowCountAntiJoinFix,
+		skipUnderlyingViewPrivilegeChecks:          sqlclustersettings.SkipUnderlyingViewPrivilegeChecks.Get(&evalCtx.Settings.SV),
 		txnIsoLevel:                                evalCtx.TxnIsoLevel,
+		useBackupsWithIDs:                          evalCtx.SessionData().UseBackupsWithIDs,
+		pgDumpCompatibility:                        evalCtx.SessionData().PgDumpCompatibility,
+		builtWithStatsRollout:                      evalCtx.StatsRollout,
 	}
 	m.metadata.Init()
 	m.logPropsBuilder.init(ctx, evalCtx, m)
@@ -356,7 +432,7 @@ func (m *Memo) Metadata() *opt.Metadata {
 
 // RootExpr returns the root memo expression previously set via a call to
 // SetRoot.
-func (m *Memo) RootExpr() opt.Expr {
+func (m *Memo) RootExpr() RelExpr {
 	return m.rootExpr
 }
 
@@ -385,12 +461,7 @@ func (m *Memo) SetRoot(e RelExpr, phys *physical.Required) {
 // HasPlaceholders returns true if the memo contains at least one placeholder
 // operator.
 func (m *Memo) HasPlaceholders() bool {
-	rel, ok := m.rootExpr.(RelExpr)
-	if !ok {
-		panic(errors.AssertionFailedf("placeholders only supported when memo root is relational"))
-	}
-
-	return rel.Relational().HasPlaceholder
+	return m.rootExpr.Relational().HasPlaceholder
 }
 
 // IsStale returns true if the memo has been invalidated by changes to any of
@@ -440,6 +511,7 @@ func (m *Memo) IsStale(
 		m.testingOptimizerRandomSeed != evalCtx.SessionData().TestingOptimizerRandomSeed ||
 		m.testingOptimizerCostPerturbation != evalCtx.SessionData().TestingOptimizerCostPerturbation ||
 		m.testingOptimizerDisableRuleProbability != evalCtx.SessionData().TestingOptimizerDisableRuleProbability ||
+		!reflect.DeepEqual(m.disableOptimizerRules, evalCtx.SessionData().DisableOptimizerRules) ||
 		m.enforceHomeRegion != evalCtx.SessionData().EnforceHomeRegion ||
 		m.variableInequalityLookupJoinEnabled != evalCtx.SessionData().VariableInequalityLookupJoinEnabled ||
 		m.allowOrdinalColumnReferences != evalCtx.SessionData().AllowOrdinalColumnReferences ||
@@ -463,6 +535,7 @@ func (m *Memo) IsStale(
 		m.useImprovedTrigramSimilaritySelectivity != evalCtx.SessionData().OptimizerUseImprovedTrigramSimilaritySelectivity ||
 		m.trigramSimilarityThreshold != evalCtx.SessionData().TrigramSimilarityThreshold ||
 		m.splitScanLimit != evalCtx.SessionData().OptSplitScanLimit ||
+		m.spanLimit != evalCtx.SessionData().OptimizerSpanLimit ||
 		m.useImprovedZigzagJoinCosting != evalCtx.SessionData().OptimizerUseImprovedZigzagJoinCosting ||
 		m.useImprovedMultiColumnSelectivityEstimate != evalCtx.SessionData().OptimizerUseImprovedMultiColumnSelectivityEstimate ||
 		m.proveImplicationWithVirtualComputedCols != evalCtx.SessionData().OptimizerProveImplicationWithVirtualComputedColumns ||
@@ -476,15 +549,56 @@ func (m *Memo) IsStale(
 		m.minRowCount != evalCtx.SessionData().OptimizerMinRowCount ||
 		m.checkInputMinRowCount != evalCtx.SessionData().OptimizerCheckInputMinRowCount ||
 		m.planLookupJoinsWithReverseScans != evalCtx.SessionData().OptimizerPlanLookupJoinsWithReverseScans ||
+		m.useInsertFastPath != evalCtx.SessionData().InsertFastPath ||
 		m.internal != evalCtx.SessionData().Internal ||
-		m.txnIsoLevel != evalCtx.TxnIsoLevel {
+		m.usePre_25_2VariadicBuiltins != evalCtx.SessionData().UsePre_25_2VariadicBuiltins ||
+		m.useExistsFilterHoistRule != evalCtx.SessionData().OptimizerUseExistsFilterHoistRule ||
+		m.disableSlowCascadeFastPathForRBRTables != evalCtx.SessionData().OptimizerDisableCrossRegionCascadeFastPathForRBRTables ||
+		m.useImprovedHoistJoinProject != evalCtx.SessionData().OptimizerUseImprovedHoistJoinProject ||
+		m.rowSecurity != evalCtx.SessionData().RowSecurity ||
+		m.clampLowHistogramSelectivity != evalCtx.SessionData().OptimizerClampLowHistogramSelectivity ||
+		m.clampInequalitySelectivity != evalCtx.SessionData().OptimizerClampInequalitySelectivity ||
+		m.useMaxFrequencySelectivity != evalCtx.SessionData().OptimizerUseMaxFrequencySelectivity ||
+		m.usingHintInjection != (evalCtx.Planner != nil && evalCtx.Planner.UsingHintInjection()) ||
+		m.useSwapMutations != evalCtx.SessionData().UseSwapMutations ||
+		m.preventUpdateSetColumnDrop != evalCtx.SessionData().PreventUpdateSetColumnDrop ||
+		m.useImprovedRoutineDepsTriggersComputedCols != evalCtx.SessionData().UseImprovedRoutineDepsTriggersAndComputedCols ||
+		m.inlineAnyUnnestSubquery != evalCtx.SessionData().OptimizerInlineAnyUnnestSubquery ||
+		m.inlinePlaceholderEqualities != evalCtx.SessionData().OptimizerInlinePlaceholderEqualities ||
+		m.useMinRowCountAntiJoinFix != evalCtx.SessionData().OptimizerUseMinRowCountAntiJoinFix ||
+		m.skipUnderlyingViewPrivilegeChecks != sqlclustersettings.SkipUnderlyingViewPrivilegeChecks.Get(&evalCtx.Settings.SV) ||
+		m.txnIsoLevel != evalCtx.TxnIsoLevel ||
+		m.useBackupsWithIDs != evalCtx.SessionData().UseBackupsWithIDs ||
+		m.pgDumpCompatibility != evalCtx.SessionData().PgDumpCompatibility {
+		log.VEventf(ctx, 1, "memo is stale: session settings changed")
+		return true, nil
+	}
+
+	// Memo is stale if the stats rollout mode changed between Default and
+	// Stable. Default uses the newest stats while Stable uses the
+	// second-newest (older-generation) stats. Switching between these
+	// modes (e.g. canary_fraction going from >0 to 0 or vice versa)
+	// means the memo was planned against the wrong stats.
+	//
+	// Canary↔Default is not stale because both use the newest stats.
+	//
+	// Canary↔Stable is not checked here. A canary-built memo is only
+	// cached when canary and stable stats are identical (the write-side
+	// guard prevents caching otherwise), so reuse is correct. The
+	// Stable→Canary direction is handled by the read-side guard
+	// (skipMemoReuseForCanaryExec) which skips the memo without
+	// evicting it, avoiding cache thrashing.
+	if (m.builtWithStatsRollout == eval.StatsRolloutStable && evalCtx.StatsRollout == eval.StatsRolloutDefault) ||
+		(m.builtWithStatsRollout == eval.StatsRolloutDefault && evalCtx.StatsRollout == eval.StatsRolloutStable) {
+		log.VEventf(ctx, 1, "memo is stale: stats rollout mode changed")
 		return true, nil
 	}
 
 	// Memo is stale if the fingerprint of any object in the memo's metadata has
 	// changed, or if the current user no longer has sufficient privilege to
 	// access the object.
-	if depsUpToDate, err := m.Metadata().CheckDependencies(ctx, evalCtx, catalog); err != nil || !depsUpToDate {
+	if reason, err := m.Metadata().CheckDependencies(ctx, evalCtx, catalog); err != nil || reason != "" {
+		log.VEventf(ctx, 1, "memo is stale: %s", reason)
 		return true, err
 	}
 	return false, nil
@@ -541,8 +655,7 @@ func (m *Memo) ResetCost(e RelExpr, cost Cost) {
 func (m *Memo) IsOptimized() bool {
 	// The memo is optimized once the root expression has its physical properties
 	// assigned.
-	rel, ok := m.rootExpr.(RelExpr)
-	return ok && rel.RequiredPhysical() != nil
+	return m.rootExpr != nil && m.rootExpr.RequiredPhysical() != nil
 }
 
 // OptimizationCost returns a rough estimate of the cost of optimization of the
@@ -562,14 +675,12 @@ func (m *Memo) NextRank() opt.ScalarRank {
 	return m.curRank
 }
 
-// CopyNextRankFrom copies the next ScalarRank from the other memo.
-func (m *Memo) CopyNextRankFrom(other *Memo) {
+// CopyRankAndIDsFrom copies the next ScalarRank, WithID, and
+// RoutineResultBufferID from the other memo.
+func (m *Memo) CopyRankAndIDsFrom(other *Memo) {
 	m.curRank = other.curRank
-}
-
-// CopyNextWithIDFrom copies the next WithID from the other memo.
-func (m *Memo) CopyNextWithIDFrom(other *Memo) {
 	m.curWithID = other.curWithID
+	m.curRoutineResultBufferID = other.curRoutineResultBufferID
 }
 
 // RequestColStat calculates and returns the column statistic calculated on the
@@ -613,11 +724,20 @@ func (m *Memo) NextWithID() opt.WithID {
 	return m.curWithID
 }
 
+// NextRoutineResultBufferID returns a not-yet-assigned identifier for the
+// result buffer of a PL/pgSQL set-returning function.
+func (m *Memo) NextRoutineResultBufferID() RoutineResultBufferID {
+	m.curRoutineResultBufferID++
+	return m.curRoutineResultBufferID
+}
+
 // Detach is used when we detach a memo that is to be reused later (either for
 // execbuilding or with AssignPlaceholders). New expressions should no longer be
 // constructed in this memo.
 func (m *Memo) Detach() {
 	m.interner = interner{}
+	m.replacer = nil
+
 	// It is important to not hold on to the EvalCtx in the logicalPropsBuilder
 	// (#57059).
 	m.logPropsBuilder = logicalPropsBuilder{}
@@ -668,6 +788,25 @@ func (m *Memo) FormatExpr(expr opt.Expr) string {
 	)
 	f.FormatExpr(expr)
 	return f.Buffer.String()
+}
+
+// OptimizationStats surfaces information about choices made during optimization
+// of a query for top-level observability (e.g. metrics, EXPLAIN output).
+type OptimizationStats struct {
+	// ClampedHistogramSelectivity is true if the selectivity estimate based on a
+	// histogram was prevented from dropping too low. See also the session var
+	// "optimizer_clamp_low_histogram_selectivity".
+	ClampedHistogramSelectivity bool
+	// ClampedInequalitySelectivity is true if the selectivity estimate for an
+	// inequality unbounded on one or both sides was prevented from dropping too
+	// low. See also the session var "optimizer_clamp_inequality_selectivity".
+	ClampedInequalitySelectivity bool
+}
+
+// GetOptimizationStats returns the OptimizationStats collected during a
+// previous optimization pass.
+func (m *Memo) GetOptimizationStats() *OptimizationStats {
+	return &m.optimizationStats
 }
 
 // ValuesContainer lets ValuesExpr and LiteralValuesExpr share code.

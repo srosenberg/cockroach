@@ -134,7 +134,7 @@ word $
 error
 $.1e
 ----
-at or near "invalid floating point literal": syntax error
+lexical error: invalid floating point literal
 DETAIL: source SQL:
 $.1e
   ^
@@ -162,7 +162,7 @@ $."2e"
 error
 $.2e
 ----
-at or near "invalid floating point literal": syntax error
+lexical error: invalid floating point literal
 DETAIL: source SQL:
 $.2e
   ^
@@ -335,69 +335,510 @@ $ == $
 parse
 1 == 1 && 1 != 1
 ----
-((1 == 1) && (1 != 1)) -- normalized!
+(1 == 1 && 1 != 1) -- normalized!
 
 parse
 1 == 1 || 1 != 1
 ----
-((1 == 1) || (1 != 1)) -- normalized!
+(1 == 1 || 1 != 1) -- normalized!
 
 parse
 $.abc ? ($.a[1] > 2)
 ----
-$."abc"?(($."a"[1] > 2)) -- normalized!
+$."abc"?($."a"[1] > 2) -- normalized!
 
-# TODO(normanchenn): this should be not allowed
-parse
+error
 @
 ----
-@
+@ is not allowed in root expressions
 
 parse
 $.a[*] ? (@.b > 100)
 ----
-$."a"[*]?((@."b" > 100)) -- normalized!
+$."a"[*]?(@."b" > 100) -- normalized!
 
 parse
 $.a[*] ? (@.b > 100 || (@.c < 100))
 ----
-$."a"[*]?(((@."b" > 100) || (@."c" < 100))) -- normalized!
+$."a"[*]?(@."b" > 100 || @."c" < 100) -- normalized!
 
-# postgres allows floats as array indexes
-# parse
-# $.abc[1.0]
-# ----
+parse
+1 + 1
+----
+(1 + 1) -- normalized!
 
-# parse
-# $.abc[1.1]
-# ----
+parse
+1 + 1 * 2
+----
+(1 + 1 * 2) -- normalized!
 
-# in postgres this becomes $."a"[1000000000]
-# parse
-# $.abc[1e9]
-# ----
+parse
+1 + 2 - 3 * 4 / 5 % 6
+----
+((1 + 2) - ((3 * 4) / 5) % 6) -- normalized!
 
-# parse
-# $.abc[0.0]
-# ----
+parse
+(1 + 2) * (3 - 4) / 5
+----
+(((1 + 2) * (3 - 4)) / 5) -- normalized!
 
-# postgres allows negatives as array indexes
-# parse
-# $.abc[-0]
-# ----
+parse
+1 * 2 + 3 * 4
+----
+(1 * 2 + 3 * 4) -- normalized!
 
-# parse
-# $.abc[-1.99]
-# ----
+parse
+1 + 2 * (3 - 4) / (5 + 6) - 7 % 8
+----
+((1 + (2 * (3 - 4)) / (5 + 6)) - 7 % 8) -- normalized!
 
-# parse
-# $[1.999999999999999]
-# ----
+parse
+1 * (2 + 3) - 4 / (5 - 6) % 7
+----
+(1 * (2 + 3) - (4 / (5 - 6)) % 7) -- normalized!
+
+parse
+((1 + 2) * 3) - (4 % 5) * 6
+----
+((1 + 2) * 3 - (4 % 5) * 6) -- normalized!
+
+parse
+1 + 2 - 3 + 4 - 5
+----
+((((1 + 2) - 3) + 4) - 5) -- normalized!
+
+parse
+$.c[$.b - $.a]
+----
+$."c"[$."b" - $."a"] -- normalized!
+
+parse
+$.c[$.b - $.a to $.d - $.b]
+----
+$."c"[$."b" - $."a" to $."d" - $."b"] -- normalized!
+
+parse
+"hello" == "hello"
+----
+("hello" == "hello") -- normalized!
+
+parse
+$.a ? (@.b == "string")
+----
+$."a"?(@."b" == "string") -- normalized!
+
+error
+"a" && "b"
+----
+at or near "&": syntax error
+DETAIL: source SQL:
+"a" && "b"
+    ^
+
+parse
+null == null
+----
+(null == null) -- normalized!
+
+parse
+null + null
+----
+(null + null) -- normalized!
+
+error
+!null
+----
+at or near "null": syntax error
+DETAIL: source SQL:
+!null
+ ^
+
+parse
+$.a ? (@.b like_regex "^[aeiou]")
+----
+$."a"?(@."b" like_regex "^[aeiou]") -- normalized!
+
+parse
+$.*
+----
+$.*
+
+parse
+$.abc.*.def.*
+----
+$."abc".*."def".* -- normalized!
+
+parse
+-1
+----
+-1
+
+parse
+- "hello"
+----
+(-"hello") -- normalized!
+
+parse
++ "hello"
+----
+(+"hello") -- normalized!
+
+parse
+- - $.a[2]
+----
+(-(-$."a"[2])) -- normalized!
+
+parse
+1 + 2 * -4
+----
+(1 + 2 * -4) -- normalized!
+
+error
+$ ? (@ like_regex "(invalid pattern")
+----
+at or near ")": syntax error: invalid regular expression: error parsing regexp: missing closing ): `(invalid pattern`
+DETAIL: source SQL:
+$ ? (@ like_regex "(invalid pattern")
+                                    ^
+
+error
+last
+----
+LAST is allowed only in array subscripts
+
+parse
+$[last]
+----
+$[last]
+
+parse
+$[1 to last, last to last]
+----
+$[1 to last,last to last] -- normalized!
+
+parse
+exists($.a)
+----
+exists ($."a") -- normalized!
+
+parse
+$.a ? (exists(@.b) && !exists(@.c))
+----
+$."a"?(exists (@."b") && !(exists (@."c"))) -- normalized!
+
+parse
+(1 + 2 == 3) is unknown
+----
+(1 + 2 == 3) is unknown
+
+parse
+($ < 1) is unknown
+----
+($ < 1) is unknown
+
+parse
+(null like_regex "^he.*$") is unknown
+----
+(null like_regex "^he.*$") is unknown
+
+parse
+$ starts with "abc"
+----
+($ starts with "abc") -- normalized!
+
+parse
+$.a ? (@.b starts with "def")
+----
+$."a"?(@."b" starts with "def") -- normalized!
+
+parse
+$.a starts with $var
+----
+($."a" starts with $"var") -- normalized!
+
+parse
+($.a).b
+----
+$."a"."b" -- normalized!
+
+parse
+(($.a.b).c.d).e.f
+----
+$."a"."b"."c"."d"."e"."f" -- normalized!
+
+parse
+(1 == 1).abc
+----
+(1 == 1)."abc" -- normalized!
+
+parse
+(((1 == 1).a.b == 2).c.d == 3).e.f
+----
+(((1 == 1)."a"."b" == 2)."c"."d" == 3)."e"."f" -- normalized!
+
+error
+($[*] > 2 ? (@ == true)
+----
+at or near "EOF": syntax error
+DETAIL: source SQL:
+($[*] > 2 ? (@ == true)
+                       ^
+
+parse
+$.a.size()
+----
+$."a".size() -- normalized!
+
+parse
+($.a).size()
+----
+$."a".size() -- normalized!
+
+parse
+$.a.type()
+----
+$."a".type() -- normalized!
+
+# Postgres outputs $."abc"[1.0]. This might be a limitation of the apd library.
+parse
+$.abc[1.0]
+----
+$."abc"[1] -- normalized!
+
+parse
+$.abc[1.1]
+----
+$."abc"[1.1] -- normalized!
+
+# Postgres outputs $."abc"[1000000000].
+parse
+$.abc[1e9]
+----
+$."abc"[1E+9] -- normalized!
+
+# Postgres outputs $."abc"[0.0].
+parse
+$.abc[0.0]
+----
+$."abc"[0] -- normalized!
+
+parse
+$.abc[-0]
+----
+$."abc"[0] -- normalized!
+
+parse
+$.abc[-1.99]
+----
+$."abc"[-1.99] -- normalized!
+
+parse
+$[1.999999999999999]
+----
+$[1.999999999999999]
+
+parse
+$[null]
+----
+$[null]
+
+parse
++1
+----
+1 -- normalized!
+
+parse
+++1
+----
+1 -- normalized!
+
+parse
++++1
+----
+1 -- normalized!
+
+parse
+- -1
+----
+1 -- normalized!
+
+parse
+- - -1
+----
+-1 -- normalized!
+
+parse
+(1--123).type()
+----
+(1 - -123).type() -- normalized!
+
+parse
+(1-+-123).type()
+----
+(1 - -123).type() -- normalized!
+
+parse
+(1+-+-123).type()
+----
+(1 + 123).type() -- normalized!
+
+parse
+$.a.abs()
+----
+$."a".abs() -- normalized!
+
+parse
+$.a.floor()
+----
+$."a".floor() -- normalized!
+
+parse
+$.a.ceiling()
+----
+$."a".ceiling() -- normalized!
+
+parse
+"a" like_regex ".*" flag ""
+----
+("a" like_regex ".*") -- normalized!
+
+error
+"a" like_regex ".*" flag " "
+----
+at or near " ": syntax error: unrecognized flag character ' ' in LIKE_REGEX predicate
+DETAIL: source SQL:
+"a" like_regex ".*" flag " "
+                         ^
+
+error
+"a" like_regex ".*" flag "foo"
+----
+at or near "foo": syntax error: unrecognized flag character 'f' in LIKE_REGEX predicate
+DETAIL: source SQL:
+"a" like_regex ".*" flag "foo"
+                         ^
+
+error
+"a" like_regex ".*" flag "x"
+----
+at or near "x": syntax error: XQuery "x" flag (expanded regular expressions) is not implemented
+DETAIL: source SQL:
+"a" like_regex ".*" flag "x"
+                         ^
+
+parse
+"a" like_regex ".*" flag "ii"
+----
+("a" like_regex ".*" flag "i") -- normalized!
+
+parse
+"a" like_regex ".*" flag "si"
+----
+("a" like_regex ".*" flag "is") -- normalized!
+
+parse
+"a" like_regex ".*" flag "qqqmmmsssiii"
+----
+("a" like_regex ".*" flag "ismq") -- normalized!
+
+# Subtests with casing for idents.
+parse
+sTrict $
+----
+strict $ -- normalized!
+
+parse
+Lax $
+----
+$ -- normalized!
+
+parse
+$ ? (exiSts(1))
+----
+$?(exists (1)) -- normalized!
+
+parse
+"a" like_Regex ".*" flAg "i"
+----
+("a" like_regex ".*" flag "i") -- normalized!
+
+parse
+(1 == 1) Is unKnown
+----
+(1 == 1) is unknown -- normalized!
+
+parse
+$[1 tO 5, lAst]
+----
+$[1 to 5,last] -- normalized!
+
+parse
+"" sTarts With ""
+----
+("" starts with "") -- normalized!
+
+parse
+$.active == false
+----
+($."active" == false) -- normalized!
+
+# This will not work for PG as it is case-sensitive for "false" ident.
+# But for crdb we're case-insensitive for all idents.
+parse
+$.active == FaLse
+----
+($."active" == false) -- normalized!
+
+parse
+$.active == true
+----
+($."active" == true) -- normalized!
+
+# This will not work for PG as it is case-sensitive for "true" ident.
+# But for crdb we're case-insensitive for all idents.
+parse
+$.active == True
+----
+($."active" == true) -- normalized!
+
+parse
+$.active == TrUe
+----
+($."active" == true) -- normalized!
+
+# This will not work for PG as it is case-sensitive for "null" ident.
+# But for crdb we're case-insensitive for all idents.
+parse
+$.active == Null
+----
+($."active" == null) -- normalized!
+
+parse
+$.active == null
+----
+($."active" == null) -- normalized!
+
+# If an ident is accidentally a keyword, it will not be normalized.
+parse
+$.STRICT == null
+----
+($."STRICT" == null) -- normalized!
+
+parse
+strIcT $.STRICT == null
+----
+strict ($."STRICT" == null) -- normalized!
+
+parse
+$.STRiCt == null
+----
+($."STRiCt" == null) -- normalized!
+
+parse
+strIcT $.STRiCt == null
+----
+strict ($."STRiCt" == null) -- normalized!
 
 # parse
 # $.1a
-# ----
-
-# parse
-# $[null]
 # ----

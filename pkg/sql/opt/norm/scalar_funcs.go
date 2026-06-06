@@ -245,9 +245,7 @@ func (c *CustomFuncs) ConvertConstArrayToTuple(arr *memo.ConstExpr) opt.ScalarEx
 // collated string constant with the given locale.
 func (c *CustomFuncs) CastToCollatedString(str opt.ScalarExpr, locale string) opt.ScalarExpr {
 	datum := str.(*memo.ConstExpr).Value
-	if wrap, ok := datum.(*tree.DOidWrapper); ok {
-		datum = wrap.Wrapped
-	}
+	datum = tree.UnwrapDOidWrapper(datum)
 
 	// buildCollated is a recursive helper function to handle casting arrays.
 	var buildCollated func(datum tree.Datum) tree.Datum
@@ -402,4 +400,10 @@ func (c *CustomFuncs) SplitTupleEq(lhs, rhs *memo.TupleExpr) memo.FiltersExpr {
 // ArrayFlatten exists within a UDF.
 func (c *CustomFuncs) CanNormalizeArrayFlatten(input memo.RelExpr, p *memo.SubqueryPrivate) bool {
 	return c.HasOuterCols(input) || p.WithinUDF
+}
+
+// CanInlineAnyUnnestSubquery returns true if the InlineAnyProjectSet rule is
+// enabled by the session setting.
+func (c *CustomFuncs) CanInlineAnyUnnestSubquery() bool {
+	return c.f.evalCtx.SessionData().OptimizerInlineAnyUnnestSubquery
 }

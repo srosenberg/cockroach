@@ -1838,16 +1838,19 @@ project
  ├── columns: ntile:7(int)
  ├── stats: [rows=1000]
  ├── cost: 1088.56
+ ├── cost-flags: unbounded-cardinality
  ├── prune: (7)
  └── window partition=()
       ├── columns: t.public.a.i:2(int) ntile:7(int)
       ├── stats: [rows=1000]
       ├── cost: 1078.54
+      ├── cost-flags: unbounded-cardinality
       ├── prune: (7)
       ├── scan t.public.a
       │    ├── columns: t.public.a.i:2(int)
       │    ├── stats: [rows=1000]
       │    ├── cost: 1078.52
+      │    ├── cost-flags: unbounded-cardinality
       │    └── prune: (2)
       └── windows
            └── ntile [as=ntile:7, type=int, outer=(2)]
@@ -1956,16 +1959,19 @@ project
  ├── columns: x:7(int)
  ├── stats: [rows=1000]
  ├── cost: 1088.56
+ ├── cost-flags: unbounded-cardinality
  ├── prune: (7)
  └── window partition=()
       ├── columns: t.public.a.i:2(int) ntile:7(int)
       ├── stats: [rows=1000]
       ├── cost: 1078.54
+      ├── cost-flags: unbounded-cardinality
       ├── prune: (7)
       ├── scan t.public.a
       │    ├── columns: t.public.a.i:2(int)
       │    ├── stats: [rows=1000]
       │    ├── cost: 1078.52
+      │    ├── cost-flags: unbounded-cardinality
       │    └── prune: (2)
       └── windows
            └── ntile [as=ntile:7, type=int, outer=(2)]
@@ -2493,6 +2499,58 @@ upsert partial_indexes
       └── projections
            ├── upsert_b:20 > 1 [as=partial_index_put1:23, outer=(20)]
            └── b:12 > 1 [as=partial_index_del1:24, outer=(12)]
+
+# Regression test for #166122. When a temporary backfill index exists, columns
+# needed by the index and its predicate must be fetched even when the update does
+# not touch those columns. Here, the scan fetches a (index key) and b (predicate)
+# despite only updating c. Without the temp index, a and b would be pruned.
+exec-ddl
+CREATE TABLE prune_temp_idx (
+  k INT PRIMARY KEY,
+  a INT,
+  b STRING,
+  c INT,
+  FAMILY (k, a, b),
+  FAMILY (c),
+  INDEX "idx_temp:write-only+temp" (a) WHERE b IS NOT NULL
+)
+----
+
+norm
+UPDATE prune_temp_idx SET c = 1 WHERE k = 1
+----
+update prune_temp_idx
+ ├── columns: <none>
+ ├── fetch columns: k:7 a:8 c:10
+ ├── update-mapping:
+ │    └── c_new:13 => c:4
+ ├── partial index put columns: partial_index_put1:14
+ ├── partial index del columns: partial_index_put1:14
+ ├── cardinality: [0 - 0]
+ ├── volatile, mutations
+ └── project
+      ├── columns: partial_index_put1:14!null c_new:13!null k:7!null a:8 c:10
+      ├── cardinality: [0 - 1]
+      ├── key: ()
+      ├── fd: ()-->(7,8,10,13,14)
+      ├── select
+      │    ├── columns: k:7!null a:8 b:9 c:10
+      │    ├── cardinality: [0 - 1]
+      │    ├── key: ()
+      │    ├── fd: ()-->(7-10)
+      │    ├── scan prune_temp_idx
+      │    │    ├── columns: k:7!null a:8 b:9 c:10
+      │    │    ├── partial index predicates
+      │    │    │    └── idx_temp: filters
+      │    │    │         └── b:9 IS NOT NULL [outer=(9), constraints=(/9: (/NULL - ]; tight)]
+      │    │    ├── flags: avoid-full-scan
+      │    │    ├── key: (7)
+      │    │    └── fd: (7)-->(8-10)
+      │    └── filters
+      │         └── k:7 = 1 [outer=(7), constraints=(/7: [/1 - /1]; tight), fd=()-->(7)]
+      └── projections
+           ├── b:9 IS NOT NULL [as=partial_index_put1:14, outer=(9)]
+           └── 1 [as=c_new:13]
 
 # Do not prune DELETE fetch columns.
 norm
@@ -5194,11 +5252,13 @@ with &1 (foo)
  ├── columns: i:8(int)
  ├── stats: [rows=1000]
  ├── cost: 1108.86
+ ├── cost-flags: unbounded-cardinality
  ├── prune: (8)
  ├── scan t.public.a
  │    ├── columns: t.public.a.k:1(int!null) t.public.a.i:2(int) t.public.a.f:3(float) t.public.a.s:4(string)
  │    ├── stats: [rows=1000]
  │    ├── cost: 1108.82
+ │    ├── cost-flags: unbounded-cardinality
  │    ├── key: (1)
  │    ├── fd: (1)-->(2-4)
  │    ├── prune: (1-4)
@@ -5209,6 +5269,7 @@ with &1 (foo)
       │    └──  t.public.a.i:2(int) => i:8(int)
       ├── stats: [rows=1000]
       ├── cost: 0.02
+      ├── cost-flags: unbounded-cardinality
       ├── prune: (8)
       └── cte-uses
            └── &1: count=1 used-columns=(2)
@@ -5519,3 +5580,93 @@ distinct-on
       │    └── columns: c100478.region:5!null p_id:7!null
       └── filters
            └── p_id:7 = p.id:2 [outer=(2,7), constraints=(/2: (/NULL - ]; /7: (/NULL - ]), fd=(2)==(7), (7)==(2)]
+
+# Regression test for #159793. PruneUnionAllCols must intersect the needed
+# columns with the UnionAll's output columns before calling NeededColMapLeft/
+# Right, since the projections may reference outer columns.
+exec-ddl
+CREATE TABLE t159793 (k INT PRIMARY KEY)
+----
+
+norm format=hide-all
+SELECT (
+  WITH cte (col) AS (
+    SELECT * FROM (VALUES (false))
+    UNION
+    SELECT * FROM (VALUES ((NOT true) AND false), (false))
+    UNION ALL
+    SELECT * FROM (VALUES (NULL::BOOL IN (SELECT true FROM t159793 AS t1)))
+  )
+  SELECT t.k::TEXT FROM cte WHERE col
+) FROM t159793 AS t
+----
+project
+ ├── ensure-distinct-on
+ │    ├── left-join-apply
+ │    │    ├── scan t159793 [as=t]
+ │    │    ├── project
+ │    │    │    ├── union-all
+ │    │    │    │    ├── project
+ │    │    │    │    │    └── limit
+ │    │    │    │    │         ├── select
+ │    │    │    │    │         │    ├── values
+ │    │    │    │    │         │    │    ├── (false,)
+ │    │    │    │    │         │    │    └── (false,)
+ │    │    │    │    │         │    └── filters
+ │    │    │    │    │         │         └── column1
+ │    │    │    │    │         └── 1
+ │    │    │    │    └── project
+ │    │    │    │         └── select
+ │    │    │    │              ├── values
+ │    │    │    │              │    └── tuple
+ │    │    │    │              │         └── any: eq
+ │    │    │    │              │              ├── project
+ │    │    │    │              │              │    ├── scan t159793 [as=t1]
+ │    │    │    │              │              │    └── projections
+ │    │    │    │              │              │         └── true
+ │    │    │    │              │              └── CAST(NULL AS BOOL)
+ │    │    │    │              └── filters
+ │    │    │    │                   └── column1
+ │    │    │    └── projections
+ │    │    │         └── t.k::STRING
+ │    │    └── filters (true)
+ │    └── aggregations
+ │         └── const-agg
+ │              └── k
+ └── projections
+      └── k
+
+# Regression test for #159793 with PL/pgSQL. The projection references a
+# PL/pgSQL variable which is an outer scope column.
+norm
+DO $$
+DECLARE
+  decl OIDVECTOR;
+BEGIN
+  WHILE true LOOP
+  CONTINUE WHEN false;
+  WITH cte (col) AS
+    (
+      SELECT * FROM (VALUES (false))
+    UNION
+      SELECT * FROM (VALUES ((NOT true) AND false), (false))
+    UNION ALL
+      SELECT * FROM (VALUES (NULL::BOOL IN (SELECT true FROM t159793 AS t1)))
+    )
+    SELECT decl FROM cte WHERE col INTO decl;
+  END LOOP;
+END;
+$$
+----
+call
+ ├── cardinality: [0 - 0]
+ ├── volatile
+ └── procedure: inline_code_block
+      ├── strict
+      └── body
+           └── values
+                ├── columns: stmt_loop_2:30
+                ├── cardinality: [1 - 1]
+                ├── key: ()
+                ├── fd: ()-->(30)
+                └── (stmt_loop_2(CAST(NULL AS OIDVECTOR)),)

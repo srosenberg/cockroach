@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemaexpr"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
+	"github.com/cockroachdb/cockroach/pkg/sql/paramparse"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
@@ -33,6 +34,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/storageparam"
 	"github.com/cockroachdb/cockroach/pkg/sql/storageparam/indexstorageparam"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecsettings"
 	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/errors"
@@ -57,6 +59,15 @@ func (p *planner) CreateIndex(ctx context.Context, n *tree.CreateIndex) (planNod
 	); err != nil {
 		return nil, err
 	}
+
+	// Check if sql_safe_updates is enabled and this is a vector index
+	if n.Type == idxtype.VECTOR {
+		if p.EvalContext().SessionData().SafeUpdates {
+			return nil, pgerror.DangerousStatementf("CREATE VECTOR INDEX will disable writes to the table while the index is being built")
+		}
+		p.BufferClientNotice(ctx, pgnotice.Newf("CREATE VECTOR INDEX will disable writes to the table while the index is being built"))
+	}
+
 	_, tableDesc, err := p.ResolveMutableTableDescriptor(
 		ctx, &n.Table, true /*required*/, tree.ResolveRequireTableOrViewDesc,
 	)
@@ -90,7 +101,7 @@ func (p *planner) CreateIndex(ctx context.Context, n *tree.CreateIndex) (planNod
 	}
 
 	// Disallow schema changes if this table's schema is locked.
-	if err := checkSchemaChangeIsAllowed(tableDesc, n); err != nil {
+	if err := p.checkSchemaChangeIsAllowed(ctx, tableDesc, n); err != nil {
 		return nil, err
 	}
 
@@ -140,13 +151,6 @@ func (p *planner) maybeSetupConstraintForShard(
 func makeIndexDescriptor(
 	params runParams, n tree.CreateIndex, tableDesc *tabledesc.Mutable,
 ) (*descpb.IndexDescriptor, error) {
-	if n.Sharded == nil && n.StorageParams.GetVal(`bucket_count`) != nil {
-		return nil, pgerror.New(
-			pgcode.InvalidParameterValue,
-			`"bucket_count" storage param should only be set with "USING HASH" for hash sharded index`,
-		)
-	}
-
 	// Since we mutate the columns below, we make copies of them
 	// here so that on retry we do not attempt to validate the
 	// mutated columns.
@@ -238,13 +242,24 @@ func makeIndexDescriptor(
 	}
 
 	if n.Type == idxtype.VECTOR {
+		// Disable vector indexes by default in 25.2.
+		// TODO(andyk): Remove this check after 25.2.
+		if err = vecsettings.CheckEnabled(&params.EvalContext().Settings.SV); err != nil {
+			return nil, err
+		}
+
 		vecCol := columns[len(columns)-1]
 		column, err := catalog.MustFindColumnByTreeName(tableDesc, vecCol.Column)
 		if err != nil {
 			return nil, err
 		}
-		indexDesc.VecConfig.Dims = column.GetType().Width()
-		indexDesc.VecConfig.Seed = params.extendedEvalCtx.GetRNG().Int63()
+		indexDesc.VecConfig, err = vecsettings.MakeVecConfig(
+			params.ctx, params.EvalContext(), column.GetType(), vecCol.OpClass)
+		if err != nil {
+			return nil, err
+		}
+
+		tabledesc.UpdateVectorIndexPrefixColDirections(&indexDesc, tableDesc.GetPrimaryIndex().IndexDesc())
 	}
 
 	if n.Sharded != nil {
@@ -281,7 +296,7 @@ func makeIndexDescriptor(
 		if err != nil {
 			return nil, err
 		}
-		indexDesc.Predicate = expr
+		indexDesc.Predicate = descpb.Expression(expr)
 	}
 
 	if err := indexDesc.FillColumns(columns); err != nil {
@@ -293,7 +308,7 @@ func makeIndexDescriptor(
 		params.p.SemaCtx(),
 		params.EvalContext(),
 		n.StorageParams,
-		&indexstorageparam.Setter{IndexDesc: &indexDesc},
+		&indexstorageparam.Setter{IndexDesc: &indexDesc, NewObject: true},
 	); err != nil {
 		return nil, err
 	}
@@ -356,7 +371,7 @@ func checkIndexColumns(
 		}
 		if colDef.OpClass != "" && (i < len(columns)-1 || !indexType.SupportsOpClass()) {
 			return pgerror.New(pgcode.DatatypeMismatch,
-				"operator classes are only allowed for the last column of an inverted index")
+				"operator classes are only allowed for the last column of an inverted or vector index")
 		}
 	}
 	for i, colName := range storing {
@@ -509,7 +524,7 @@ func replaceExpressionElemsWithVirtualCols(
 ) error {
 	findExistingExprIndexCol := func(expr string) (colName string, ok bool) {
 		for _, col := range desc.AllColumns() {
-			if col.IsExpressionIndexColumn() && col.GetComputeExpr() == expr {
+			if col.IsExpressionIndexColumn() && string(col.GetComputeExpr()) == expr {
 				return col.GetName(), true
 			}
 		}
@@ -581,9 +596,14 @@ func replaceExpressionElemsWithVirtualCols(
 				Name:         colName,
 				Inaccessible: true,
 				Type:         typ,
-				ComputeExpr:  &expr,
+				ComputeExpr:  new(descpb.Expression(expr)),
 				Virtual:      true,
 				Nullable:     true,
+			}
+			if fnIDs, err := schemaexpr.GetUDFIDsFromExprStr(descpb.Expression(expr)); err != nil {
+				return err
+			} else {
+				col.UsesFunctionIds = fnIDs.Ordered()
 			}
 
 			// Add the column to the table descriptor. If the table already
@@ -633,10 +653,12 @@ func setupShardedIndex(
 			return nil, nil, err
 		}
 		if anyColumnIsPartitioningField(columns, partitionAllBy) {
-			return nil, nil, pgerror.New(
-				pgcode.FeatureNotSupported,
-				`hash sharded indexes cannot include implicit partitioning columns from "PARTITION ALL BY" or "LOCALITY REGIONAL BY ROW"`,
-			)
+			isRegionalByRow := tableDesc.IsLocalityRegionalByRow()
+			if isRegionalByRow {
+				return nil, nil, sqlerrors.HashIndexIncludesImplicitPartitionColFromRBR
+			} else {
+				return nil, nil, sqlerrors.HashIndexIncludesImplicitPartitionColFromPartitionAllBy
+			}
 		}
 	}
 
@@ -648,8 +670,19 @@ func setupShardedIndex(
 	if err != nil {
 		return nil, nil, err
 	}
+
+	// Get shard columns from storage params, if specified.
+	shardColNames, err := tabledesc.EvalShardColumns(storageParams, colNames)
+	if err != nil {
+		return nil, nil, err
+	}
+	// If not specified, use all index columns (default behavior).
+	if shardColNames == nil {
+		shardColNames = colNames
+	}
+
 	shardCol, err := maybeCreateAndAddShardCol(int(buckets), tableDesc,
-		colNames, isNewTable)
+		shardColNames, isNewTable)
 
 	if err != nil {
 		return nil, nil, err
@@ -663,7 +696,7 @@ func setupShardedIndex(
 		IsSharded:    true,
 		Name:         shardCol.GetName(),
 		ShardBuckets: buckets,
-		ColumnNames:  colNames,
+		ColumnNames:  shardColNames,
 	}
 	return shardCol, newColumns, nil
 }
@@ -769,6 +802,20 @@ func (n *createIndexNode) startExec(params runParams) error {
 		return err
 	}
 
+	// Validate storage params from the WITH clause.
+	if err := paramparse.ValidateIndexStorageParams(
+		params.ctx,
+		n.n.StorageParams,
+		paramparse.IndexStorageParamContext{
+			IsUnique:                indexDesc.Unique,
+			IsSharded:               n.n.Sharded != nil,
+			HasImplicitPartitioning: indexDesc.Partitioning.NumImplicitColumns > 0,
+			Version:                 params.EvalContext().Settings.Version,
+		},
+	); err != nil {
+		return err
+	}
+
 	if indexDesc.Partitioning.NumColumns != 0 {
 		if indexDesc.Type == idxtype.INVERTED {
 			telemetry.Inc(sqltelemetry.PartitionedInvertedIndexCounter)
@@ -811,6 +858,25 @@ func (n *createIndexNode) startExec(params runParams) error {
 	// Add all newly created type back references.
 	if err := params.p.addBackRefsFromAllTypesInTable(params.ctx, n.tableDesc); err != nil {
 		return err
+	}
+
+	// Update function back-references for any column that was added as an index
+	// expression and for any index with a partial predicate.
+	for _, m := range n.tableDesc.GetMutations() {
+		if col := m.GetColumn(); col != nil && m.Direction == descpb.DescriptorMutation_ADD {
+			if err := params.p.maybeUpdateFunctionReferencesForColumn(
+				params.ctx, n.tableDesc, col,
+			); err != nil {
+				return err
+			}
+		}
+		if idx := m.GetIndex(); idx != nil && m.Direction == descpb.DescriptorMutation_ADD {
+			if err := params.p.maybeAddFunctionReferencesForIndex(
+				params.ctx, n.tableDesc, idx,
+			); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Record index creation in the event log. This is an auditable log

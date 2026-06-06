@@ -36,20 +36,35 @@ Schema change plan for ALTER PARTITION ‹yung_au› OF INDEX ‹defaultdb›.�
  │         │    └── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "yung_au"}
  │         └── 1 Mutation operation
  │              └── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
- └── PreCommitPhase
-      ├── Stage 1 of 2 in PreCommitPhase
-      │    ├── 3 elements transitioning toward PUBLIC
-      │    │    ├── PUBLIC → ABSENT PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "australia"}
-      │    │    ├── PUBLIC → ABSENT PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "old_au"}
-      │    │    └── PUBLIC → ABSENT PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "yung_au"}
-      │    └── 1 Mutation operation
-      │         └── UndoAllInTxnImmediateMutationOpSideEffects
-      └── Stage 2 of 2 in PreCommitPhase
-           ├── 3 elements transitioning toward PUBLIC
-           │    ├── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "australia"}
-           │    ├── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "old_au"}
-           │    └── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "yung_au"}
+ ├── PreCommitPhase
+ │    ├── Stage 1 of 2 in PreCommitPhase
+ │    │    ├── 3 elements transitioning toward PUBLIC
+ │    │    │    ├── PUBLIC → ABSENT PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "australia"}
+ │    │    │    ├── PUBLIC → ABSENT PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "old_au"}
+ │    │    │    └── PUBLIC → ABSENT PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "yung_au"}
+ │    │    ├── 1 element transitioning toward TRANSIENT_PUBLIC
+ │    │    │    └── ABSENT → PUBLIC TableSchemaLocked:{DescID: 104 (person)}
+ │    │    └── 1 Mutation operation
+ │    │         └── UndoAllInTxnImmediateMutationOpSideEffects
+ │    └── Stage 2 of 2 in PreCommitPhase
+ │         ├── 3 elements transitioning toward PUBLIC
+ │         │    ├── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "australia"}
+ │         │    ├── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "old_au"}
+ │         │    └── ABSENT → PUBLIC PartitionZoneConfig:{DescID: 104 (person), IndexID: 1 (person_pkey), SeqNum: 1, PartitionName: "yung_au"}
+ │         ├── 1 element transitioning toward TRANSIENT_PUBLIC
+ │         │    └── PUBLIC → ABSENT TableSchemaLocked:{DescID: 104 (person)}
+ │         └── 6 Mutation operations
+ │              ├── SetTableSchemaLocked {"TableID":104}
+ │              ├── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
+ │              ├── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
+ │              ├── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
+ │              ├── SetJobStateOnDescriptor {"DescriptorID":104,"Initialize":true}
+ │              └── CreateSchemaChangerJob {"RunningStatus":"Pending: Updatin..."}
+ └── PostCommitPhase
+      └── Stage 1 of 1 in PostCommitPhase
+           ├── 1 element transitioning toward TRANSIENT_PUBLIC
+           │    └── ABSENT → TRANSIENT_PUBLIC TableSchemaLocked:{DescID: 104 (person)}
            └── 3 Mutation operations
-                ├── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
-                ├── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
-                └── AddPartitionZoneConfig {"SubzoneIndexToDelete":-1,"TableID":104}
+                ├── SetTableSchemaLocked {"Locked":true,"TableID":104}
+                ├── RemoveJobStateFromDescriptor {"DescriptorID":104}
+                └── UpdateSchemaChangerJob {"IsNonCancelable":true,"RunningStatus":"all stages compl..."}

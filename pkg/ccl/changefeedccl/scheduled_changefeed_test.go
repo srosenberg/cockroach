@@ -9,7 +9,6 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,7 +18,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdctest"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedpb"
-	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobstest"
@@ -66,7 +64,7 @@ func newTestHelper(t *testing.T) (*testHelper, func()) {
 			jobstest.UseSystemTables, timeutil.Now(), tree.ScheduledChangefeedExecutor),
 	}
 
-	s, db, stopServer := startTestFullServer(t, makeOptions(withSchedulerHelper(sh)))
+	s, db, stopServer := startTestFullServer(t, makeOptions(t, withSchedulerHelper(sh)))
 	sh.db = db
 	sh.sqlDB = sqlutils.MakeSQLRunner(db)
 	sh.server = s
@@ -304,8 +302,7 @@ func TestCreateChangefeedScheduleChecksPermissionsDuringDryRun(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
-		DefaultTestTenant: base.TODOTestTenantDisabled,
+	srv, db, _ := serverutils.StartServer(t, base.TestServerArgs{
 		Knobs: base.TestingKnobs{
 			JobsTestingKnobs: jobs.NewTestingKnobsWithShortIntervals(),
 			DistSQL: &execinfra.TestingKnobs{
@@ -320,28 +317,20 @@ func TestCreateChangefeedScheduleChecksPermissionsDuringDryRun(t *testing.T) {
 			},
 		},
 	})
-	defer s.Stopper().Stop(ctx)
-	rootDB := sqlutils.MakeSQLRunner(db)
-	rootDB.Exec(t, `SET CLUSTER SETTING kv.rangefeed.enabled = true`)
-	enableEnterprise := utilccl.TestingDisableEnterprise()
-	enableEnterprise()
+	defer srv.Stopper().Stop(ctx)
+	s := srv.ApplicationLayer()
 
-	rootDB.Exec(t, `CREATE TABLE table_a (i int)`)
-	rootDB.Exec(t, `CREATE USER testuser WITH PASSWORD 'test'`)
+	sysDB := sqlutils.MakeSQLRunner(srv.SystemLayer().SQLConn(t))
+	sysDB.Exec(t, "SET CLUSTER SETTING kv.rangefeed.enabled = true")
 
-	pgURL := url.URL{
-		Scheme: "postgres",
-		User:   url.UserPassword("testuser", "test"),
-		Host:   s.SQLAddr(),
-	}
-	db2, err := gosql.Open("postgres", pgURL.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db2.Close()
+	sqlDB := sqlutils.MakeSQLRunner(db)
+	sqlDB.Exec(t, `CREATE TABLE table_a (i int)`)
+	sqlDB.Exec(t, `CREATE USER testuser WITH PASSWORD 'test'`)
+
+	db2 := s.SQLConn(t, serverutils.UserPassword("testuser", "test"))
 	userDB := sqlutils.MakeSQLRunner(db2)
 
-	userDB.ExpectErr(t, "Failed to dry run create changefeed: user testuser requires the CHANGEFEED privilege on all target tables to be able to run an enterprise changefeed",
+	userDB.ExpectErr(t, `Failed to dry run create changefeed: user "testuser" requires the CHANGEFEED privilege on all target tables to be able to run an enterprise changefeed`,
 		"CREATE SCHEDULE FOR CHANGEFEED TABLE table_a INTO 'somewhere' WITH initial_scan = 'only' RECURRING '@daily'")
 }
 
@@ -841,6 +830,11 @@ func TestCheckScheduleAlreadyExists(t *testing.T) {
 	present, err = schedulebase.CheckScheduleAlreadyExists(ctx, p.(sql.PlanHookState), "not-existing")
 	require.NoError(t, err)
 	require.Equal(t, present, false)
+
+	// Verify a label containing a quote is handled safely (#167602).
+	present, err = schedulebase.CheckScheduleAlreadyExists(ctx, p.(sql.PlanHookState), "it's a label")
+	require.NoError(t, err)
+	require.Equal(t, present, false)
 }
 
 func TestFullyQualifyTables(t *testing.T) {
@@ -870,7 +864,7 @@ func TestFullyQualifyTables(t *testing.T) {
 	defer cleanupPlanHook()
 
 	tablePatterns := make([]tree.TablePattern, 0)
-	for _, target := range createChangeFeedStmt.Targets {
+	for _, target := range createChangeFeedStmt.TableTargets {
 		tablePatterns = append(tablePatterns, target.TableName)
 	}
 

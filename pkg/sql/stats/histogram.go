@@ -63,7 +63,7 @@ var MaxFractionHistogramMCVs = settings.RegisterFloatSetting(
 	"sql.stats.histogram_buckets.max_fraction_most_common_values",
 	"maximum fraction of histogram buckets to use for most common values",
 	0.1,
-	settings.NonNegativeFloatWithMaximum(1),
+	settings.Fraction,
 	settings.WithPublic)
 
 // HistogramVersion identifies histogram versions.
@@ -138,6 +138,37 @@ func DecodeUpperBound(
 		)
 	}
 	return datum, err
+}
+
+// enumValueExistsBetweenEncodedUpperBounds finds whether any values exist in
+// the enum type with physical representation greater than lowerBound and less
+// than upperBound, exclusive. The encoded bounds could represent old values
+// that were dropped from the enum type, or current values that exist in the
+// enum type.
+//
+// If there are any values in the enum type with physical representation between
+// the bounds, nil is returned. Otherwise an error is returned. If the bounds
+// cannot be decoded as enum physical representations an error is returned.
+func enumValueExistsBetweenEncodedUpperBounds(
+	version HistogramVersion, enumType *types.T, lowerBound, upperBound []byte,
+) error {
+	// If the encoded bounds represent old values that were dropped from the enum
+	// type, we won't be able to decode them as enums. Instead, decode them as
+	// bytes, which should give the physical representation. (This relies on enum
+	// encoding being simply the encoding of the physical representation bytes.)
+	var a tree.DatumAlloc
+	lowerPhys, err := DecodeUpperBound(version, types.Bytes, &a, lowerBound)
+	if err != nil {
+		return err
+	}
+	upperPhys, err := DecodeUpperBound(version, types.Bytes, &a, upperBound)
+	if err != nil {
+		return err
+	}
+	_, err = enumType.EnumGetFirstIdxOfPhysicalBetween(
+		[]byte(*lowerPhys.(*tree.DBytes)), []byte(*upperPhys.(*tree.DBytes)),
+	)
+	return err
 }
 
 // GetDefaultHistogramBuckets gets the default number of histogram buckets to
@@ -427,7 +458,7 @@ func (histogramData *HistogramData) TypeCheck(
 	if histogramData.ColumnType.Family() == types.BytesFamily {
 		return nil
 	}
-	if !histogramData.ColumnType.Equivalent(colType) {
+	if !hasIdenticalHistogramEncoding(histogramData.ColumnType, colType) {
 		return errors.Newf(
 			"histogram for table %v column %v created_at %s does not match column type %v: %v",
 			table, column, createdAt, colType.SQLStringForError(),
@@ -448,6 +479,10 @@ type histogram struct {
 // to equal the total row count and estimated distinct count. The total row
 // count and estimated distinct count should not include NULL values, and the
 // histogram should not contain any buckets for NULL values.
+//
+// NB: it is **not** guaranteed that the returned histogram will contain the
+// specified distinct count (e.g., if distinctCountTotal of 3 or more is asked
+// from the boolean histogram).
 func (h *histogram) adjustCounts(
 	ctx context.Context,
 	compareCtx tree.CompareContext,
@@ -550,7 +585,7 @@ func (h *histogram) adjustCounts(
 					// values in the bucket.
 					inc = remDistinctCount * (maxDistRange / maxDistinctCountRange)
 					// If the bucket has DistinctRange > maxDistRange (a rare but possible
-					// occurence, see #93892) then inc will be negative. Prevent this.
+					// occurrence, see #93892) then inc will be negative. Prevent this.
 					if inc < 0 {
 						inc = 0
 					}
@@ -707,6 +742,9 @@ func getMaxVal(
 // histogram to include the remaining distinct values in remDistinctCount. It
 // also increments the counters rowCountEq, distinctCountEq, rowCountRange, and
 // distinctCountRange as needed.
+//
+// NB: it is **not** guaranteed that all remaining distinct values will be
+// covered.
 func (h *histogram) addOuterBuckets(
 	ctx context.Context,
 	compareCtx tree.CompareContext,
@@ -777,9 +815,13 @@ func (h *histogram) addOuterBuckets(
 
 		inc := avgRemPerBucket
 		if countable {
-			// Set the increment proportional to the remaining number of distinct
-			// values in the bucket.
-			inc = remDistinctCount * (maxDistRange / maxDistinctCountExtraBuckets)
+			if maxDistinctCountExtraBuckets > 0 {
+				// Set the increment proportional to the remaining number of distinct
+				// values in the bucket.
+				inc = remDistinctCount * (maxDistRange / maxDistinctCountExtraBuckets)
+			} else {
+				inc = 0
+			}
 			if inc < 0 {
 				inc = 0
 			}
@@ -995,4 +1037,28 @@ func expectedDistinctCount(k, n float64) float64 {
 		}
 	}
 	return count
+}
+
+// hasIdenticalHistogramEncoding returns true if values of the two types have
+// identical binary encodings for histogram bucket upper bounds. This allows
+// reusing histograms after metadata-only ALTER COLUMN TYPE conversions where
+// the underlying encoding doesn't change.
+//
+// This is specifically needed because ALTER COLUMN TYPE from TIMESTAMP to
+// TIMESTAMPTZ (or vice versa) is a metadata-only change that doesn't rewrite
+// data, but the histogram's ColumnType still references the old type. Since
+// both types use identical encoding (both store time.Time), the histogram
+// remains valid.
+func hasIdenticalHistogramEncoding(t, other *types.T) bool {
+	if t.Equivalent(other) {
+		return true
+	}
+	// TIMESTAMP and TIMESTAMPTZ have identical encoding (both store time.Time).
+	// This is the only cross-family trivial conversion defined in the schema
+	// changer where both types share the same encoding.
+	if (t.Family() == types.TimestampFamily || t.Family() == types.TimestampTZFamily) &&
+		(other.Family() == types.TimestampFamily || other.Family() == types.TimestampTZFamily) {
+		return true
+	}
+	return false
 }

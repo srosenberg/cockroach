@@ -247,15 +247,11 @@ func Init(
 	promAsInstallNodes := install.Nodes{cfg.PrometheusNode}
 
 	if len(cfg.NodeExporter) > 0 {
-		// NB: when upgrading here, make sure to target a version that picks up this PR:
-		// https://github.com/prometheus/node_exporter/pull/2311
-		// At time of writing, there hasn't been a release in over half a year.
 		if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(cfg.NodeExporter).WithShouldRetryFn(install.AlwaysTrue),
 			"download node exporter",
 			fmt.Sprintf(`
 export ARCH=$(dpkg --print-architecture)
-if ! $(systemctl is-active --quiet node_exporter); then
-	(sudo systemctl stop node_exporter || true) &&
+if [ ! -x node_exporter/node_exporter ]; then
 	rm -rf node_exporter && mkdir -p node_exporter && curl -fsSL \
 		https://storage.googleapis.com/cockroach-test-artifacts/prometheus/node_exporter-%s.linux-${ARCH}.tar.gz |
 		tar zxv --strip-components 1 -C node_exporter
@@ -263,7 +259,7 @@ fi
 `,
 				vm.NodeExporterVersion,
 			)); err != nil {
-			return nil, err
+			return nil, errors.Wrap(err, "unable to download node_exporter")
 		}
 
 		// Start node_exporter.
@@ -271,17 +267,25 @@ fi
 		if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(cfg.NodeExporter), "init node exporter",
 			fmt.Sprintf(`
 sudo iptables -C INPUT -p tcp -s {ip:%[1]d:public} --dport %[2]d -j ACCEPT || sudo iptables -I INPUT -p tcp -s {ip:%[1]d:public} --dport %[2]d -j ACCEPT;
-if ! $(systemctl is-active --quiet node_exporter); then
-	touch %[4]s &&
-	cd node_exporter &&
-	sudo systemd-run --unit node_exporter --same-dir ./node_exporter \
-		--web.listen-address=":%[2]d" --web.telemetry-path="%[3]s"
+if ! systemctl is-active --quiet node_exporter; then
+	# Flag we're starting a node_exporter instance
+	touch %[4]s
+	if systemctl cat node_exporter &>/dev/null; then
+		# Proper unit exists, just start it after resetting failed state if any
+		sudo systemctl reset-failed node_exporter 2>/dev/null || true
+		sudo systemctl start node_exporter
+	else
+		# Somehow proper unit doesn't exists, create transient one
+		cd node_exporter &&
+		sudo systemd-run --unit node_exporter --same-dir ./node_exporter \
+			--web.listen-address=":%[2]d" --web.telemetry-path="%[3]s"
+	fi
 fi
 `, cfg.PrometheusNode, vm.NodeExporterPort, vm.NodeExporterMetricsPath, nodeExporterStarted),
 		); err != nil {
 			// TODO(msbutler): download binary for target platform. currently we
 			// hardcode downloading the linux binary.
-			return nil, errors.Wrap(err, "grafana-start currently cannot run on darwin")
+			return nil, errors.Wrap(err, "unable to start node_exporter")
 		}
 	}
 	if err := c.Run(
@@ -309,7 +313,7 @@ sudo rm -rf /tmp/prometheus && mkdir /tmp/prometheus && cd /tmp/prometheus &&
 curl -fsSL https://storage.googleapis.com/cockroach-test-artifacts/prometheus/prometheus-%s.linux-${ARCH}.tar.gz | tar zxv --strip-components=1`,
 			vm.PrometheusVersion,
 		)); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to download prometheus")
 	}
 	// create and upload prom config
 	nodeIPs, err := makeNodeIPMap(c)
@@ -329,7 +333,7 @@ curl -fsSL https://storage.googleapis.com/cockroach-test-artifacts/prometheus/pr
 		"/tmp/prometheus/prometheus.yml",
 		0777,
 	); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to push prometheus config")
 	}
 
 	// Start prometheus as systemd.
@@ -344,15 +348,18 @@ curl -fsSL https://storage.googleapis.com/cockroach-test-artifacts/prometheus/pr
 sudo systemd-run --unit prometheus --same-dir \
 	./prometheus --config.file=prometheus.yml --storage.tsdb.path=data/ --web.enable-admin-api`,
 	); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "unable to start prometheus as a transient systemd unit")
 	}
 
 	if cfg.Grafana.Enabled {
-		// Install Grafana.
-		if err := c.Run(ctx, l,
-			l.Stdout,
-			l.Stderr, install.WithNodes(promAsInstallNodes).WithShouldRetryFn(install.AlwaysTrue), "install grafana",
-			fmt.Sprintf(`
+		if len(c.Cluster.VMs) > 0 && c.Cluster.VMs[0].CPUArch == vm.ArchS390x {
+			l.Printf("WARNING: Grafana is not supported on s390x, it won't be installed in the cluster")
+		} else {
+			// Install Grafana.
+			if err := c.Run(ctx, l,
+				l.Stdout,
+				l.Stderr, install.WithNodes(promAsInstallNodes).WithShouldRetryFn(install.AlwaysTrue), "install grafana",
+				fmt.Sprintf(`
 export ARCH=$(dpkg --print-architecture)
 sudo apt-get install -qqy apt-transport-https &&
 sudo apt-get install -qqy software-properties-common &&
@@ -361,22 +368,22 @@ echo "Downloading https://dl.grafana.com/enterprise/release/grafana-enterprise_%
 curl https://dl.grafana.com/enterprise/release/grafana-enterprise_%[1]s_${ARCH}.deb -sS -o grafana-enterprise_%[1]s_${ARCH}.deb &&
 sudo dpkg -i grafana-enterprise_%[1]s_${ARCH}.deb &&
 sudo mkdir -p /var/lib/grafana/dashboards`,
-				vm.GrafanaEnterpriseVersion,
-			)); err != nil {
-			return nil, err
-		}
+					vm.GrafanaEnterpriseVersion,
+				)); err != nil {
+				return nil, errors.Wrap(err, "unable to install grafana")
+			}
 
-		// Provision local prometheus instance as data source.
-		if err := c.Run(ctx, l,
-			l.Stdout,
-			l.Stderr, install.WithNodes(promAsInstallNodes).WithShouldRetryFn(install.AlwaysTrue), "permissions",
-			`sudo chmod -R 777 /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards /etc/grafana/grafana.ini`,
-		); err != nil {
-			return nil, err
-		}
+			// Provision local prometheus instance as data source.
+			if err := c.Run(ctx, l,
+				l.Stdout,
+				l.Stderr, install.WithNodes(promAsInstallNodes).WithShouldRetryFn(install.AlwaysTrue), "permissions",
+				`sudo chmod -R 777 /etc/grafana/provisioning/datasources /etc/grafana/provisioning/dashboards /var/lib/grafana/dashboards /etc/grafana/grafana.ini`,
+			); err != nil {
+				return nil, errors.Wrap(err, "unable to set permissions for grafana provisioning")
+			}
 
-		// Set up grafana config.
-		if err := c.PutString(ctx, l, promAsInstallNodes, `apiVersion: 1
+			// Set up grafana config.
+			if err := c.PutString(ctx, l, promAsInstallNodes, `apiVersion: 1
 
 datasources:
   - name: prometheusdata
@@ -384,9 +391,9 @@ datasources:
     uid: localprom
     url: http://localhost:9090
 `, "/etc/grafana/provisioning/datasources/prometheus.yaml", 0777); err != nil {
-			return nil, err
-		}
-		if err := c.PutString(ctx, l, promAsInstallNodes, `apiVersion: 1
+				return nil, errors.Wrap(err, "unable to push prometheus datasource config")
+			}
+			if err := c.PutString(ctx, l, promAsInstallNodes, `apiVersion: 1
 
 providers:
  - name: 'default'
@@ -398,36 +405,37 @@ providers:
    options:
      path: /var/lib/grafana/dashboards
 `, "/etc/grafana/provisioning/dashboards/cockroach.yaml", 0777); err != nil {
-			return nil, err
-		}
-		if err := c.PutString(ctx, l, promAsInstallNodes, `
+				return nil, errors.Wrap(err, "unable to push grafana dashboard config")
+			}
+			if err := c.PutString(ctx, l, promAsInstallNodes, `
 [auth.anonymous]
 enabled = true
 org_role = Admin
 `,
-			"/etc/grafana/grafana.ini", 0777); err != nil {
-			return nil, err
-		}
-
-		for idx, u := range cfg.Grafana.DashboardURLs {
-			cmd := fmt.Sprintf("curl -fsSL %s -o /var/lib/grafana/dashboards/%d.json", u, idx)
-			if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(promAsInstallNodes), "download dashboard",
-				cmd); err != nil {
-				l.PrintfCtx(ctx, "failed to download dashboard from %s: %s", u, err)
+				"/etc/grafana/grafana.ini", 0777); err != nil {
+				return nil, errors.Wrap(err, "unable to push grafana config")
 			}
-		}
 
-		for idx, json := range cfg.Grafana.DashboardJSON {
-			if err := c.PutString(ctx, l, promAsInstallNodes, json,
-				fmt.Sprintf("/var/lib/grafana/dashboards/s-%d.json", idx), 0777); err != nil {
-				return nil, err
+			for idx, u := range cfg.Grafana.DashboardURLs {
+				cmd := fmt.Sprintf("curl -fsSL %s -o /var/lib/grafana/dashboards/%d.json", u, idx)
+				if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(promAsInstallNodes), "download dashboard",
+					cmd); err != nil {
+					l.PrintfCtx(ctx, "failed to download dashboard from %s: %s", u, err)
+				}
 			}
-		}
 
-		// Start Grafana. Default port is 3000.
-		if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(promAsInstallNodes), "start grafana",
-			`sudo systemctl restart grafana-server`); err != nil {
-			return nil, err
+			for idx, json := range cfg.Grafana.DashboardJSON {
+				if err := c.PutString(ctx, l, promAsInstallNodes, json,
+					fmt.Sprintf("/var/lib/grafana/dashboards/s-%d.json", idx), 0777); err != nil {
+					return nil, errors.Wrap(err, "unable to push grafana dashboard json")
+				}
+			}
+
+			// Start Grafana. Default port is 3000.
+			if err := c.Run(ctx, l, l.Stdout, l.Stderr, install.WithNodes(promAsInstallNodes), "start grafana",
+				`sudo systemctl restart grafana-server`); err != nil {
+				return nil, errors.Wrap(err, "unable to start grafana")
+			}
 		}
 	}
 

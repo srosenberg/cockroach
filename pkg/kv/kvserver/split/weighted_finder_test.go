@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"math"
+	"math/rand/v2"
 	"reflect"
 	"testing"
 
@@ -18,7 +19,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/exp/rand"
 )
 
 type ZeroRandSource struct{}
@@ -27,7 +27,7 @@ func (r ZeroRandSource) Float64() float64 {
 	return 0
 }
 
-func (r ZeroRandSource) Intn(int) int {
+func (r ZeroRandSource) IntN(int) int {
 	return 0
 }
 
@@ -37,7 +37,7 @@ func (r WFLargestRandSource) Float64() float64 {
 	return 1
 }
 
-func (r WFLargestRandSource) Intn(int) int {
+func (r WFLargestRandSource) IntN(int) int {
 	return 0
 }
 
@@ -167,7 +167,7 @@ func TestSplitWeightedFinderKey(t *testing.T) {
 		{bestBalanceReservoir, keys.SystemSQLCodec.TablePrefix(ReservoirKeyOffset + splitKeySampleSize/2)},
 	}
 
-	randSource := rand.New(rand.NewSource(2022))
+	randSource := rand.New(rand.NewPCG(2022, 0))
 	for i, test := range testCases {
 		weightedFinder := NewWeightedFinder(timeutil.Now(), randSource)
 		weightedFinder.samples = test.reservoir
@@ -236,6 +236,11 @@ func TestSplitWeightedFinderRecorder(t *testing.T) {
 	const fullWeight = 1
 	expectedFullReservoir := fullReservoir
 	for i := 0; i < splitKeySampleSize; i++ {
+		// The span [/Table/1000, /Table/1001) contributes to each sample's left
+		// and right counters. For samples at index >= 1 (keys >= /Table/1001):
+		// - Start key /Table/1000 (inclusive): less than sample key → left += 0.5
+		// - End key /Table/1001 (exclusive): at most equal to sample key → left += 0.5
+		// Total: left=1, right=0.
 		tempSample := weightedSample{
 			key:    keys.SystemSQLCodec.TablePrefix(uint32(ReservoirKeyOffset + i)),
 			weight: 1,
@@ -245,10 +250,13 @@ func TestSplitWeightedFinderRecorder(t *testing.T) {
 		}
 		expectedFullReservoir[i] = tempSample
 	}
+	// Sample 0 (/Table/1000) is a special case because it matches the span's
+	// start key, which is inclusive:
+	// - Start key /Table/1000 (inclusive): >= sample key → right += 0.5
+	// - End key /Table/1001 (exclusive): > sample key → right += 0.5
+	// Total: left=0, right=1.
 	expectedFullReservoir[0].left = 0
 	expectedFullReservoir[0].right = 1
-	expectedFullReservoir[1].left = 0.5
-	expectedFullReservoir[1].right = 0.5
 
 	// Test recording a spanning query.
 	spanningReservoir := replacementReservoir
@@ -327,7 +335,7 @@ func TestWeightedFinderNoSplitKeyCause(t *testing.T) {
 		}
 	}
 
-	randSource := rand.New(rand.NewSource(2022))
+	randSource := rand.New(rand.NewPCG(2022, 0))
 	weightedFinder := NewWeightedFinder(timeutil.Now(), randSource)
 	weightedFinder.samples = samples
 	insufficientCounters, imbalance := weightedFinder.noSplitKeyCause()
@@ -397,7 +405,7 @@ func TestWeightedFinderPopularKey(t *testing.T) {
 		{sameKeySample, keys.SystemSQLCodec.TablePrefix(uint32(0)), 1},
 	}
 
-	randSource := rand.New(rand.NewSource(2022))
+	randSource := rand.New(rand.NewPCG(2022, 0))
 	for i, test := range testCases {
 		weightedFinder := NewWeightedFinder(timeutil.Now(), randSource)
 		weightedFinder.samples = test.samples
@@ -485,7 +493,7 @@ func TestWeightedFinderAccessDirection(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			finder := NewWeightedFinder(timeutil.Now(), rand.New(rand.NewSource(2022)))
+			finder := NewWeightedFinder(timeutil.Now(), rand.New(rand.NewPCG(2022, 0)))
 			finder.samples = tc.samples
 			direction := finder.AccessDirection()
 			if math.Abs(direction-tc.expectedDirection) > 1e-9 {

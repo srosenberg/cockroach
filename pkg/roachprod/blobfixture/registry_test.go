@@ -58,6 +58,7 @@ func TestFixtureRegistry(t *testing.T) {
 		kind           string
 		createdAt      time.Time
 		readyAt        time.Time
+		lastFailureAt  time.Time
 		isLatestOfKind bool
 		survivesGC     bool
 	}
@@ -69,10 +70,10 @@ func TestFixtureRegistry(t *testing.T) {
 
 	fixtures := []fixture{
 		{
-			// This fixture was created 3 days ago, but is not ready yet, so it will
-			// be garbage collected.
+			// This fixture was created over a week ago, but is not ready yet, so it
+			// will be garbage collected.
 			kind:           "kind-leaked",
-			createdAt:      makeTime(-3),
+			createdAt:      makeTime(-8),
 			survivesGC:     false,
 			isLatestOfKind: false,
 		},
@@ -127,6 +128,35 @@ func TestFixtureRegistry(t *testing.T) {
 			survivesGC:     true,
 			isLatestOfKind: false,
 		},
+		{
+			// This fixture was marked with a failure long ago, so it will be deleted
+			// despite the flag.
+			kind:           "kind-marked-failure",
+			createdAt:      makeTime(-10),
+			readyAt:        makeTime(-9),
+			lastFailureAt:  makeTime(-8),
+			survivesGC:     false,
+			isLatestOfKind: false,
+		},
+		{
+			// This fixture was marked with a failure recently, so despite the fact
+			// that it has been obsolete for more than a day, it will not be
+			// deleted.
+			kind:           "kind-marked-failure",
+			createdAt:      makeTime(-6),
+			readyAt:        makeTime(-5),
+			lastFailureAt:  makeTime(-4),
+			survivesGC:     true,
+			isLatestOfKind: false,
+		},
+		{
+			// This is the most recent fixture of its kind, so it will not be deleted.
+			kind:           "kind-marked-failure",
+			createdAt:      makeTime(-1),
+			readyAt:        makeTime(-0.5),
+			survivesGC:     true,
+			isLatestOfKind: true,
+		},
 	}
 
 	type fixturesCreated struct {
@@ -169,6 +199,11 @@ func TestFixtureRegistry(t *testing.T) {
 			require.NoError(t, handle.SetReadyAt(ctx))
 		}
 
+		if !f.lastFailureAt.IsZero() {
+			now = f.lastFailureAt
+			require.NoError(t, registry.MarkFailure(ctx, l, metadata.MetadataPath))
+		}
+
 		created = append(created, fixturesCreated{
 			fixture:  f,
 			metadata: metadata,
@@ -208,8 +243,10 @@ func TestFixtureRegistryURI(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
 	registry := newTestRegistry(t, "nodelocal://1/roachprod/v25.1")
-	// The time is always 2024-06-01 12:23
-	registry.clock = func() time.Time { return time.Date(2024, 6, 1, 12, 23, 0, 0, time.UTC) }
+	// The time is always 2024-06-01 12:23:30.123 UTC
+	registry.clock = func() time.Time {
+		return time.Date(2024, 6, 1, 12, 23, 30, int(123*time.Millisecond), time.UTC)
+	}
 
 	handle, err := registry.Create(context.Background(), "test-kind", newLogger(t))
 	require.NoError(t, err)
@@ -218,12 +255,12 @@ func TestFixtureRegistryURI(t *testing.T) {
 
 	dataUri := registry.URI(meta.DataPath)
 	require.Equal(t,
-		"nodelocal://1/roachprod/v25.1/test-kind/20240601-1223",
+		"nodelocal://1/roachprod/v25.1/test-kind/20240601-122330.123",
 		dataUri.String())
 
 	metaUri := registry.URI(meta.MetadataPath)
 	require.Equal(t,
-		"nodelocal://1/roachprod/v25.1/metadata/test-kind/20240601-1223",
+		"nodelocal://1/roachprod/v25.1/metadata/test-kind/20240601-122330.123",
 		metaUri.String())
 }
 

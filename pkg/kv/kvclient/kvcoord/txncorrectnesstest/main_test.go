@@ -17,17 +17,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/randutil"
 )
 
-func init() {
-	securityassets.SetLoader(securitytest.EmbeddedAssets)
-}
-
 func TestMain(m *testing.M) {
-	serverutils.InitTestServerFactory(server.TestServerFactory)
+	securityassets.SetLoader(securitytest.EmbeddedAssets)
+	serverutils.InitTestServerFactory(server.TestServerFactory,
+		serverutils.WithDRPCOption(base.TestDRPCEnabledRandomly))
 	randutil.SeedForTests()
-
-	defer serverutils.TestingSetDefaultTenantSelectionOverride(
-		base.TestIsForStuffThatShouldWorkWithSecondaryTenantsButDoesntYet(76378),
-	)()
 
 	os.Exit(m.Run())
 }

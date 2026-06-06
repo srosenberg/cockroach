@@ -62,7 +62,7 @@ func TestExternalHashJoiner(t *testing.T) {
 		for _, tcs := range [][]*joinTestCase{getHJTestCases(), getMJTestCases()} {
 			for _, tc := range tcs {
 				delegateFDAcquisitions := rng.Float64() < 0.5
-				log.Infof(ctx, "spillForced=%t/numRepartitions=%d/%s/delegateFDAcquisitions=%t",
+				log.Dev.Infof(ctx, "spillForced=%t/numRepartitions=%d/%s/delegateFDAcquisitions=%t",
 					spillForced, numForcedRepartitions, tc.description, delegateFDAcquisitions)
 				var semsToCheck []semaphore.Semaphore
 				// Since RunTests harness internally performs multiple runs with
@@ -177,7 +177,7 @@ func TestExternalHashJoinerFallbackToSortMergeJoin(t *testing.T) {
 	// squared in the output.
 	expectedTuplesCount := nBatches * nBatches * coldata.BatchSize() * coldata.BatchSize()
 	actualTuplesCount := 0
-	for b := hj.Next(); b.Length() > 0; b = hj.Next() {
+	for b := colexecop.NextNoMeta(hj); b.Length() > 0; b = colexecop.NextNoMeta(hj) {
 		actualTuplesCount += b.Length()
 	}
 	require.True(t, spilled)
@@ -289,7 +289,7 @@ func BenchmarkExternalHashJoiner(b *testing.B) {
 							)
 							require.NoError(b, err)
 							hj.Init(ctx)
-							for b := hj.Next(); b.Length() > 0; b = hj.Next() {
+							for b := colexecop.NextNoMeta(hj); b.Length() > 0; b = colexecop.NextNoMeta(hj) {
 							}
 							afterEachRun()
 						}

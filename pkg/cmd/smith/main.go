@@ -66,6 +66,7 @@ var (
 		"DisableCrossJoins":          sqlsmith.DisableCrossJoins(),
 		"DisableDDLs":                sqlsmith.DisableDDLs(),
 		"DisableDecimals":            sqlsmith.DisableDecimals(),
+		"DisableDoBlocks":            sqlsmith.DisableDoBlocks(),
 		"DisableEverything":          sqlsmith.DisableEverything(),
 		"DisableIndexHints":          sqlsmith.DisableIndexHints(),
 		"DisableInsertSelect":        sqlsmith.DisableInsertSelect(),
@@ -81,6 +82,7 @@ var (
 		"EnableWith":                 sqlsmith.EnableWith(),
 		"FavorCommonData":            sqlsmith.FavorCommonData(),
 		"IgnoreFNs":                  strArgOpt(sqlsmith.IgnoreFNs),
+		"InsUpdDelOnly":              sqlsmith.InsUpdDelOnly(),
 		"InsUpdOnly":                 sqlsmith.InsUpdOnly(),
 		"MaybeSortOutput":            sqlsmith.MaybeSortOutput(),
 		"MultiRegionDDLs":            sqlsmith.MultiRegionDDLs(),
@@ -235,7 +237,8 @@ func parseSchemaDefinition(schemaPath string) (opts []sqlsmith.SmitherOption, _ 
 		case *tree.CreateTable:
 			tableID := descpb.ID(int(parentID) + i + 1)
 			desc, err := importer.MakeTestingSimpleTableDescriptor(
-				context.Background(), &semaCtx, st, t, parentID, keys.PublicSchemaID, tableID, importer.NoFKs, wall)
+				context.Background(), &semaCtx, st, t, parentID, keys.PublicSchemaID, tableID, wall,
+			)
 			if err != nil {
 				return nil, errors.Wrapf(err, "failed to create table descriptor for statement %s", t)
 			}

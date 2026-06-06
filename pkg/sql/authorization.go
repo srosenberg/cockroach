@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/settings"
@@ -32,6 +33,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
+	"github.com/cockroachdb/cockroach/pkg/sql/unsafesql"
 	"github.com/cockroachdb/errors"
 )
 
@@ -89,6 +91,10 @@ type AuthorizationAccessor interface {
 	// has a global privilege or the corresponding legacy role option.
 	HasGlobalPrivilegeOrRoleOption(ctx context.Context, privilege privilege.Kind) (bool, error)
 
+	// UserHasGlobalPrivilegeOrRoleOption is like HasGlobalPrivilegeOrRoleOption,
+	// except that it is for a specific user.
+	UserHasGlobalPrivilegeOrRoleOption(ctx context.Context, privilege privilege.Kind, user username.SQLUsername) (bool, error)
+
 	// CheckGlobalPrivilegeOrRoleOption checks if the current user has a global privilege
 	// or the corresponding legacy role option, and returns an error if the user does not.
 	CheckGlobalPrivilegeOrRoleOption(ctx context.Context, privilege privilege.Kind) error
@@ -117,6 +123,15 @@ func (p *planner) HasPrivilege(
 		return false, errors.AssertionFailedf("cannot use CheckPrivilege without a txn")
 	}
 
+	// Do a safety check on the object, if it is considered unsafe
+	// does the caller have the appropriate session data to access it?
+	if p.objectIsUnsafe(ctx, privilegeObject) {
+		unsafeOverride := p.ExecCfg().EvalContextTestingKnobs.UnsafeOverride
+		if err := unsafesql.CheckInternalsAccess(ctx, p.SessionData(), p.stmt.AST, p.extendedEvalCtx.Annotations, &p.ExecCfg().Settings.SV, unsafeOverride); err != nil {
+			return false, err
+		}
+	}
+
 	// root, admin and node user should always have privileges, except NOSQLLOGIN.
 	// This allows us to short-circuit privilege checks for
 	// virtual object such that we don't have to query the system.privileges
@@ -143,7 +158,7 @@ func (p *planner) HasPrivilege(
 	// permission check).
 	p.maybeAuditSensitiveTableAccessEvent(privilegeObject, privilegeKind)
 
-	privs, err := p.getPrivilegeDescriptor(ctx, privilegeObject)
+	privs, err := p.getImmutablePrivilegeDescriptor(ctx, privilegeObject)
 	if err != nil {
 		return false, err
 	}
@@ -190,13 +205,13 @@ func (p *planner) HasAnyPrivilege(
 		return false, errors.AssertionFailedf("cannot use CheckAnyPrivilege without a txn")
 	}
 
-	user := p.SessionData().User()
+	user := p.User()
 	if user.IsNodeUser() {
 		// User "node" has all privileges.
 		return true, nil
 	}
 
-	privs, err := p.getPrivilegeDescriptor(ctx, privilegeObject)
+	privs, err := p.getImmutablePrivilegeDescriptor(ctx, privilegeObject)
 	if err != nil {
 		return false, err
 	}
@@ -272,6 +287,21 @@ func (p *planner) CheckPrivilege(
 	ctx context.Context, object privilege.Object, privilege privilege.Kind,
 ) error {
 	return p.CheckPrivilegeForUser(ctx, object, privilege, p.User())
+}
+
+// checkFKReferencesPrivilege verifies that the current user has the REFERENCES
+// privilege on the referenced (parent) table for FK creation. Before the
+// V26_3_GrantReferencesToUsersWithCreate version is active, no check is
+// performed because the REFERENCES privilege does not yet exist.
+func (p *planner) checkFKReferencesPrivilege(
+	ctx context.Context, parent catalog.TableDescriptor,
+) error {
+	if !p.ExecCfg().Settings.Version.IsActive(
+		ctx, clusterversion.V26_3_GrantReferencesToUsersWithCreate,
+	) {
+		return nil
+	}
+	return p.CheckPrivilege(ctx, parent, privilege.REFERENCES)
 }
 
 // MustCheckGrantOptionsForUser calls PrivilegeDescriptor.CheckGrantOptions, which
@@ -360,7 +390,7 @@ func (p *planner) getOwnerOfPrivilegeObject(
 	if d, ok := privilegeObject.(catalog.TableDescriptor); ok && d.IsVirtualTable() {
 		return username.NodeUserName(), nil
 	}
-	privDesc, err := p.getPrivilegeDescriptor(ctx, privilegeObject)
+	privDesc, err := p.getImmutablePrivilegeDescriptor(ctx, privilegeObject)
 	if err != nil {
 		return username.SQLUsername{}, err
 	}
@@ -408,7 +438,7 @@ func isOwner(
 func (p *planner) HasOwnership(
 	ctx context.Context, privilegeObject privilege.Object,
 ) (bool, error) {
-	return p.UserHasOwnership(ctx, privilegeObject, p.SessionData().User())
+	return p.UserHasOwnership(ctx, privilegeObject, p.User())
 }
 
 // UserHasOwnership implements the AuthorizationAccessor interface.
@@ -454,7 +484,7 @@ func (p *planner) checkRolePredicate(
 // CheckAnyPrivilege implements the AuthorizationAccessor interface.
 // Requires a valid transaction to be open.
 func (p *planner) CheckAnyPrivilege(ctx context.Context, privilegeObject privilege.Object) error {
-	user := p.SessionData().User()
+	user := p.User()
 	ok, err := p.HasAnyPrivilege(ctx, privilegeObject)
 	if err != nil {
 		return err
@@ -588,6 +618,7 @@ func EnsureUserOnlyBelongsToRoles(
 			grantStmt := strings.Builder{}
 			grantStmt.WriteString("GRANT ")
 			addComma := false
+			rolesWereAdded := false // Flag to track if any roles are actually added
 			for _, role := range rolesToGrant {
 				if roleExists, _ := RoleExists(ctx, txn, role); roleExists {
 					if addComma {
@@ -595,14 +626,19 @@ func EnsureUserOnlyBelongsToRoles(
 					}
 					grantStmt.WriteString(role.SQLIdentifier())
 					addComma = true
+					rolesWereAdded = true // At least one role was added
 				}
 			}
-			grantStmt.WriteString(" TO ")
-			grantStmt.WriteString(user.SQLIdentifier())
-			if _, err := txn.Exec(
-				ctx, "EnsureUserOnlyBelongsToRoles-grant", txn.KV(), grantStmt.String(),
-			); err != nil {
-				return err
+
+			// Only execute the GRANT statement if at least one existing role was added.
+			if rolesWereAdded {
+				grantStmt.WriteString(" TO ")
+				grantStmt.WriteString(user.SQLIdentifier())
+				if _, err := txn.Exec(
+					ctx, "EnsureUserOnlyBelongsToRoles-grant", txn.KV(), grantStmt.String(),
+				); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -637,17 +673,20 @@ func (p *planner) UserHasRoleOption(
 		return false, errors.AssertionFailedf("cannot use HasRoleOption without a txn")
 	}
 
-	if user.IsRootUser() || user.IsNodeUser() {
-		return true, nil
-	}
+	// Skip non-admin inherited role options for validation.
+	if !slices.Contains(roleoption.NonAdminInheritedOptions, roleOption) {
+		if user.IsRootUser() || user.IsNodeUser() {
+			return true, nil
+		}
 
-	hasAdmin, err := p.UserHasAdminRole(ctx, user)
-	if err != nil {
-		return false, err
-	}
-	if hasAdmin {
-		// Superusers have all role privileges.
-		return true, nil
+		hasAdmin, err := p.UserHasAdminRole(ctx, user)
+		if err != nil {
+			return false, err
+		}
+		if hasAdmin {
+			// Superusers have all role privileges.
+			return true, nil
+		}
 	}
 
 	hasRolePrivilege, err := p.InternalSQLTxn().QueryRowEx(
@@ -692,7 +731,15 @@ func (p *planner) CheckRoleOption(ctx context.Context, roleOption roleoption.Opt
 func (p *planner) HasGlobalPrivilegeOrRoleOption(
 	ctx context.Context, privilege privilege.Kind,
 ) (bool, error) {
-	ok, err := p.HasPrivilege(ctx, syntheticprivilege.GlobalPrivilegeObject, privilege, p.User())
+	return p.UserHasGlobalPrivilegeOrRoleOption(ctx, privilege, p.User())
+}
+
+// UserHasGlobalPrivilegeOrRoleOption is like HasGlobalPrivilegeOrRoleOption, but
+// is for a specific user.
+func (p *planner) UserHasGlobalPrivilegeOrRoleOption(
+	ctx context.Context, privilege privilege.Kind, user username.SQLUsername,
+) (bool, error) {
+	ok, err := p.HasPrivilege(ctx, syntheticprivilege.GlobalPrivilegeObject, privilege, user)
 	if err != nil {
 		return false, err
 	}
@@ -701,7 +748,7 @@ func (p *planner) HasGlobalPrivilegeOrRoleOption(
 	}
 	maybeRoleOptionName := string(privilege.DisplayName())
 	if roleOption, ok := roleoption.ByName[maybeRoleOptionName]; ok {
-		return p.HasRoleOption(ctx, roleOption)
+		return p.UserHasRoleOption(ctx, user, roleOption)
 	}
 	return false, nil
 }
@@ -838,17 +885,39 @@ func (p *planner) checkCanAlterToNewOwner(
 
 	// To alter the owner, you must also be a direct or indirect member of the new
 	// owning role.
-	if p.User() == newOwner {
+	return p.checkMemberOfRole(ctx, newOwner)
+}
+
+// checkMemberOfRole checks that the current user is a member of the given role,
+// either directly or indirectly. Being the role itself counts as membership.
+func (p *planner) checkMemberOfRole(ctx context.Context, role username.SQLUsername) error {
+	if p.User() == role {
 		return nil
 	}
 	memberOf, err := p.MemberOfWithAdminOption(ctx, p.User())
 	if err != nil {
 		return err
 	}
-	if _, ok := memberOf[newOwner]; ok {
+	if _, ok := memberOf[role]; ok {
 		return nil
 	}
-	return pgerror.Newf(pgcode.InsufficientPrivilege, "must be member of role %q", newOwner)
+	return pgerror.Newf(pgcode.InsufficientPrivilege, "must be member of role %q", role)
+}
+
+// checkAdminOrMemberOfRole checks that the given role exists and that the
+// current user is either an admin or a member of the given role.
+func (p *planner) checkAdminOrMemberOfRole(ctx context.Context, role username.SQLUsername) error {
+	if err := p.CheckRoleExists(ctx, role); err != nil {
+		return err
+	}
+	hasAdmin, err := p.HasAdminRole(ctx)
+	if err != nil {
+		return err
+	}
+	if hasAdmin {
+		return nil
+	}
+	return p.checkMemberOfRole(ctx, role)
 }
 
 // HasOwnershipOnSchema checks if the current user has ownership on the schema.
@@ -917,6 +986,33 @@ func (p *planner) HasViewActivityOrViewActivityRedactedRole(
 	}
 
 	return false, false, nil
+}
+
+// objectIsUnsafe checks if the privilege object is considered unsafe for external usage.
+// Unsafe objects are any system tables, and crdb_internal tables which are not listed as externally supported.
+func (p *planner) objectIsUnsafe(ctx context.Context, privilegeObject privilege.Object) bool {
+	if p.skipUnsafeInternalsCheck {
+		return false
+	}
+
+	d, ok := privilegeObject.(catalog.TableDescriptor)
+	if !ok {
+		return false
+	}
+
+	// All system descriptors are considered unsafe
+	if catalog.IsSystemDescriptor(d) {
+		return true
+	}
+
+	// Unsupported crdb_internal tables are considered unsafe.
+	if d.GetParentSchemaID() == catconstants.CrdbInternalID {
+		if _, ok := SupportedCRDBInternalTables[d.GetName()]; !ok {
+			return true
+		}
+	}
+
+	return false
 }
 
 func insufficientPrivilegeError(

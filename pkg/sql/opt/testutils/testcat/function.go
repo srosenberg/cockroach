@@ -34,10 +34,7 @@ func (tc *Catalog) ResolveFunction(
 	}
 
 	// Attempt to resolve to a built-in function first.
-	def, err := tree.GetBuiltinFuncDefinition(fn, path)
-	if err != nil {
-		return nil, err
-	}
+	def := tree.GetBuiltinFuncDefinition(fn, path)
 	if def != nil {
 		return def, nil
 	}
@@ -86,7 +83,9 @@ func (tc *Catalog) CreateRoutine(c *tree.CreateRoutine) {
 		}
 	}
 	if c.RoutineBody != nil {
-		panic(fmt.Errorf("routine body of BEGIN ATOMIC is not supported"))
+		if err := tree.ConvertInlineRoutineBodyToOption(c); err != nil {
+			panic(err)
+		}
 	}
 
 	// Resolve the parameter names and types.

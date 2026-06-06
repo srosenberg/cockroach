@@ -90,6 +90,15 @@ const (
 	// PlanFlagContainsUpsert is set if at least one UPSERT stmt is found in the
 	// whole plan.
 	PlanFlagContainsUpsert
+
+	// PlanFlagUsesRLS is set if the plan applies row-level security policies.
+	PlanFlagUsesRLS
+
+	// PlanFlagCanaryAndStableStatsDiffer is set if at least one table
+	// referenced by the query has genuinely different canary (newest) vs.
+	// stable (second-newest) statistics within its canary window. This
+	// gates canary/stable experiment metric recording.
+	PlanFlagCanaryAndStableStatsDiffer
 )
 
 // IsSet returns true if the receiver has all of the given flags set.
@@ -118,12 +127,17 @@ type ScanParams struct {
 	InvertedConstraint inverted.Spans
 
 	// If non-zero, the scan returns this many rows.
+	//
+	// Additionally, in plan-gist decoding path, this will be set to -1 to
+	// indicate presence of a limit, regardless of its value.
+	// TODO(yuzefovich): we could refactor this special case by adding an
+	// additional boolean that would allow us to switch to using uint64.
 	HardLimit int64
 
 	// If non-zero, the scan may still be required to return up to all its rows
 	// (or up to the HardLimit if it is set, but can be optimized under the
 	// assumption that only SoftLimit rows will be needed.
-	SoftLimit int64
+	SoftLimit uint64
 
 	Reverse bool
 
@@ -139,6 +153,10 @@ type ScanParams struct {
 	// EstimatedRowCount, if set, is the estimated number of rows that will be
 	// scanned, rounded up.
 	EstimatedRowCount uint64
+
+	// StatsCreatedAt, if set, is the time when the latest table statistics were
+	// collected.
+	StatsCreatedAt time.Time
 
 	// If true, we are performing a locality optimized search. In order for this
 	// to work correctly, the execution engine must create a local DistSQL plan
@@ -285,12 +303,17 @@ type KVOption struct {
 // RecursiveCTEIterationFn creates a plan for an iteration of WITH RECURSIVE,
 // given the result of the last iteration (as a node created by
 // ConstructBuffer).
-type RecursiveCTEIterationFn func(ef Factory, bufferRef Node) (Plan, error)
+type RecursiveCTEIterationFn func(ctx context.Context, ef Factory, bufferRef Node) (Plan, error)
 
 // ApplyJoinPlanRightSideFn creates a plan for an iteration of ApplyJoin, given
 // a row produced from the left side. The plan is guaranteed to produce the
 // rightColumns passed to ConstructApplyJoin (in order).
 type ApplyJoinPlanRightSideFn func(ctx context.Context, ef Factory, leftRow tree.Datums) (Plan, error)
+
+// ApplyJoinRightSideForExplainFn is a function that lazily populates the
+// stringified version of the unoptimized right-hand side plan, for EXPLAIN
+// purposes.
+type ApplyJoinRightSideForExplainFn func(redactableValues bool) string
 
 // PostQuery describes a cascading query or an AFTER trigger action. The query
 // uses a node created by ConstructBuffer as an input; it should only be
@@ -430,6 +453,12 @@ type EstimatedStats struct {
 	// ForecastAt is set only for scans with forecasted stats; it is the time the
 	// forecast was for (which could be in the past, present, or future).
 	ForecastAt time.Time
+	// CanaryStatsActive is set only for scans; it is true if the table has
+	// divergent canary vs. stable statistics within its canary window.
+	CanaryStatsActive bool
+	// CanaryWindowSize is set only for scans with CanaryStatsActive; it is
+	// the configured canary window duration for the table.
+	CanaryWindowSize time.Duration
 }
 
 // ExecutionStats contain statistics about a given operator gathered from the
@@ -446,6 +475,8 @@ type ExecutionStats struct {
 
 	KVTime                optional.Duration
 	KVContentionTime      optional.Duration
+	KVLockWaitTime        optional.Duration
+	KVLatchWaitTime       optional.Duration
 	KVBytesRead           optional.Uint
 	KVPairsRead           optional.Uint
 	KVRowsRead            optional.Uint
@@ -525,6 +556,7 @@ type ExecutionStats struct {
 	SeekCount         optional.Uint
 	InternalSeekCount optional.Uint
 
+	ExecTime         optional.Duration
 	MaxAllocatedMem  optional.Uint
 	MaxAllocatedDisk optional.Uint
 	SQLCPUTime       optional.Duration
@@ -548,6 +580,14 @@ type RLSPoliciesApplied struct {
 	// PoliciesSkippedForRole is true if the user is a member of a role that is
 	// exempt from all policies (e.g., admin).
 	PoliciesSkippedForRole bool
+
+	// PoliciesFilteredAllRows is true if RLS was enforced, and although policies
+	// were applied, the result was that no rows were returned (typically represented
+	// by an empty VALUES node). This is used when it's not possible to attribute
+	// the result to specific table-level policy details (e.g., due to an empty
+	// VALUES node replacing a scan).
+	PoliciesFilteredAllRows bool
+
 	// Policies is the list of policy IDs applied to the scan of a single table.
 	// This applies to the table that this annotation was attached to. If this is
 	// empty, it either means policies were skipped due to the role, or none were

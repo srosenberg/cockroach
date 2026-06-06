@@ -29,6 +29,7 @@ func registerAcceptance(r registry.Registry) {
 		timeout            time.Duration
 		encryptionSupport  registry.EncryptionSupport
 		defaultLeases      bool
+		monitor            bool
 		randomized         bool
 		workloadNode       bool
 		incompatibleClouds registry.CloudSet
@@ -58,7 +59,7 @@ func registerAcceptance(r registry.Registry) {
 				name: "many-splits", fn: runManySplits,
 				encryptionSupport: registry.EncryptionMetamorphic,
 			},
-			{name: "cli/node-status", fn: runCLINodeStatus},
+			{name: "cli/node-status", fn: runCLINodeStatus, numNodes: 5, timeout: 15 * time.Minute},
 			{name: "cluster-init", fn: runClusterInit},
 			{name: "rapid-restart", fn: runRapidRestart},
 		},
@@ -75,8 +76,12 @@ func registerAcceptance(r registry.Registry) {
 				fn:            runVersionUpgrade,
 				timeout:       2 * time.Hour, // actually lower in local runs; see `runVersionUpgrade`
 				defaultLeases: true,
+				monitor:       true,
 				randomized:    true,
 				suites:        []string{registry.MixedVersion},
+				// Disabled on IBM because s390x is only built on master
+				// and version upgrade is impossible to test as of 05/2025.
+				incompatibleClouds: registry.OnlyIBM,
 			},
 		},
 		registry.OwnerDisasterRecovery: {
@@ -100,9 +105,13 @@ func registerAcceptance(r registry.Registry) {
 				fn:            runValidateSystemSchemaAfterVersionUpgrade,
 				timeout:       60 * time.Minute,
 				defaultLeases: true,
+				monitor:       true,
 				randomized:    true,
 				numNodes:      1,
 				suites:        []string{registry.MixedVersion},
+				// Disabled on IBM because s390x is only built on master
+				// and version upgrade is impossible to test as of 05/2025.
+				incompatibleClouds: registry.OnlyIBM,
 			},
 			{
 				name:     "mismatched-locality",
@@ -139,7 +148,9 @@ func registerAcceptance(r registry.Registry) {
 					tc.name,
 				))
 			}
-			suites := append([]string{registry.Nightly, registry.Quick, registry.Acceptance}, tc.suites...)
+			var suites []string
+			suites = append(suites, registry.Nightly, registry.Quick, registry.Acceptance)
+			suites = append(suites, tc.suites...)
 			testSpec := registry.TestSpec{
 				Name:              "acceptance/" + tc.name,
 				Owner:             owner,
@@ -149,6 +160,7 @@ func registerAcceptance(r registry.Registry) {
 				Timeout:           10 * time.Minute,
 				CompatibleClouds:  registry.AllClouds.Remove(tc.incompatibleClouds),
 				Suites:            registry.Suites(suites...),
+				Monitor:           tc.monitor,
 				Randomized:        tc.randomized,
 			}
 

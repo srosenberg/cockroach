@@ -10,8 +10,9 @@ import (
 	"fmt"
 
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
-	"github.com/cockroachdb/cockroach/pkg/sql/parser"
+	"github.com/cockroachdb/cockroach/pkg/sql/parserutils"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/builtins/builtinsregistry"
@@ -151,8 +152,8 @@ func FormatColumnForDisplay(
 
 // RenameColumn replaces any occurrence of the column from in expr with to, and
 // returns a string representation of the new expression.
-func RenameColumn(expr string, from tree.Name, to tree.Name) (string, error) {
-	parsed, err := parser.ParseExpr(expr)
+func RenameColumn(expr catpb.Expression, from tree.Name, to tree.Name) (catpb.Expression, error) {
+	parsed, err := parserutils.ParseExpr(string(expr))
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +179,7 @@ func RenameColumn(expr string, from tree.Name, to tree.Name) (string, error) {
 		return "", err
 	}
 
-	return renamed.String(), nil
+	return catpb.Expression(renamed.String()), nil
 }
 
 // iterColDescriptors iterates over the expression's variable columns and
@@ -213,6 +214,51 @@ func iterColDescriptors(
 		}
 
 		if err := f(col); err != nil {
+			return false, nil, err
+		}
+		return false, expr, err
+	})
+
+	return err
+}
+
+// iterColsWithLookupFn iterates over the expression's variable columns and
+// calls f on each, providing the column information from the lookup function.
+//
+// If the expression references a column that does not exist according to the
+// lookup function, iterColsWithLookupFn errs with pgcode.UndefinedColumn.
+//
+// The column lookup function allows looking up columns both in the descriptor
+// or in declarative schema changer elements.
+func iterColsWithLookupFn(
+	rootExpr tree.Expr,
+	columnLookupFn ColumnLookupFn,
+	f func(columnName tree.Name, id catid.ColumnID, typ *types.T, isAccessible, isComputed bool) error,
+) error {
+	_, err := tree.SimpleVisit(rootExpr, func(expr tree.Expr) (recurse bool, newExpr tree.Expr, err error) {
+		vBase, ok := expr.(tree.VarName)
+		if !ok {
+			// Not a VarName, don't do anything to this node.
+			return true, expr, nil
+		}
+
+		v, err := vBase.NormalizeVarName()
+		if err != nil {
+			return false, nil, err
+		}
+
+		c, ok := v.(*tree.ColumnItem)
+		if !ok {
+			return true, expr, nil
+		}
+
+		colExists, colIsAccessible, isComputed, colID, colType := columnLookupFn(c.ColumnName)
+		if !colExists {
+			return false, nil, pgerror.Newf(pgcode.UndefinedColumn,
+				"column %q does not exist, referenced in %q", c.ColumnName, rootExpr.String())
+		}
+
+		if err := f(c.ColumnName, colID, colType, colIsAccessible, isComputed); err != nil {
 			return false, nil, err
 		}
 		return false, expr, err
@@ -261,7 +307,7 @@ func (d *dummyColumn) ResolvedType() *types.T {
 	return d.typ
 }
 
-type ColumnLookupFn func(columnName tree.Name) (exists bool, accessible bool, id catid.ColumnID, typ *types.T)
+type ColumnLookupFn func(columnName tree.Name) (exists, accessible, computed bool, id catid.ColumnID, typ *types.T)
 
 // ReplaceColumnVars replaces the occurrences of column names in an expression with
 // dummyColumns containing their type, so that they may be type-checked. It
@@ -295,7 +341,7 @@ func ReplaceColumnVars(
 			return true, expr, nil
 		}
 
-		colExists, colIsAccessible, colID, colType := columnLookupFn(c.ColumnName)
+		colExists, colIsAccessible, _, colID, colType := columnLookupFn(c.ColumnName)
 		if !colExists {
 			return false, nil, pgerror.Newf(pgcode.UndefinedColumn,
 				"column %q does not exist, referenced in %q", c.ColumnName, rootExpr.String())

@@ -19,11 +19,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
-	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
+	"github.com/cockroachdb/cockroach/pkg/util/besteffort"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
+	"github.com/cockroachdb/crlib/crstrings"
 	"github.com/cockroachdb/errors"
 	pbtypes "github.com/gogo/protobuf/types"
 )
@@ -80,7 +81,7 @@ func (e *scheduledBackupExecutor) executeBackup(
 	// Sanity check: backup should be detached.
 	if backupStmt.Options.Detached != tree.DBoolTrue {
 		backupStmt.Options.Detached = tree.DBoolTrue
-		log.Warningf(ctx, "force setting detached option for backup schedule %d",
+		log.Dev.Warningf(ctx, "force setting detached option for backup schedule %d",
 			sj.ScheduleID())
 	}
 
@@ -98,6 +99,31 @@ func (e *scheduledBackupExecutor) executeBackup(
 	}
 	backupStmt.AsOf = tree.AsOfClause{Expr: endTime}
 
+	// We currently set two different options that control whether two different
+	// backup metrics are updated:
+	// 1. updates_last_backup_metric on the schedule
+	// 2. updates_cluster_monitoring_metrics on the backup statement
+	// We should probably consolidate these two options int one, but for now we
+	// will ensure that setting updates_last_backup_metric on the schedule also
+	// sets updates_cluster_monitoring_metrics on the backup statement.
+	args := &backuppb.ScheduledBackupExecutionArgs{}
+	if err := pbtypes.UnmarshalAny(sj.ExecutionArgs().Args, args); err != nil {
+		return errors.Wrap(err, "un-marshaling args")
+	}
+	if args.UpdatesLastBackupMetric {
+		backupStmt.Options.UpdatesClusterMonitoringMetrics = tree.DBoolTrue
+	}
+
+	// Revision history only applies to incremental backups. For existing full
+	// backup schedules that may have revision_history set, strip it before
+	// executing.
+	if args.BackupType == backuppb.ScheduledBackupExecutionArgs_FULL &&
+		backupStmt.Options.CaptureRevisionHistory != nil {
+		log.Dev.Warningf(ctx, "removing revision_history from full backup schedule %d; "+
+			"revision_history only applies to incremental backups", sj.ScheduleID())
+		backupStmt.Options.CaptureRevisionHistory = nil
+	}
+
 	// Invoke backup plan hook.
 	hook, cleanup := cfg.PlanHookMaker(ctx, "exec-backup", txn.KV(), sj.Owner())
 	defer cleanup()
@@ -110,7 +136,7 @@ func (e *scheduledBackupExecutor) executeBackup(
 	// pause the schedule. To maintain backward compatability with schedules
 	// without a clusterID, don't pause schedules without a clusterID.
 	if !currentDetails.ClusterID.Equal(uuid.Nil) && currentClusterID != currentDetails.ClusterID {
-		log.Infof(ctx, "schedule %d last run by different cluster %s, pausing until manually resumed",
+		log.Dev.Infof(ctx, "schedule %d last run by different cluster %s, pausing until manually resumed",
 			sj.ScheduleID(),
 			currentDetails.ClusterID)
 		currentDetails.ClusterID = currentClusterID
@@ -119,7 +145,8 @@ func (e *scheduledBackupExecutor) executeBackup(
 		return nil
 	}
 
-	log.Infof(ctx, "Starting scheduled backup %d", sj.ScheduleID())
+	log.Dev.Infof(ctx, "starting scheduled backup %d (%s)",
+		sj.ScheduleID(), sj.ScheduleLabel())
 
 	if knobs, ok := cfg.TestingKnobs.(*jobs.TestingKnobs); ok {
 		if knobs.OverrideAsOfClause != nil {
@@ -138,26 +165,30 @@ func (e *scheduledBackupExecutor) executeBackup(
 func invokeBackup(
 	ctx context.Context, backupFn sql.PlanHookRowFn, registry *jobs.Registry, txn isql.Txn,
 ) (eventpb.RecoveryEvent, error) {
-	resultCh := make(chan tree.Datums) // No need to close
-	g := ctxgroup.WithContext(ctx)
+	resultCh := make(chan tree.Datums, 1) // No need to close
 
-	var backupEvent eventpb.RecoveryEvent
-	g.GoCtx(func(ctx context.Context) error {
+	err := backupFn(ctx, resultCh)
+	if err != nil {
+		return eventpb.RecoveryEvent{}, err
+	}
+
+	var event eventpb.RecoveryEvent
+	besteffort.Warning(ctx, "get-backup-telemetry", func(ctx context.Context) error {
 		select {
 		case res := <-resultCh:
-			backupEvent = getBackupFnTelemetry(ctx, registry, txn, res)
-			return nil
+			event, err = getBackupFnTelemetry(ctx, registry, txn, res)
+			if sql.ErrIsRetryable(err) {
+				log.Dev.Warningf(ctx,
+					"best effort operation 'get-backup-telemetry' failed with retryable error: %+v", err,
+				)
+				return nil
+			}
+			return err
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	})
-
-	g.GoCtx(func(ctx context.Context) error {
-		return backupFn(ctx, resultCh)
-	})
-
-	err := g.Wait()
-	return backupEvent, err
+	return event, nil
 }
 
 func planBackup(
@@ -188,15 +219,16 @@ func (e *scheduledBackupExecutor) NotifyJobTermination(
 ) error {
 	if jobState == jobs.StateSucceeded {
 		e.metrics.NumSucceeded.Inc(1)
-		log.Infof(ctx, "backup job %d scheduled by %d succeeded", jobID, schedule.ScheduleID())
+		log.Dev.Infof(ctx, "backup job %d scheduled by %d (%s) succeeded",
+			jobID, schedule.ScheduleID(), schedule.ScheduleLabel())
 		return e.backupSucceeded(ctx, jobs.ScheduledJobTxn(txn), schedule, details, env)
 	}
 
 	e.metrics.NumFailed.Inc(1)
 	err := errors.Errorf(
-		"backup job %d scheduled by %d failed with state %s",
-		jobID, schedule.ScheduleID(), jobState)
-	log.Errorf(ctx, "backup error: %v	", err)
+		"backup job %d scheduled by %d (%s) failed with state %s",
+		jobID, schedule.ScheduleID(), schedule.ScheduleLabel(), jobState)
+	log.Dev.Errorf(ctx, "backup error: %v", err)
 	jobs.DefaultHandleFailedRun(schedule, "backup job %d failed with err=%v", jobID, err)
 	return nil
 }
@@ -324,8 +356,8 @@ func (e *scheduledBackupExecutor) GetCreateScheduleStatement(
 		destinations,
 		kmsURIs,
 		"",
-		nil,
-		false /* hasBeenPlanned */)
+		false, /* hasBeenPlanned */
+	)
 	if err != nil {
 		return "", err
 	}
@@ -358,14 +390,18 @@ func (e *scheduledBackupExecutor) backupSucceeded(
 	}
 
 	// If this schedule is designated as maintaining the "LastBackup" metric used
-	// for monitoring an RPO SLA, update that metric.
+	// for monitoring an RPO SLA, update that metric. We only update RpoMetric for
+	// non-tenant schedules because a host cluster backing up both itself and its
+	// tenants would have the metric clobbered by multiple schedules otherwise.
+	// See: https://github.com/cockroachdb/cockroach/issues/165125
 	if args.UpdatesLastBackupMetric {
-		e.metrics.RpoMetric.Update(details.(jobspb.BackupDetails).EndTime.GoTime().Unix())
 		if details.(jobspb.BackupDetails).SpecificTenantIds != nil {
 			for _, tenantID := range details.(jobspb.BackupDetails).SpecificTenantIds {
 				e.metrics.RpoTenantMetric.Update(map[string]string{"tenant_id": tenantID.String()},
 					details.(jobspb.BackupDetails).EndTime.GoTime().Unix())
 			}
+		} else {
+			e.metrics.RpoMetric.Update(details.(jobspb.BackupDetails).EndTime.GoTime().Unix())
 		}
 	}
 
@@ -376,7 +412,7 @@ func (e *scheduledBackupExecutor) backupSucceeded(
 	s, err := txn.Load(ctx, env, args.UnpauseOnSuccess)
 	if err != nil {
 		if jobs.HasScheduledJobNotFoundError(err) {
-			log.Warningf(ctx, "cannot find schedule %d to unpause; it may have been dropped",
+			log.Dev.Warningf(ctx, "cannot find schedule %d to unpause; it may have been dropped",
 				args.UnpauseOnSuccess)
 			return nil
 		}
@@ -432,7 +468,7 @@ func extractBackupStatement(sj *jobs.ScheduledJob) (*annotatedBackupStatement, e
 		}, nil
 	}
 
-	return nil, errors.Newf("unexpect node type %T", node)
+	return nil, errors.Newf("unexpected node type %T", node)
 }
 
 var _ jobs.ScheduledJobController = &scheduledBackupExecutor{}
@@ -461,7 +497,7 @@ func unlinkOrDropDependentSchedule(
 	)
 	if err != nil {
 		if jobs.HasScheduledJobNotFoundError(err) {
-			log.Warningf(ctx, "failed to resolve dependent schedule %d", args.DependentScheduleID)
+			log.Dev.Warningf(ctx, "failed to resolve dependent schedule %d", args.DependentScheduleID)
 			return 0, nil
 		}
 		return 0, errors.Wrapf(err, "failed to resolve dependent schedule %d", args.DependentScheduleID)
@@ -529,44 +565,36 @@ func (e *scheduledBackupExecutor) OnDrop(
 // corresponding to backupFnResult.
 func getBackupFnTelemetry(
 	ctx context.Context, registry *jobs.Registry, txn isql.Txn, backupFnResult tree.Datums,
-) eventpb.RecoveryEvent {
+) (eventpb.RecoveryEvent, error) {
 	if registry == nil {
-		return eventpb.RecoveryEvent{}
+		return eventpb.RecoveryEvent{}, nil
 	}
 
-	getInitialDetails := func() (jobspb.BackupDetails, error) {
-		if len(backupFnResult) == 0 {
-			return jobspb.BackupDetails{}, errors.New("unexpected empty result")
-		}
-
-		jobIDDatum := backupFnResult[0]
-		if jobIDDatum == tree.DNull {
-			return jobspb.BackupDetails{}, errors.New("expected job ID as first column of result")
-		}
-
-		jobID, ok := tree.AsDInt(jobIDDatum)
-		if !ok {
-			return jobspb.BackupDetails{}, errors.New("expected job ID as first column of result")
-		}
-
-		job, err := registry.LoadJobWithTxn(ctx, jobspb.JobID(jobID), txn)
-		if err != nil {
-			return jobspb.BackupDetails{}, errors.Wrap(err, "failed to load dry-run backup job")
-		}
-
-		backupDetails, ok := job.Details().(jobspb.BackupDetails)
-		if !ok {
-			return jobspb.BackupDetails{}, errors.Newf("unexpected job details type %T", job.Details())
-		}
-		return backupDetails, nil
+	if len(backupFnResult) == 0 {
+		return eventpb.RecoveryEvent{}, errors.New("unexpected empty result")
 	}
 
-	initialDetails, err := getInitialDetails()
+	jobIDDatum := backupFnResult[0]
+	if jobIDDatum == tree.DNull {
+		return eventpb.RecoveryEvent{}, errors.New("expected job ID as first column of result")
+	}
+
+	jobID, ok := jobIDDatum.(*tree.DInt)
+	if !ok {
+		return eventpb.RecoveryEvent{}, errors.New("expected job ID as first column of result")
+	}
+
+	job, err := registry.LoadJobWithTxn(ctx, jobspb.JobID(*jobID), txn)
 	if err != nil {
-		log.Warningf(ctx, "error collecting telemetry from dry-run backup during schedule creation: %v", err)
-		return eventpb.RecoveryEvent{}
+		return eventpb.RecoveryEvent{}, errors.Wrap(err, "failed to load dry-run backup job")
 	}
-	return createBackupRecoveryEvent(ctx, initialDetails, 0)
+
+	backupDetails, ok := job.Details().(jobspb.BackupDetails)
+	if !ok {
+		return eventpb.RecoveryEvent{}, errors.Newf("unexpected job details type %T", job.Details())
+	}
+
+	return createBackupRecoveryEvent(ctx, backupDetails, 0)
 }
 
 func init() {
@@ -574,20 +602,42 @@ func init() {
 		tree.ScheduledBackupExecutor.InternalName(),
 		func() (jobs.ScheduledJobExecutor, error) {
 			m := jobs.MakeExecutorMetrics(tree.ScheduledBackupExecutor.UserName())
+
 			pm := jobs.MakeExecutorPTSMetrics(tree.ScheduledBackupExecutor.UserName())
 			return &scheduledBackupExecutor{
 				metrics: backupMetrics{
 					ExecutorMetrics:    &m,
 					ExecutorPTSMetrics: &pm,
 					RpoMetric: metric.NewGauge(metric.Metadata{
-						Name:        "schedules.BACKUP.last-completed-time",
-						Help:        "The unix timestamp of the most recently completed backup by a schedule specified as maintaining this metric",
+						Name: "schedules.BACKUP.last-completed-time",
+						Help: crstrings.UnwrapText(`
+							The unix timestamp of the most recently completed backup by a
+							schedule specified as maintaining this metric
+						`),
 						Measurement: "Jobs",
 						Unit:        metric.Unit_TIMESTAMP_SEC,
+						Visibility:  metric.Metadata_ESSENTIAL,
+						Category:    metric.Metadata_SQL,
+						HowToUse: crstrings.UnwrapText(`
+							Monitor this metric to ensure that backups are meeting the
+							recovery point objective (RPO). Each node exports the time that it
+							last completed a backup on behalf of the schedule. If a node is
+							restarted, it will report 0 until it completes a backup. If all
+							nodes are restarted, max() is 0 until a node completes a backup.
+
+							To make use of this metric, first, from each node, take the
+							maximum over a rolling window equal to or greater than the backup
+							frequency, and then take the maximum of those values across nodes.
+							For example with a backup frequency of 60 minutes, monitor
+							time() - max_across_nodes(max_over_time(schedules_BACKUP_last_completed_time, 60min)).
+						`),
 					}),
 					RpoTenantMetric: metric.NewExportedGaugeVec(metric.Metadata{
-						Name:        "schedules.BACKUP.last-completed-time-by-virtual_cluster",
-						Help:        "The unix timestamp of the most recently completed host scheduled backup by virtual cluster specified as maintaining this metric",
+						Name: "schedules.BACKUP.last-completed-time-by-virtual_cluster",
+						Help: crstrings.UnwrapText(`
+							The unix timestamp of the most recently completed host scheduled
+							backup by virtual cluster specified as maintaining this metric
+						`),
 						Measurement: "Jobs",
 						Unit:        metric.Unit_TIMESTAMP_SEC,
 					}, []string{"tenant_id"}),

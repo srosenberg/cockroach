@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
+	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowexec"
 	_ "github.com/cockroachdb/cockroach/pkg/sql/sem/builtins"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
@@ -34,6 +35,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/randutil"
 	"github.com/cockroachdb/datadriven"
+	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -156,6 +158,8 @@ func TestEval(t *testing.T) {
 				return strings.TrimSpace(d.Expected)
 			}
 			semaCtx := tree.MakeSemaContext(nil /* resolver */)
+			// In 50% cases, disable "always null" short-circuiting.
+			semaCtx.TestingKnobs.DisallowAlwaysNullShortCut = rng.Intn(2) == 1
 			typedExpr, err := expr.TypeCheck(ctx, &semaCtx, types.AnyElement)
 			if err != nil {
 				// Skip this test as it's testing an expected error which would be
@@ -218,12 +222,25 @@ func TestEval(t *testing.T) {
 			)
 
 			mat.Start(ctx)
-			row, meta := mat.Next()
-			if meta != nil {
-				if meta.Err != nil {
-					return fmt.Sprint(meta.Err)
+			var row rowenc.EncDatumRow
+			var meta *execinfrapb.ProducerMetadata
+			for {
+				row, meta = mat.Next()
+				if meta != nil {
+					if meta.Err != nil {
+						if errors.IsAssertionFailure(meta.Err) {
+							t.Fatalf("%+v", meta.Err)
+						}
+						return fmt.Sprint(meta.Err)
+					} else if meta.RowNum == nil {
+						// In test builds, the invariantsChecker can inject
+						// RowNum metadata in arbitrary Operator chains, so
+						// we'll just silently swallow it.
+						t.Fatalf("unexpected metadata: %+v", meta)
+					}
+				} else {
+					break
 				}
-				t.Fatalf("unexpected metadata: %+v", meta)
 			}
 			if doFilter {
 				switch strings.ToLower(strings.TrimSpace(d.Expected)) {

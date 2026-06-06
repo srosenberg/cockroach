@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/storage/mvccencoding"
 	"github.com/cockroachdb/cockroach/pkg/storage/pebbleiter"
 	"github.com/cockroachdb/cockroach/pkg/util"
@@ -20,7 +21,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/cockroachkvs"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 // pebbleIterator is a wrapper around a pebble.Iterator that implements the
@@ -38,7 +40,7 @@ type pebbleIterator struct {
 	upperBoundBuf      []byte
 	rangeKeyMaskingBuf []byte
 	// Filter to use if masking is enabled.
-	maskFilter mvccWallTimeIntervalRangeKeyMask
+	maskFilter cockroachkvs.MVCCWallTimeIntervalRangeKeyMask
 	// [minTimestamp,maxTimestamp] contain the encoded timestamp bounds of the
 	// iterator, if any. This iterator will not return keys outside these
 	// timestamps. These are encoded because lexicographic comparison on encoded
@@ -125,7 +127,7 @@ func newPebbleIteratorByCloning(
 
 // newPebbleSSTIterator creates a new Pebble iterator for the given SSTs.
 func newPebbleSSTIterator(
-	files [][]sstable.ReadableFile, opts IterOptions,
+	files [][]objstorage.ReadableFile, opts IterOptions,
 ) (*pebbleIterator, error) {
 	p := pebbleIterPool.Get().(*pebbleIterator)
 	p.reusable = false // defensive
@@ -185,7 +187,6 @@ func (p *pebbleIterator) initReuseOrCreate(
 
 	p.init(ctx, nil, opts, durability, statsReporter)
 	if iter == nil {
-		// TODO(sumeer): fix after bumping to latest Pebble.
 		innerIter, err := handle.NewIterWithContext(ctx, &p.options)
 		if err != nil {
 			return err
@@ -211,22 +212,19 @@ func (p *pebbleIterator) setOptions(
 	ctx context.Context, opts IterOptions, durability DurabilityRequirement,
 ) {
 	if !opts.Prefix && len(opts.UpperBound) == 0 && len(opts.LowerBound) == 0 {
-		panic("iterator must set prefix or upper bound or lower bound")
+		panic(errors.AssertionFailedf("iterator must set prefix or upper bound or lower bound"))
 	}
 	if opts.MinTimestamp.IsSet() && opts.MaxTimestamp.IsEmpty() {
-		panic("min timestamp hint set without max timestamp hint")
+		panic(errors.AssertionFailedf("min timestamp hint set without max timestamp hint"))
 	}
 	if opts.Prefix && opts.RangeKeyMaskingBelow.IsSet() {
-		panic("can't use range key masking with prefix iterators") // very high overhead
+		panic(errors.AssertionFailedf("can't use range key masking with prefix iterators")) // very high overhead
 	}
 
 	// Generate new Pebble iterator options.
-	p.options = pebble.IterOptions{
-		OnlyReadGuaranteedDurable: durability == GuaranteedDurability,
-		KeyTypes:                  opts.KeyTypes,
-		UseL6Filters:              opts.useL6Filters,
-		Category:                  opts.ReadCategory.PebbleCategory(),
-	}
+	p.options = makeIterOptions(opts.ReadCategory, durability)
+	p.options.KeyTypes = opts.KeyTypes
+	p.options.UseL6Filters = opts.useL6Filters
 	p.prefix = opts.Prefix
 
 	if opts.LowerBound != nil {
@@ -250,7 +248,7 @@ func (p *pebbleIterator) setOptions(
 		p.rangeKeyMaskingBuf = mvccencoding.EncodeMVCCTimestampSuffixToBuf(
 			p.rangeKeyMaskingBuf, opts.RangeKeyMaskingBelow)
 		p.options.RangeKeyMasking.Suffix = p.rangeKeyMaskingBuf
-		p.maskFilter.BlockIntervalFilter.Init(mvccWallTimeIntervalCollector, 0, math.MaxUint64, MVCCBlockIntervalSuffixReplacer{})
+		p.maskFilter.BlockIntervalFilter.Init(mvccWallTimeIntervalCollector, 0, math.MaxUint64, cockroachkvs.MVCCBlockIntervalSuffixReplacer{})
 		p.options.RangeKeyMasking.Filter = p.getBlockPropertyFilterMask
 	}
 
@@ -284,10 +282,9 @@ func (p *pebbleIterator) setOptions(
 		// of the slice should be at least one more than the length, for a
 		// Pebble-internal performance optimization.
 		pkf := [2]pebble.BlockPropertyFilter{
-			sstable.NewBlockIntervalFilter(mvccWallTimeIntervalCollector,
+			cockroachkvs.NewMVCCTimeIntervalFilter(
 				uint64(opts.MinTimestamp.WallTime),
 				uint64(opts.MaxTimestamp.WallTime)+1,
-				MVCCBlockIntervalSuffixReplacer{},
 			),
 		}
 		p.options.PointKeyFilters = pkf[:1:2]
@@ -314,7 +311,7 @@ func (p *pebbleIterator) setOptions(
 // Close implements the MVCCIterator interface.
 func (p *pebbleIterator) Close() {
 	if !p.inuse {
-		panic("closing idle iterator")
+		panic(errors.AssertionFailedf("closing idle iterator"))
 	}
 	p.inuse = false
 
@@ -369,7 +366,7 @@ func (p *pebbleIterator) SeekEngineKeyGEWithLimit(
 	p.keyBuf = key.EncodeToBuf(p.keyBuf[:0])
 	if limit != nil {
 		if p.prefix {
-			panic("prefix iteration does not permit a limit")
+			panic(errors.AssertionFailedf("prefix iteration does not permit a limit"))
 		}
 		// Append the sentinel byte to make an EngineKey that has an empty
 		// version.
@@ -979,7 +976,7 @@ func (p *pebbleIterator) skipPointIfOutsideTimeBounds(key []byte) (skip bool) {
 
 func (p *pebbleIterator) destroy() {
 	if p.inuse {
-		panic("iterator still in use")
+		panic(errors.AssertionFailedf("iterator still in use"))
 	}
 	if p.iter != nil {
 		// If an error is encountered during iteration, it'll already have been
@@ -1042,4 +1039,21 @@ func (p *pebbleIterator) assertMVCCInvariants() error {
 	}
 
 	return nil
+}
+
+// We avoid tracking iterators with read categories that indicate very hot
+// paths.
+const exemptFromTracking = (uint32(1) << fs.BatchEvalReadCategory) |
+	(uint32(1) << fs.ScanRegularBatchEvalReadCategory) |
+	(uint32(1) << fs.IntentResolutionReadCategory) |
+	(uint32(1) << fs.AbortSpanReadCategory)
+
+func makeIterOptions(
+	readCategory fs.ReadCategory, durability DurabilityRequirement,
+) pebble.IterOptions {
+	return pebble.IterOptions{
+		OnlyReadGuaranteedDurable: durability == GuaranteedDurability,
+		Category:                  readCategory.PebbleCategory(),
+		ExemptFromTracking:        (exemptFromTracking>>readCategory)&1 == 1,
+	}
 }

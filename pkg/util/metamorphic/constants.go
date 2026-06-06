@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"testing"
 
 	"github.com/cockroachdb/cockroach/pkg/build/bazel"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
@@ -36,11 +37,13 @@ const (
 	metamorphicBoolProbability    = 0.5
 )
 
-// ConstantWithTestValue should be used to initialize "magic constants" that
+// ConstantWithTestRange should be used to initialize "magic constants" that
 // should be varied during test scenarios to check for bugs at boundary
-// conditions. When metamorphicutil.IsMetamorphicBuild is true, the test value will be used with
+// conditions. When metamorphicutil.IsMetamorphicBuild is true, the test value
+// in the semi-open range [min, max) will be used with
 // metamorphicValueProbability probability. In all other cases, the production
 // ("default") value will be used.
+//
 // The constant must be a "metamorphic variable": changing it cannot affect the
 // output of any SQL DMLs. It can only affect the way in which the data is
 // retrieved or processed, because otherwise the main test corpus would fail if
@@ -57,26 +60,7 @@ const (
 //
 // you should write:
 //
-// var batchSize = metamorphic.ConstantWithTestValue("batch-size", 64, 1)
-//
-// This will often give your code a batch size of 1 in the crdb_test build
-// configuration, increasing the amount of exercise the edge conditions get.
-//
-// The given name is used for logging.
-func ConstantWithTestValue(name string, defaultValue, metamorphicValue int) int {
-	return getConstantInternal(name,
-		defaultValue,
-		strconv.Atoi,
-		metamorphicValueProbability,
-		func(r *rand.Rand) int {
-			return metamorphicValue
-		},
-		true)
-}
-
-// ConstantWithTestRange is like ConstantWithTestValue except instead of
-// returning a single metamorphic test value, it returns a random test value in
-// the semi-open range [min, max).
+// var batchSize = metamorphic.ConstantWithTestRange("batch-size", 64, 1, 64)
 //
 // The given name is used for logging.
 func ConstantWithTestRange(name string, defaultValue, min, max int) int {
@@ -94,7 +78,7 @@ func ConstantWithTestRange(name string, defaultValue, min, max int) int {
 		true)
 }
 
-// ConstantWithTestBool is like ConstantWithTestValue except it returns the
+// ConstantWithTestBool is like ConstantWithTestRange except it returns the
 // non-default value half of the time (if running a metamorphic build).
 //
 // The given name is used for logging.
@@ -119,7 +103,7 @@ func constantWithTestBoolInternal(name string, defaultValue bool, doLog bool) bo
 		doLog)
 }
 
-// ConstantWithTestChoice is like ConstantWithTestValue except it returns a
+// ConstantWithTestChoice is like ConstantWithTestRange except it returns a
 // random choice (equally weighted) of the given values. The default value is
 // included in the random choice.
 //
@@ -246,6 +230,19 @@ func metamorphicEligible() bool {
 	}
 
 	if bazel.InTestWrapper() {
+		return false
+	}
+
+	// Skip when the binary is not a Go test binary. The `crdb_test` build tag
+	// is inherited by non-test binaries built from packages that transitively
+	// import this one — most notably the gomock reflect helpers that rules_go
+	// links and executes at build time to generate mock sources. Those
+	// processes have no reason to randomize constants, and their stderr is
+	// captured into bazel's stdout, producing many "INFO: From
+	// GoMockReflectExecOnlyGen ..." blocks of metamorphic preamble in CI
+	// logs. testing.Testing() is set by a linker-injected var in `go test`
+	// binaries and is safe to read from init().
+	if !testing.Testing() {
 		return false
 	}
 

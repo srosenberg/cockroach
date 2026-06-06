@@ -32,6 +32,22 @@ type FixtureMetadata struct {
 
 	// ReadyAt is the time the fixture was made ready for use.
 	ReadyAt *time.Time `json:"ready_at,omitempty"`
+
+	// Fingerprint is a fingerprint of the fixture data and is used to validate
+	// the contents of the fixture. It specifically stores the fingerprint of the
+	// fixture at the time it was marked ready and maps the fully qualified names
+	// of tables in the fixture to their fingerprints.
+	// Note: this may not be present if the fixture was too large to be
+	// fingerprinted.
+	Fingerprint map[string]string `json:"fingerprint,omitempty"`
+
+	// FingerprintTime is the aost used by the fingerprint command.
+	FingerprintTime string `json:"fingerprint_time,omitempty"`
+
+	// LastFailureAt indicates that some test using this fixture has failed and we
+	// want to prevent GC of this fixture for investigation purposes. If this
+	// field is set, the fixture will not be GC'd until a week after this time.
+	LastFailureAt *time.Time `json:"last_failure_at,omitempty"`
 }
 
 func (f *FixtureMetadata) MarshalJson() ([]byte, error) {
@@ -79,28 +95,32 @@ type fixtureToDelete struct {
 
 // fixturesToGc returns a list of fixtures to delete. The policy is as follows:
 //
-// If a fixture is not ready within 48 hours, assume creation failed and it
-// was leaked.
+// If a fixtures is not ready within a week, we can assume creation has failed
+// and enough time has passed for investigation.
 //
 // A fixture has a successor if there is another fixture of the same kind
 // that was made ready after it. A fixture is eligible for gc if it has a
 // successor and the successor was made ready more than 24 hours ago. The 24
 // hour wait is to ensure no tests are in the middle of using the fixture.
 //
-// GC decisions are made soly based on the metadata. There is no attempt to
+// GC decisions are made solely based on the metadata. There is no attempt to
 // examine actual live data in object storage. This ensures the GC will only
 // delete data that is managed by the fixture registry, so its safe to mix
 // manually managed and non-managed fixtures. This decision may be worth
 // revisiting if the registry is given its own bucket and is guaranteed to own
 // all data in it.
 func fixturesToGc(gcAt time.Time, allFixtures []FixtureMetadata) []fixtureToDelete {
-	// If a fixtures is not ready within 48 hours, assume creation failed and it
-	// was leaked.
-	leakedAtThreshold := gcAt.Add(-48 * time.Hour)
+	// If a fixtures is not ready within a week, we can assume creation has failed
+	// and enough time has passed for investigation.
+	leakedAtThreshold := gcAt.Add(-7 * 24 * time.Hour)
 
 	// A fixture is eligible for gc if it has a successor and the successor was
 	// made ready more than 24 hours ago.
 	obsoleteThreshold := gcAt.Add(-24 * time.Hour)
+
+	// A fixture that has had a test failure within the past week is not eligible
+	// for GC.
+	failureGCThreshold := gcAt.Add(-7 * 24 * time.Hour)
 
 	toDelete := []fixtureToDelete{}
 
@@ -110,7 +130,7 @@ func fixturesToGc(gcAt time.Time, allFixtures []FixtureMetadata) []fixtureToDele
 			if f.CreatedAt.Before(leakedAtThreshold) {
 				toDelete = append(toDelete, fixtureToDelete{
 					metadata: f,
-					reason:   "fixture was not made ready within 48 hours",
+					reason:   "fixture was not made ready within a week",
 				})
 				continue
 			} else {
@@ -133,10 +153,15 @@ func fixturesToGc(gcAt time.Time, allFixtures []FixtureMetadata) []fixtureToDele
 		// NOTE: starting at 1 because index 0 is the most recent fixture and is
 		// not eligible for garbage collection.
 		for i := 1; i < len(fixtures); i++ {
+			fixture := fixtures[i]
 			successor := fixtures[i-1]
 			if successor.ReadyAt.Before(obsoleteThreshold) {
+				if fixture.LastFailureAt != nil && !fixture.LastFailureAt.Before(failureGCThreshold) {
+					// Fixture has had a test failure within the past week, skip gc.
+					continue
+				}
 				toDelete = append(toDelete, fixtureToDelete{
-					metadata: fixtures[i],
+					metadata: fixture,
 					reason:   fmt.Sprintf("fixture '%s' is was mode obsolete by '%s' at '%s'", fixtures[i].DataPath, successor.DataPath, successor.ReadyAt),
 				})
 			}

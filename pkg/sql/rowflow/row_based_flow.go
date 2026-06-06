@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/redact"
 )
 
 type rowBasedFlow struct {
@@ -256,6 +255,7 @@ func (f *rowBasedFlow) makeProcessorAndOutput(
 		ctx,
 		&f.FlowCtx,
 		ps.ProcessorID,
+		ps.StageID,
 		&ps.Core,
 		&ps.Post,
 		inputs,
@@ -344,11 +344,7 @@ func (f *rowBasedFlow) setupInputSyncs(
 				var returnErrorFunc func() error
 				if is.EnforceHomeRegionError != nil {
 					returnErrorFunc = func() error {
-						enforceHomeRegionError := is.EnforceHomeRegionError.ErrorDetail(ctx)
-						if f.FlowCtx.EvalCtx.SessionData().EnforceHomeRegionFollowerReadsEnabled {
-							enforceHomeRegionError = execinfra.NewDynamicQueryHasNoHomeRegionError(enforceHomeRegionError)
-						}
-						return enforceHomeRegionError
+						return is.EnforceHomeRegionError.ErrorDetail(ctx)
 					}
 				}
 				sync, err = makeSerialSync(ordering, f.EvalCtx, streams,
@@ -383,7 +379,7 @@ func (f *rowBasedFlow) setupInboundStream(
 			return err
 		}
 		if log.V(2) {
-			log.Infof(ctx, "set up inbound stream %d", sid)
+			log.Dev.Infof(ctx, "set up inbound stream %d", sid)
 		}
 		f.AddRemoteStream(sid, flowinfra.NewInboundStreamInfo(
 			flowinfra.RowInboundStreamHandler{
@@ -461,17 +457,12 @@ func (f *rowBasedFlow) setupRouter(
 	unlimitedMemMonitors := make([]*mon.BytesMonitor, len(spec.Streams))
 	diskMonitors := make([]*mon.BytesMonitor, len(spec.Streams))
 	for i := range spec.Streams {
-		memoryMonitors[i] = execinfra.NewLimitedMonitor(
-			ctx, f.Mon, &f.FlowCtx,
-			"router-limited-"+redact.SafeString(spec.Streams[i].StreamID.String()),
-		)
-		unlimitedMemMonitors[i] = execinfra.NewMonitor(
-			ctx, f.Mon, "router-unlimited-"+redact.SafeString(spec.Streams[i].StreamID.String()),
-		)
-		diskMonitors[i] = execinfra.NewMonitor(
-			ctx, f.DiskMonitor,
-			"router-disk-"+redact.SafeString(spec.Streams[i].StreamID.String()),
-		)
+		// NB: Stream IDs are indexes into slices, so we'd expect to OOM long
+		// before a stream ID exceeds 2^31.
+		mn := mon.MakeName("router").WithID(int32(spec.Streams[i].StreamID))
+		memoryMonitors[i] = execinfra.NewLimitedMonitor(ctx, f.Mon, &f.FlowCtx, mn.Limited())
+		unlimitedMemMonitors[i] = execinfra.NewMonitor(ctx, f.Mon, mn.Unlimited())
+		diskMonitors[i] = execinfra.NewMonitor(ctx, f.DiskMonitor, mn.Disk())
 	}
 	f.monitors = append(f.monitors, memoryMonitors...)
 	f.monitors = append(f.monitors, unlimitedMemMonitors...)

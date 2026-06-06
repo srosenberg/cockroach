@@ -31,8 +31,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
-	"github.com/cockroachdb/cockroach/pkg/util/version"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/version"
 	"github.com/jackc/pgx/v5"
 	"google.golang.org/protobuf/proto"
 )
@@ -104,9 +104,9 @@ func awsdmsVerString(v *version.Version) string {
 		ciBuildID = strings.ReplaceAll(ciBuildID, ".", "-")
 		return fmt.Sprintf("ci-build-%s", ciBuildID)
 	}
-	ret := fmt.Sprintf("local-%d-%d-%d", v.Major(), v.Minor(), v.Patch())
-	if v.PreRelease() != "" {
-		ret += "-" + v.PreRelease()
+	ret := v.Format("local-%X-%Y-%Z")
+	if v.IsPrerelease() {
+		ret += v.Format("-%P")
 	}
 	ret = strings.ReplaceAll(ret, ".", "-")
 	const maxSize = 24
@@ -450,6 +450,9 @@ func checkFullLargeDataLoad(ctx context.Context, t test.Test, dmsCli *dms.Client
 				}
 				// If the task is stopped and stop reason is full load finished, we have succeeded.
 				if *task.Status == "stopped" && *task.StopReason == "Stop Reason FULL_LOAD_ONLY_FINISHED" {
+					if len(tableStats.TableStatistics) == 0 {
+						return errors.New("table statistics not yet available")
+					}
 					// Check we full loaded the right number of rows
 					if tableStats.TableStatistics[0].FullLoadRows == awsrdsNumInitialRows {
 						t.L().Printf("test_table_large successfully replicated all rows")
@@ -459,6 +462,9 @@ func checkFullLargeDataLoad(ctx context.Context, t test.Test, dmsCli *dms.Client
 					}
 					close(closer)
 				} else if *task.Status == "running" {
+					if len(tableStats.TableStatistics) == 0 {
+						return errors.New("table statistics not yet available")
+					}
 					if tableStats.TableStatistics[0].FullLoadRows != awsrdsNumInitialRows {
 						if tableStats.TableStatistics[0].FullLoadRows > int64(numRows) {
 							nonUpdate = 0
@@ -560,7 +566,7 @@ func setupCockroachDBCluster(
 ) func(context.Context, *logger.Logger) error {
 	return func(_ context.Context, l *logger.Logger) error {
 		l.Printf("setting up cockroach")
-		settings := install.MakeClusterSettings(install.SecureOption(false))
+		settings := install.MakeClusterSettings(install.SimpleSecureOption(false))
 		c.Start(ctx, l, option.DefaultStartOpts(), settings, c.All())
 
 		db := c.Conn(ctx, l, 1)

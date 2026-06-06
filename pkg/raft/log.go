@@ -29,12 +29,6 @@ import (
 //
 // To access it safely, the user must not mutate the underlying raft log storage
 // between when the snapshot is obtained and the reads are done.
-//
-// TODO(pav-kv): this should be part of the Ready API. Instead of pre-fetching
-// entries (e.g. the committed entries subject to state machine application),
-// allow the application to read them from LogSnapshot in the Ready handler.
-// This gives the application direct control on resource allocation, and
-// flexibility to do raft log IO without blocking RawNode operation.
 type LogSnapshot struct {
 	// compacted is the compacted log index.
 	compacted uint64
@@ -42,9 +36,15 @@ type LogSnapshot struct {
 	storage LogStorage
 	// unstable contains the unstable log entries.
 	unstable LeadSlice
+	// termCache contains a compressed entryID suffix of raftLog.
+	termCache termCache
 	// logger gives access to logging errors.
 	logger raftlogger.Logger
 }
+
+// termCacheSize is the default max size of the termCache. It is small because
+// term flips are very rare in practice.
+const termCacheSize = 4
 
 type raftLog struct {
 	// storage contains all stable entries since the last snapshot.
@@ -54,51 +54,39 @@ type raftLog struct {
 	// they will be saved into storage.
 	unstable unstable
 
+	// termCache contains a suffix of the raftLog (both stable and unstable)
+	// used for term lookup.
+	termCache termCache
+
 	// committed is the highest log position that is known to be in
 	// stable storage on a quorum of nodes.
+	//
+	// Invariant: committed does not regress.
 	committed uint64
 	// applying is the highest log position that the application has
 	// been instructed to apply to its state machine. Some of these
 	// entries may be in the process of applying and have not yet
 	// reached applied.
 	// Use: The field is incremented when accepting a Ready struct.
-	// Invariant: applied <= applying && applying <= committed
+	//
+	// Invariant: applied <= applying <= committed.
+	// Invariant: applying does not regress.
 	applying uint64
 	// applied is the highest log position that the application has
 	// successfully applied to its state machine.
 	// Use: The field is incremented when advancing after the committed
 	// entries in a Ready struct have been applied (either synchronously
 	// or asynchronously).
-	// Invariant: applied <= committed
+	//
+	// Invariant: applied <= committed.
+	// Invariant: applied does not regress.
 	applied uint64
 
 	logger raftlogger.Logger
-
-	// maxApplyingEntsSize limits the outstanding byte size of the messages
-	// returned from calls to nextCommittedEnts that have not been acknowledged
-	// by a call to appliedTo.
-	maxApplyingEntsSize entryEncodingSize
-	// applyingEntsSize is the current outstanding byte size of the messages
-	// returned from calls to nextCommittedEnts that have not been acknowledged
-	// by a call to appliedTo.
-	applyingEntsSize entryEncodingSize
-	// applyingEntsPaused is true when entry application has been paused until
-	// enough progress is acknowledged.
-	applyingEntsPaused bool
 }
 
-// newLog returns log using the given storage and default options. It
-// recovers the log to the state that it just commits and applies the
-// latest snapshot.
+// newLog returns a raft log initialized to the state in the given storage.
 func newLog(storage Storage, logger raftlogger.Logger) *raftLog {
-	return newLogWithSize(storage, logger, noLimit)
-}
-
-// newLogWithSize returns a log using the given storage and max
-// message size.
-func newLogWithSize(
-	storage Storage, logger raftlogger.Logger, maxApplyingEntsSize entryEncodingSize,
-) *raftLog {
 	compacted, lastIndex := storage.Compacted(), storage.LastIndex()
 	lastTerm, err := storage.Term(lastIndex)
 	if err != nil {
@@ -106,9 +94,9 @@ func newLogWithSize(
 	}
 	last := entryID{term: lastTerm, index: lastIndex}
 	return &raftLog{
-		storage:             storage,
-		unstable:            newUnstable(last, logger),
-		maxApplyingEntsSize: maxApplyingEntsSize,
+		storage:   storage,
+		unstable:  newUnstable(last, logger),
+		termCache: newTermCache(termCacheSize, last),
 
 		// Initialize our committed and applied pointers to the time of the last
 		// compaction.
@@ -177,7 +165,11 @@ func (l *raftLog) maybeAppend(a LeadSlice) bool {
 	if first := a.entries[0].Index; first <= l.committed {
 		l.logger.Panicf("entry %d is already committed [committed(%d)]", first, l.committed)
 	}
-	return l.unstable.truncateAndAppend(a)
+	if !l.unstable.truncateAndAppend(a) {
+		return false
+	}
+	l.termCache.truncateAndAppend(a.LogSlice)
+	return true
 }
 
 // append adds the given log slice to the end of the log.
@@ -185,7 +177,11 @@ func (l *raftLog) maybeAppend(a LeadSlice) bool {
 // Returns false if the operation can not be done: entry a.prev does not match
 // the lastEntryID of this log, or a.term is outdated.
 func (l *raftLog) append(a LeadSlice) bool {
-	return l.unstable.append(a)
+	if l.unstable.append(a) {
+		l.termCache.truncateAndAppend(a.LogSlice)
+		return true
+	}
+	return false
 }
 
 // match finds the longest prefix of the given log slice that matches the log.
@@ -233,9 +229,9 @@ func (l *raftLog) match(s LeadSlice) (uint64, bool) {
 // another log, given that the only information known about the other log is the
 // (index, term) of its single entry.
 //
-// Specifically, the first returned value is the max guessIndex <= index, such
+// The first returned value is the max guessIndex <= min(index, lastIndex), such
 // that term(guessIndex) <= term or term(guessIndex) is not known (because this
-// index is compacted or not yet stored).
+// index is compacted).
 //
 // The second returned value is the term(guessIndex), or 0 if it is unknown.
 //
@@ -243,10 +239,37 @@ func (l *raftLog) match(s LeadSlice) (uint64, bool) {
 // an unsuccessful append to a follower, and ultimately restore the steady flow
 // of appends.
 func (l *raftLog) findConflictByTerm(index uint64, term uint64) (uint64, uint64) {
-	for ; index > 0; index-- {
-		// If there is an error (likely ErrCompacted or ErrUnavailable), we don't
-		// know whether it's a match or not, so assume a possible match and return
-		// the index, with 0 term indicating an unknown term.
+	// Entry terms in a log are monotonic. A specific entry being (index, term)
+	// means term(i) <= term for all i <= index in that log. That is, we know the
+	// following information about the other log:
+	//
+	//	[0: 0] [1: ≤term] [2: ≤term] ... [index-1: ≤term] [index: term]
+	//
+	// In our log, for i <= min(index, lastIndex):
+	//	1. if term(i) > term, then the logs definitely mismatch at indices >= i;
+	//	2. if term(i) == term, then the logs definitely match at indices <= i;
+	//	3. if term(i) < term, then the logs may or may not match at indices <= i;
+	//	4. if term(i) is unknown, then the logs may or may not match at <= i.
+	//
+	// Property 1 follows from the inverse of the Log Matching Property: if two
+	// logs mismatch at a particular index, they mismatch at all higher indices.
+	//
+	// Property 2 follows from the Log Matching Property. Since the other log has
+	// [index: term], it necessarily has all same-term entries with lower indices
+	// (otherwise this prefix wouldn't match that term leader's log). So it
+	// necessarily also contains the [i: term] entry of our log.
+	//
+	//	Their: [0: 0] ... [i-1: ≤term] [i: term] ... [index: term]
+	//	  Our: [0: 0] ... [i-1: ≤term] [i: term] ...
+	//
+	// Property 3 stems from the fact that we don't know terms of indices < index
+	// of the other log. The term at index i may or may not match ours.
+	//
+	// The loop below finds the highest index i for which one of 2-4 holds.
+	for index = min(index, l.lastIndex()); index > 0; index-- {
+		// If there is an error (likely ErrCompacted), we don't know whether it's a
+		// match or not, so assume a possible match and return the index, with 0
+		// term indicating an unknown term.
 		if ourTerm, err := l.term(index); err != nil {
 			return index, 0
 		} else if ourTerm <= term {
@@ -273,59 +296,57 @@ func (l *raftLog) hasNextUnstableEnts() bool {
 // appended them to the local raft log yet. If allowUnstable is true, committed
 // entries from the unstable log may be returned; otherwise, only entries known
 // to reside locally on stable storage will be returned.
+//
+// TODO(pav-kv): only used in tests. Downgrade to a test helper or remove.
 func (l *raftLog) nextCommittedEnts(allowUnstable bool) (ents []pb.Entry) {
-	if l.applyingEntsPaused {
-		// Entry application outstanding size limit reached.
+	span := l.nextCommittedSpan(allowUnstable)
+	if span.Empty() {
 		return nil
 	}
-	if l.hasNextOrInProgressSnapshot() {
-		// See comment in hasNextCommittedEnts.
-		return nil
-	}
-	lo, hi := l.applying, l.maxAppliableIndex(allowUnstable) // (lo, hi]
-	if lo >= hi {
-		// Nothing to apply.
-		return nil
-	}
-	maxSize := l.maxApplyingEntsSize - l.applyingEntsSize
-	if maxSize <= 0 {
-		l.logger.Panicf("applying entry size (%d-%d)=%d not positive",
-			l.maxApplyingEntsSize, l.applyingEntsSize, maxSize)
-	}
-	ents, err := l.slice(lo, hi, maxSize)
+	ents, err := l.slice(uint64(span.After), uint64(span.Last), noLimit)
 	if err != nil {
 		l.logger.Panicf("unexpected error when getting unapplied entries (%v)", err)
 	}
 	return ents
 }
 
-// hasNextCommittedEnts returns if there is any available entries for execution.
+// nextCommittedSpan returns the span of committed entries that can be applied.
 // This is a fast check without heavy raftLog.slice() in nextCommittedEnts().
-func (l *raftLog) hasNextCommittedEnts(allowUnstable bool) bool {
-	if l.applyingEntsPaused {
-		// Entry application outstanding size limit reached.
-		return false
+func (l *raftLog) nextCommittedSpan(allowUnstable bool) pb.LogSpan {
+	return pb.LogSpan{
+		After: pb.Index(l.applying),
+		Last:  pb.Index(l.maxAppliableIndex(allowUnstable)),
 	}
-	if l.hasNextOrInProgressSnapshot() {
-		// If we have a snapshot to apply, don't also return any committed
-		// entries. Doing so raises questions about what should be applied
-		// first.
-		return false
-	}
-	lo, hi := l.applying+1, l.maxAppliableIndex(allowUnstable)+1 // [lo, hi)
-	return lo < hi
 }
 
 // maxAppliableIndex returns the maximum committed index that can be applied.
 // If allowUnstable is true, committed entries from the unstable log can be
 // applied; otherwise, only entries known to reside locally on stable storage
 // can be applied.
+//
+// The maxAppliableIndex never regresses, and is always >= l.applying, assuming
+// allowUnstable does not change from true to false. As of today, this flag is
+// configured statically.
+//
+// If there is a pending snapshot, maxAppliableIndex returns l.applying, i.e.
+// the application of committed entries is paused until the snapshot is applied.
 func (l *raftLog) maxAppliableIndex(allowUnstable bool) uint64 {
-	hi := l.committed
-	if !allowUnstable {
-		hi = min(hi, l.unstable.prev.index)
+	if l.hasNextOrInProgressSnapshot() {
+		// If we have a snapshot to apply, don't return any committed entries. Doing
+		// so raises questions about what should be applied first.
+		//
+		// TODO(pav-kv): the answer to the questions is - the snapshot should be
+		// applied first, and then the entries. The code must make sure that the
+		// overall sequence of "apply" batches is in the increasing order of the
+		// commit index.
+		return l.applying
 	}
-	return hi
+	if allowUnstable {
+		return l.committed
+	}
+	// NB: this returns >= l.applying because l.applying <= prev.index, assuming
+	// that allowUnstable hasn't flipped from true to false.
+	return min(l.committed, l.unstable.prev.index)
 }
 
 // nextUnstableSnapshot returns the snapshot, if present, that is available to
@@ -346,11 +367,15 @@ func (l *raftLog) hasNextOrInProgressSnapshot() bool {
 	return l.unstable.snapshot != nil
 }
 
-func (l *raftLog) snapshot() (pb.Snapshot, error) {
-	if l.unstable.snapshot != nil {
-		return *l.unstable.snapshot, nil
+func (l *raftLog) snapshot() (*pb.Snapshot, error) {
+	if snap := l.unstable.snapshot; snap != nil {
+		return snap, nil
 	}
-	return l.storage.Snapshot()
+	snap, err := l.storage.Snapshot()
+	if err != nil {
+		return nil, err
+	}
+	return &snap, nil
 }
 
 func (l *raftLog) compacted() uint64 {
@@ -382,39 +407,19 @@ func (l *raftLog) commitTo(mark LogMark) {
 	}
 }
 
-func (l *raftLog) appliedTo(i uint64, size entryEncodingSize) {
+func (l *raftLog) appliedTo(i uint64) {
 	if l.committed < i || i < l.applied {
 		l.logger.Panicf("applied(%d) is out of range [prevApplied(%d), committed(%d)]", i, l.applied, l.committed)
 	}
 	l.applied = i
 	l.applying = max(l.applying, i)
-	if l.applyingEntsSize > size {
-		l.applyingEntsSize -= size
-	} else {
-		// Defense against underflow.
-		l.applyingEntsSize = 0
-	}
-	l.applyingEntsPaused = l.applyingEntsSize >= l.maxApplyingEntsSize
 }
 
-func (l *raftLog) acceptApplying(i uint64, size entryEncodingSize, allowUnstable bool) {
-	if l.committed < i {
+func (l *raftLog) acceptApplying(i uint64) {
+	if i < l.applying || i > l.committed {
 		l.logger.Panicf("applying(%d) is out of range [prevApplying(%d), committed(%d)]", i, l.applying, l.committed)
 	}
 	l.applying = i
-	l.applyingEntsSize += size
-	// Determine whether to pause entry application until some progress is
-	// acknowledged. We pause in two cases:
-	// 1. the outstanding entry size equals or exceeds the maximum size.
-	// 2. the outstanding entry size does not equal or exceed the maximum size,
-	//    but we determine that the next entry in the log will push us over the
-	//    limit. We determine this by comparing the last entry returned from
-	//    raftLog.nextCommittedEnts to the maximum entry that the method was
-	//    allowed to return had there been no size limit. If these indexes are
-	//    not equal, then the returned entries slice must have been truncated to
-	//    adhere to the memory limit.
-	l.applyingEntsPaused = l.applyingEntsSize >= l.maxApplyingEntsSize ||
-		i < l.maxAppliableIndex(allowUnstable)
 }
 
 func (l *raftLog) stableTo(mark LogMark) { l.unstable.stableTo(mark) }
@@ -449,6 +454,9 @@ func (l LogSnapshot) term(index uint64) (uint64, error) {
 		return 0, ErrCompacted
 	}
 
+	if term, found := l.termCache.term(index); found {
+		return term, nil
+	}
 	term, err := l.storage.Term(index)
 	if err == nil {
 		return term, nil
@@ -516,6 +524,7 @@ func (l *raftLog) restore(s snapshot) bool {
 	if !l.unstable.restore(s) {
 		return false
 	}
+	l.termCache.reset(id)
 	l.committed = id.index
 	return true
 }
@@ -581,7 +590,15 @@ func (l LogSnapshot) LeadSlice(lo, hi uint64, maxSize uint64) (LeadSlice, error)
 	}, nil
 }
 
-// TODO(pav-kv): return LogSlice.
+// Slice returns log entries forming a prefix of the given log span, with the
+// total entries size not exceeding maxSize.
+//
+// Returns at least one entry if the interval contains any. The maxSize can only
+// be exceeded if the first entry (span.After+1) is larger.
+func (l LogSnapshot) Slice(span pb.LogSpan, maxSize uint64) ([]pb.Entry, error) {
+	return l.slice(uint64(span.After), uint64(span.Last), entryEncodingSize(maxSize))
+}
+
 func (l LogSnapshot) slice(lo, hi uint64, maxSize entryEncodingSize) ([]pb.Entry, error) {
 	if err := l.mustCheckOutOfBounds(lo, hi); err != nil {
 		return nil, err
@@ -667,10 +684,13 @@ func (l *raftLog) zeroTermOnOutOfBounds(t uint64, err error) uint64 {
 // snap returns a point-in-time snapshot of the raft log. This snapshot can be
 // read from while the underlying storage is not mutated.
 func (l *raftLog) snap(storage LogStorage) LogSnapshot {
+	// NB: termCache and unstable slice are safe to copy, and make sure to not
+	// corrupt their shallow copies.
 	return LogSnapshot{
 		compacted: l.compacted(),
 		storage:   storage,
 		unstable:  l.unstable.LeadSlice,
+		termCache: l.termCache,
 		logger:    l.logger,
 	}
 }

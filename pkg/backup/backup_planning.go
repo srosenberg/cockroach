@@ -12,7 +12,10 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backupbase"
+	"github.com/cockroachdb/cockroach/pkg/backup/backupdest"
 	"github.com/cockroachdb/cockroach/pkg/backup/backupresolver"
+	"github.com/cockroachdb/cockroach/pkg/backup/backuputils"
+	"github.com/cockroachdb/cockroach/pkg/build"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/featureflag"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
@@ -30,6 +33,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
+	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
@@ -37,17 +41,9 @@ import (
 )
 
 const (
-	// backupPartitionDescriptorPrefix is the file name prefix for serialized
-	// BackupPartitionDescriptor protos.
-	backupPartitionDescriptorPrefix = "BACKUP_PART"
-
 	deprecatedPrivilegesBackupPreamble = "The existing privileges are being deprecated " +
 		"in favour of a fine-grained privilege model explained here " +
 		"https://www.cockroachlabs.com/docs/stable/backup.html#required-privileges. In a future release, to run"
-
-	deprecatedPrivilegesRestorePreamble = "The existing privileges are being deprecated " +
-		"in favour of a fine-grained privilege model explained here " +
-		"https://www.cockroachlabs.com/docs/stable/restore.html#required-privileges. In a future release, to run"
 )
 
 type tableAndIndex struct {
@@ -64,7 +60,7 @@ var featureBackupEnabled = settings.RegisterBoolSetting(
 	settings.WithPublic)
 
 func resolveOptionsForBackupJobDescription(
-	opts tree.BackupOptions, kmsURIs []string, incrementalStorage []string,
+	opts tree.BackupOptions, kmsURIs []string,
 ) (tree.BackupOptions, error) {
 	if opts.IsDefault() {
 		return opts, nil
@@ -76,6 +72,8 @@ func resolveOptionsForBackupJobDescription(
 		Detached:                        opts.Detached,
 		ExecutionLocality:               opts.ExecutionLocality,
 		UpdatesClusterMonitoringMetrics: opts.UpdatesClusterMonitoringMetrics,
+		Strict:                          opts.Strict,
+		RevisionStream:                  opts.RevisionStream,
 	}
 
 	if opts.EncryptionPassphrase != nil {
@@ -89,23 +87,13 @@ func resolveOptionsForBackupJobDescription(
 		return tree.BackupOptions{}, err
 	}
 
-	newOpts.IncrementalStorage, err = sanitizeURIList(incrementalStorage)
-	if err != nil {
-		return tree.BackupOptions{}, err
-	}
-
 	return newOpts, nil
 }
 
 // GetRedactedBackupNode returns a copy of the argument `backup`, but with all
 // the secret information redacted.
 func GetRedactedBackupNode(
-	backup *tree.Backup,
-	to []string,
-	kmsURIs []string,
-	resolvedSubdir string,
-	incrementalStorage []string,
-	hasBeenPlanned bool,
+	backup *tree.Backup, to []string, kmsURIs []string, resolvedSubdir string, hasBeenPlanned bool,
 ) (*tree.Backup, error) {
 	b := &tree.Backup{
 		AsOf:           backup.AsOf,
@@ -131,8 +119,7 @@ func GetRedactedBackupNode(
 		return nil, err
 	}
 
-	resolvedOpts, err := resolveOptionsForBackupJobDescription(backup.Options, kmsURIs,
-		incrementalStorage)
+	resolvedOpts, err := resolveOptionsForBackupJobDescription(backup.Options, kmsURIs)
 	if err != nil {
 		return nil, err
 	}
@@ -154,15 +141,9 @@ func sanitizeURIList(uris []string) ([]tree.Expr, error) {
 }
 
 func backupJobDescription(
-	p sql.PlanHookState,
-	backup *tree.Backup,
-	to []string,
-	kmsURIs []string,
-	resolvedSubdir string,
-	incrementalStorage []string,
+	p sql.PlanHookState, backup *tree.Backup, to []string, kmsURIs []string, resolvedSubdir string,
 ) (string, error) {
-	b, err := GetRedactedBackupNode(backup, to, kmsURIs,
-		resolvedSubdir, incrementalStorage, true /* hasBeenPlanned */)
+	b, err := GetRedactedBackupNode(backup, to, kmsURIs, resolvedSubdir, true /* hasBeenPlanned */)
 	if err != nil {
 		return "", err
 	}
@@ -386,7 +367,6 @@ func backupTypeCheck(
 		},
 		exprutil.StringArrays{
 			tree.Exprs(backupStmt.To),
-			tree.Exprs(backupStmt.Options.IncrementalStorage),
 			tree.Exprs(backupStmt.Options.EncryptionKMSURI),
 		},
 		exprutil.Bools{
@@ -418,6 +398,13 @@ func backupPlanHook(
 
 	detached := backupStmt.Options.Detached == tree.DBoolTrue
 
+	// REVISION STREAM is a prototype (continuous backup / revlog
+	// sibling job); refuse it on release builds until it has matured.
+	if backupStmt.Options.RevisionStream && build.IsRelease() {
+		return nil, nil, false, pgerror.New(pgcode.FeatureNotSupported,
+			"BACKUP ... WITH REVISION STREAM is a prototype and is not enabled in release builds")
+	}
+
 	exprEval := p.ExprEvaluator("BACKUP")
 
 	var err error
@@ -434,9 +421,9 @@ func backupPlanHook(
 		return nil, nil, false, err
 	}
 
-	incrementalStorage, err := exprEval.StringArray(
-		ctx, tree.Exprs(backupStmt.Options.IncrementalStorage),
-	)
+	// We call GetURIsByLocalityKV here to validate that COCKROACH_LOCALITY is
+	// well-formed in the backup destinations.
+	_, _, err = backupdest.GetURIsByLocalityKV(to, "")
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -461,6 +448,9 @@ func backupPlanHook(
 			if err := executionLocality.Set(s); err != nil {
 				return nil, nil, false, err
 			}
+		}
+		if backupStmt.Options.Strict {
+			return nil, nil, false, errors.New("STRICT STORAGE LOCALITY option cannot be specified with the EXECUTION LOCALITY option")
 		}
 	}
 
@@ -524,11 +514,6 @@ func backupPlanHook(
 			return errors.Errorf("BACKUP cannot be used inside a multi-statement transaction without DETACHED option")
 		}
 
-		if len(incrementalStorage) > 0 && (len(incrementalStorage) != len(to)) {
-			return errors.New("the incremental_location option must contain the same number of locality" +
-				" aware URIs as the full backup destination")
-		}
-
 		if includeAllSecondaryTenants && backupStmt.Coverage() != tree.AllDescriptors {
 			return errors.New("the include_all_virtual_clusters option is only supported for full cluster backups")
 		}
@@ -559,7 +544,7 @@ func backupPlanHook(
 		switch backupStmt.Coverage() {
 		case tree.RequestedDescriptors:
 			var err error
-			targetDescs, completeDBs, requestedDBs, descsByTablePattern, err = backupresolver.ResolveTargetsToDescriptors(ctx, p, endTime, backupStmt.Targets)
+			targetDescs, completeDBs, requestedDBs, descsByTablePattern, err = backupresolver.ResolveTargets(ctx, p, endTime, backupStmt.Targets)
 			if err != nil {
 				return errors.Wrap(err, "failed to resolve targets specified in the BACKUP stmt")
 			}
@@ -576,9 +561,9 @@ func backupPlanHook(
 		for _, t := range targetDescs {
 			if tbl, ok := t.(catalog.TableDescriptor); ok && tbl.ExternalRowData() != nil {
 				if tbl.ExternalRowData().TenantID.IsSet() {
-					return errors.UnimplementedError(errors.IssueLink{}, "backing up from a replication target is not supported")
+					return unimplemented.New("backup.replication_target", "backing up from a replication target is not supported")
 				}
-				return errors.UnimplementedError(errors.IssueLink{}, "backing up from external tables is not supported")
+				return unimplemented.New("backup.external_table", "backing up from external tables is not supported")
 			}
 		}
 
@@ -596,7 +581,7 @@ func backupPlanHook(
 		}
 
 		initialDetails := jobspb.BackupDetails{
-			Destination:                     jobspb.BackupDetails_Destination{To: to, IncrementalStorage: incrementalStorage},
+			Destination:                     jobspb.BackupDetails_Destination{To: to},
 			EndTime:                         endTime,
 			RevisionHistory:                 revisionHistory,
 			IncludeAllSecondaryTenants:      includeAllSecondaryTenants,
@@ -608,6 +593,8 @@ func backupPlanHook(
 			ApplicationName:                 p.SessionData().ApplicationName,
 			ExecutionLocality:               executionLocality,
 			UpdatesClusterMonitoringMetrics: updatesClusterMonitoringMetrics,
+			StrictLocalityFiltering:         backupStmt.Options.Strict,
+			CreateRevlogJob:                 backupStmt.Options.RevisionStream,
 		}
 		if backupStmt.CreatedByInfo != nil {
 			initialDetails.ScheduleID = backupStmt.CreatedByInfo.ScheduleID()
@@ -636,7 +623,11 @@ func backupPlanHook(
 			initialDetails.Destination.Subdir = backupbase.LatestFileName
 			initialDetails.Destination.Exists = true
 		} else if subdir != "" {
-			initialDetails.Destination.Subdir = "/" + strings.TrimPrefix(subdir, "/")
+			normalizedSubdir, err := backuputils.NormalizeSubdir(subdir)
+			if err != nil {
+				return err
+			}
+			initialDetails.Destination.Subdir = normalizedSubdir
 			initialDetails.Destination.Exists = true
 		} else {
 			initialDetails.Destination.Subdir = endTime.GoTime().Format(backupbase.DateBasedIntoFolderName)
@@ -659,11 +650,10 @@ func backupPlanHook(
 			return errors.Wrap(err, "logging backup destinations")
 		}
 
-		description, err := backupJobDescription(p,
-			backupStmt.Backup, to,
+		description, err := backupJobDescription(
+			p, backupStmt.Backup, to,
 			encryptionParams.RawKmsUris,
 			initialDetails.Destination.Subdir,
-			initialDetails.Destination.IncrementalStorage,
 		)
 		if err != nil {
 			return err
@@ -701,7 +691,7 @@ func backupPlanHook(
 					return
 				}
 				if cleanupErr := sj.CleanupOnRollback(ctx); cleanupErr != nil {
-					log.Errorf(ctx, "failed to cleanup job: %v", cleanupErr)
+					log.Dev.Errorf(ctx, "failed to cleanup job: %v", cleanupErr)
 				}
 			}()
 			if err := p.ExecCfg().JobRegistry.CreateStartableJobWithTxn(

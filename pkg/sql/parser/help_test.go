@@ -35,7 +35,7 @@ func TestContextualHelp(t *testing.T) {
 		{`ALTER CHANGEFEED ??`, `ALTER CHANGEFEED`},
 		{`ALTER CHANGEFEED 123 ADD ??`, `ALTER CHANGEFEED`},
 		{`ALTER CHANGEFEED 123 DROP ??`, `ALTER CHANGEFEED`},
-
+		{`ALTER EXTERNAL CONNECTION ??`, `ALTER EXTERNAL CONNECTION`},
 		{`ALTER BACKUP foo ADD NEW_KMS=bar WITH OLD_KMS=foobar ??`, `ALTER BACKUP`},
 
 		{`ALTER JOB ??`, `ALTER JOB`},
@@ -104,6 +104,16 @@ func TestContextualHelp(t *testing.T) {
 		{`ALTER TYPE t RENAME ??`, `ALTER TYPE`},
 		{`ALTER TYPE t DROP VALUE ??`, `ALTER TYPE`},
 
+		{`ALTER DOMAIN ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d SET ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d DROP ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d ADD ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d RENAME ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d VALIDATE ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d OWNER ??`, `ALTER DOMAIN`},
+		{`ALTER DOMAIN d SET SCHEMA ??`, `ALTER DOMAIN`},
+
 		{`ALTER INDEX foo@bar RENAME ??`, `ALTER INDEX`},
 		{`ALTER INDEX foo@bar RENAME TO blih ??`, `ALTER INDEX`},
 		{`ALTER INDEX foo@bar SPLIT ??`, `ALTER INDEX`},
@@ -131,6 +141,9 @@ func TestContextualHelp(t *testing.T) {
 		{`ALTER USER foo WITH PASSWORD ??`, `ALTER ROLE`},
 
 		{`ALTER ROLE bleh ?? WITH NOCREATEROLE`, `ALTER ROLE`},
+
+		{`ALTER RESOURCE GROUP ??`, `ALTER RESOURCE GROUP`},
+		{`ALTER RESOURCE GROUP foo ??`, `ALTER RESOURCE GROUP`},
 
 		{`ALTER RANGE foo CONFIGURE ??`, `ALTER RANGE`},
 		{`ALTER RANGE ??`, `ALTER RANGE`},
@@ -191,6 +204,9 @@ func TestContextualHelp(t *testing.T) {
 		{`CREATE ROLE bleh ??`, `CREATE ROLE`},
 		{`CREATE ROLE bleh ?? WITH CREATEROLE`, `CREATE ROLE`},
 
+		{`CREATE RESOURCE GROUP ??`, `CREATE RESOURCE GROUP`},
+		{`CREATE RESOURCE GROUP foo ??`, `CREATE RESOURCE GROUP`},
+
 		{`CREATE VIEW blah (??`, `CREATE VIEW`},
 		{`CREATE VIEW blah AS (SELECT c FROM x) ??`, `CREATE VIEW`},
 		{`CREATE VIEW blah AS SELECT c FROM x ??`, `SELECT`},
@@ -243,6 +259,12 @@ func TestContextualHelp(t *testing.T) {
 		{`DROP ROLE ??`, `DROP ROLE`},
 		{`DROP ROLE IF ??`, `DROP ROLE`},
 		{`DROP ROLE IF EXISTS bluh ??`, `DROP ROLE`},
+
+		{`DROP PROVISIONED ROLES ??`, `DROP PROVISIONED ROLES`},
+
+		{`DROP RESOURCE GROUP ??`, `DROP RESOURCE GROUP`},
+		{`DROP RESOURCE GROUP IF ??`, `DROP RESOURCE GROUP`},
+		{`DROP RESOURCE GROUP IF EXISTS foo ??`, `DROP RESOURCE GROUP`},
 
 		{`DROP SEQUENCE blah ??`, `DROP SEQUENCE`},
 		{`DROP SEQUENCE IF ??`, `DROP SEQUENCE`},
@@ -349,6 +371,9 @@ func TestContextualHelp(t *testing.T) {
 		{`RESUME SCHEDULES ??`, `RESUME SCHEDULES`},
 		{`RESUME ALL ??`, `RESUME ALL JOBS`},
 
+		{`EXECUTE SCHEDULE ??`, `EXECUTE SCHEDULES`},
+		{`EXECUTE SCHEDULES ??`, `EXECUTE SCHEDULES`},
+
 		{`REVOKE ALL ??`, `REVOKE`},
 		{`REVOKE ALL ON foo FROM ??`, `REVOKE`},
 		{`REVOKE ALL ON foo FROM bar ??`, `REVOKE`},
@@ -386,6 +411,9 @@ func TestContextualHelp(t *testing.T) {
 
 		{`SHOW STATEMENTS ??`, `SHOW STATEMENTS`},
 		{`SHOW LOCAL STATEMENTS ??`, `SHOW STATEMENTS`},
+
+		{`SHOW STATEMENT HINTS FOR ??`, `SHOW STATEMENT HINTS`},
+		{`SHOW STATEMENT HINTS ??`, `SHOW STATEMENT HINTS`},
 
 		{`SHOW TRACE ??`, `SHOW TRACE`},
 		{`SHOW TRACE FOR SESSION ??`, `SHOW TRACE`},
@@ -471,6 +499,9 @@ func TestContextualHelp(t *testing.T) {
 		{`SHOW PARTITIONS FROM ??`, `SHOW PARTITIONS`},
 
 		{`SHOW REGIONS ??`, `SHOW REGIONS`},
+
+		{`SHOW RESOURCE GROUP ??`, `SHOW RESOURCE GROUP`},
+		{`SHOW RESOURCE GROUPS ??`, `SHOW RESOURCE GROUPS`},
 
 		{`SHOW ROLES ??`, `SHOW ROLES`},
 
@@ -591,7 +622,7 @@ func TestContextualHelp(t *testing.T) {
 		{`RESTORE foo FROM LATEST IN '/bar' ??`, `RESTORE`},
 		{`RESTORE DATABASE ??`, `RESTORE`},
 
-		{`IMPORT TABLE ??`, `IMPORT`},
+		{`IMPORT INTO ??`, `IMPORT`},
 
 		{`EXPORT ??`, `EXPORT`},
 		{`EXPORT INTO CSV 'a' ??`, `EXPORT`},
@@ -623,6 +654,12 @@ func TestContextualHelp(t *testing.T) {
 		{`ALTER POLICY p1 on t1 RENAME ??`, `ALTER POLICY`},
 		{`DROP POLICY ??`, `DROP POLICY`},
 		{`SHOW POLICIES ??`, `SHOW POLICIES`},
+
+		{`INSPECT ??`, `INSPECT`},
+		{`INSPECT TABLE ??`, `INSPECT TABLE`},
+		{`INSPECT DATABASE ??`, `INSPECT DATABASE`},
+
+		{`SHOW INSPECT ERRORS ??`, `SHOW INSPECT ERRORS`},
 	}
 
 	// The following checks that the test definition above exercises all

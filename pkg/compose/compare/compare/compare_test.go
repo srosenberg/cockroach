@@ -79,8 +79,13 @@ func TestCompare(t *testing.T) {
 	}
 	configs := map[string]testConfig{
 		"mutators": {
-			setup:           sqlsmith.Setups[sqlsmith.RandTableSetupName],
-			opts:            []sqlsmith.SmitherOption{sqlsmith.CompareMode()},
+			setup: sqlsmith.Setups[sqlsmith.RandTableSetupName],
+			opts: []sqlsmith.SmitherOption{
+				sqlsmith.CompareMode(),
+				// TODO(yuzefovich): perhaps allow DO blocks again after they
+				// have been stabilized in other tests.
+				sqlsmith.DisableDoBlocks(),
+			},
 			ignoreSQLErrors: true,
 			conns: []testConn{
 				{
@@ -93,7 +98,7 @@ func TestCompare(t *testing.T) {
 						randgen.ForeignKeyMutator,
 						randgen.ColumnFamilyMutator,
 						randgen.IndexStoringMutator,
-						randgen.PartialIndexMutator,
+						randgen.DupPartialIndexMutator,
 					},
 				},
 			},

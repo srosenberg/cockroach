@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/roachprod"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/agents/fluentbit"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/agents/opentelemetry"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/agents/parca"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/config"
-	"github.com/cockroachdb/cockroach/pkg/roachprod/fluentbit"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
-	"github.com/cockroachdb/cockroach/pkg/roachprod/opentelemetry"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/ssh"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
@@ -27,61 +28,62 @@ import (
 
 var (
 	// Do not populate providerOptsContainer here as we need to call InitProivders() first.
-	providerOptsContainer vm.ProviderOptionsContainer
-	pprofOpts             roachprod.PprofOpts
-	numNodes              int
-	numRacks              int
-	username              string
-	database              string
-	dryrun                bool
-	destroyAllMine        bool
-	destroyAllLocal       bool
-	extendLifetime        time.Duration
-	wipePreserveCerts     bool
-	grafanaConfig         string
-	grafanaArch           string
-	grafanaDumpDir        string
-	jaegerConfigNodes     string
-	listCost              bool
-	listDetails           bool
-	listJSON              bool
-	listMine              bool
-	listPattern           string
-	isSecure              bool   // Set based on the values passed to --secure and --insecure
-	secure                = true // DEPRECATED
-	insecure              = envutil.EnvOrDefaultBool("COCKROACH_ROACHPROD_INSECURE", false)
-	virtualClusterName    string
-	sqlInstance           int
-	extraSSHOptions       = ""
-	nodeEnv               []string
-	tag                   string
-	external              = false
-	pgurlCertsDir         string
-	authMode              string
-	adminurlPath          = ""
-	adminurlIPs           = false
-	urlOpen               = false
-	useTreeDist           = true
-	sig                   = 9
-	waitFlag              = false
-	gracePeriod           = 0
-	deploySig             = 15
-	deployWaitFlag        = true
-	deployGracePeriod     = 300
-	pause                 = time.Duration(0)
-	createVMOpts          = vm.DefaultCreateOpts()
-	startOpts             = roachprod.DefaultStartOpts()
-	stageOS               string
-	stageArch             string
-	stageDir              string
-	logsDir               string
-	logsFilter            string
-	logsProgramFilter     string
-	logsFrom              time.Time
-	logsTo                time.Time
-	logsInterval          time.Duration
-	volumeCreateOpts      vm.VolumeCreateOpts
-	listOpts              vm.ListOptions
+	providerOptsContainer    vm.ProviderOptionsContainer
+	pprofOpts                roachprod.PprofOpts
+	numNodes                 int
+	numRacks                 int
+	username                 string
+	database                 string
+	dryrun                   bool
+	destroyAllMine           bool
+	destroyAllLocal          bool
+	extendLifetime           time.Duration
+	wipePreserveCerts        bool
+	grafanaConfig            string
+	grafanaArch              string
+	grafanaDumpDir           string
+	jaegerConfigNodes        string
+	listCost                 bool
+	listDetails              bool
+	listJSON                 bool
+	listMine                 bool
+	listPattern              string
+	isSecure                 install.ComplexSecureOption // Set based on the values passed to --secure and --insecure
+	secure                   = true
+	insecure, insecureEnvSet = getInsecureEnvVar() // Get both value and whether it was explicitly set
+	virtualClusterName       string
+	sqlInstance              int
+	extraSSHOptions          = ""
+	exportSSHConfig          string
+	nodeEnv                  []string
+	tag                      string
+	external                 = false
+	pgurlCertsDir            string
+	authMode                 string
+	adminurlPath             = ""
+	adminurlIPs              = false
+	urlOpen                  = false
+	useTreeDist              = true
+	sig                      = 9
+	waitFlag                 = false
+	gracePeriod              = 0
+	deploySig                = 15
+	deployWaitFlag           = true
+	deployGracePeriod        = 300
+	pause                    = time.Duration(0)
+	createVMOpts             = vm.DefaultCreateOpts()
+	startOpts                = roachprod.DefaultStartOpts()
+	stageOS                  string
+	stageArch                string
+	stageDir                 string
+	logsDir                  string
+	logsFilter               string
+	logsProgramFilter        string
+	logsFrom                 time.Time
+	logsTo                   time.Time
+	logsInterval             time.Duration
+	volumeCreateOpts         vm.VolumeCreateOpts
+	listOpts                 vm.ListOptions
 
 	monitorOpts        install.MonitorOpts
 	cachedHostsCluster string
@@ -100,12 +102,32 @@ var (
 
 	sshKeyUser string
 
-	fluentBitConfig fluentbit.Config
-
+	fluentBitConfig     fluentbit.Config
 	opentelemetryConfig opentelemetry.Config
+	parcaAgentConfig    parca.Config
 
 	fetchLogsTimeout time.Duration
 )
+
+// getInsecureEnvVar returns the value of COCKROACH_ROACHPROD_INSECURE and
+// whether it was explicitly set.
+func getInsecureEnvVar() (bool, bool) {
+	val, ok := envutil.EnvString("COCKROACH_ROACHPROD_INSECURE", 1)
+	if !ok {
+		return false, false
+	}
+	return val == "true" || val == "1", true
+}
+
+// Intended to be called once from drtprod main package to update defaults which differ from roachprod.
+func UpdateFlagDefaults() {
+	// N.B. Both roachprod and drtprod default to secure mode via the flag defaults.
+	// However, roachprod has runtime logic in overrideBasedOnClusterSettings() that
+	// forces insecure mode for clusters in the cockroach-ephemeral GCP project.
+	// drtprod explicitly sets secure=true here to ensure secure mode is used.
+	secure = true
+	// insecure and insecureEnvSet are already initialized via getInsecureEnvVar()
+}
 
 func initRootCmdFlags(rootCmd *cobra.Command) {
 	rootCmd.PersistentFlags().BoolVarP(&config.Quiet, "quiet", "q",
@@ -128,8 +150,8 @@ func initCreateCmdFlags(createCmd *cobra.Command) {
 		"lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.SSDOpts.UseLocalSSD,
 		"local-ssd", true, "Use local SSD")
-	createCmd.Flags().StringVar(&createVMOpts.SSDOpts.FileSystem,
-		"filesystem", vm.Ext4, "The underlying file system(ext4/zfs). ext4 is used by default.")
+	createCmd.Flags().StringVar((*string)(&createVMOpts.SSDOpts.FileSystem),
+		"filesystem", string(vm.Ext4), "The underlying file system(ext4/zfs/xfs/f2fs/btrfs). ext4 is used by default.")
 	createCmd.Flags().BoolVar(&createVMOpts.SSDOpts.NoExt4Barrier,
 		"local-ssd-no-ext4-barrier", true,
 		`Mount the local SSD with the "-o nobarrier" flag. Ignored if --local-ssd=false is specified.`)
@@ -210,6 +232,8 @@ func initListCmdFlags(listCmd *cobra.Command) {
 		"mine", "m", false, "Show only clusters belonging to the current user")
 	listCmd.Flags().StringVar(&listPattern,
 		"pattern", "", "Show only clusters matching the regex pattern. Empty string matches everything.")
+	listCmd.Flags().StringVar(&exportSSHConfig,
+		"export-ssh-config", os.Getenv("ROACHPROD_EXPORT_SSH_CONFIG"), "export the SSH config for listed clusters (only when pattern or mine is specified")
 }
 
 func initAdminurlCmdFlags(adminurlCmd *cobra.Command) {
@@ -264,7 +288,6 @@ func initSyncCmdFlags(syncCmd *cobra.Command) {
 	syncCmd.Flags().BoolVar(&listOpts.IncludeVolumes, "include-volumes", false, "Include volumes when syncing")
 	syncCmd.Flags().StringArrayVarP(&listOpts.IncludeProviders, "clouds", "c",
 		make([]string, 0), "Specify the cloud providers when syncing. Important: Use this flag only if you are certain that you want to sync with a specific cloud. All DNS host entries for other clouds will be erased from the DNS zone.")
-
 }
 
 func initStageCmdFlags(stageCmd *cobra.Command) {
@@ -384,6 +407,11 @@ func initOpentelemetryStartCmdFlags(opentelemetryStartCmd *cobra.Command) {
 		"Datadog tags as a comma-separated list in the format KEY1:VAL1,KEY2:VAL2")
 }
 
+func initParcaAgentStartCmdFlags(parcaAgentStartCmd *cobra.Command) {
+	parcaAgentStartCmd.Flags().StringVar(&parcaAgentConfig.Token, "parca-agent-token", "",
+		"Parca Agent Token")
+}
+
 func initGCCmdFlags(gcCmd *cobra.Command) {
 	gcCmd.Flags().BoolVarP(&dryrun,
 		"dry-run", "n", dryrun, "dry run (don't perform any actions)")
@@ -444,6 +472,8 @@ func initFlagsStartOpsForCmd(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&startOpts.EnableFluentSink,
 		"enable-fluent-sink", startOpts.EnableFluentSink,
 		"whether to enable the fluent-servers attribute in the CockroachDB logging configuration")
+	cmd.Flags().BoolVar(&startOpts.AutoRestart,
+		"auto-restart", startOpts.AutoRestart, "automatically restart cockroach processes that die")
 }
 
 func initFlagInsecureIgnoreHostKeyForCmd(cmd *cobra.Command) {
@@ -466,10 +496,8 @@ func initFlagBinaryForCmd(cmd *cobra.Command) {
 }
 
 func initFlagInsecureForCmd(cmd *cobra.Command) {
-	// TODO(renato): remove --secure once the default of secure
-	// clusters has existed in roachprod long enough.
 	cmd.Flags().BoolVar(&secure,
-		"secure", secure, "use a secure cluster (DEPRECATED: clusters are secure by default; use --insecure to create insecure clusters.)")
+		"secure", secure, "use a secure cluster")
 	cmd.Flags().BoolVar(&insecure,
 		"insecure", insecure, "use an insecure cluster")
 }

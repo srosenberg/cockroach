@@ -35,6 +35,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/stats"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
+	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/cockroach/pkg/util/treeprinter"
 	"github.com/cockroachdb/errors"
@@ -43,7 +45,8 @@ import (
 
 const (
 	// testDB is the default current database for testing purposes.
-	testDB = "t"
+	testDB       = "t"
+	testSchemaID = 1
 )
 
 // Catalog implements the cat.Catalog interface for testing purposes.
@@ -58,6 +61,8 @@ type Catalog struct {
 
 	users       map[username.SQLUsername]roleMembership
 	currentUser username.SQLUsername
+
+	sessionVars map[string]string
 }
 
 type roleMembership struct {
@@ -78,7 +83,7 @@ func New() *Catalog {
 
 	return &Catalog{
 		testSchema: Schema{
-			SchemaID: 1,
+			SchemaID: testSchemaID,
 			SchemaName: cat.SchemaName{
 				CatalogName:     testDB,
 				SchemaName:      catconstants.PublicSchemaName,
@@ -133,6 +138,17 @@ func (tc *Catalog) ResolveSchema(
 	toResolve.CatalogName = tree.Name(testDB)
 	toResolve.SchemaName = catconstants.PublicSchemaName
 	return tc.resolveSchema(&toResolve)
+}
+
+// ResolveSchemaByID is part of the cat.Catalog interface.
+func (tc *Catalog) ResolveSchemaByID(
+	_ context.Context, _ cat.Flags, id cat.StableID,
+) (cat.Schema, error) {
+	if id != testSchemaID {
+		return nil, pgerror.Newf(pgcode.InvalidSchemaName,
+			"target database or schema does not exist")
+	}
+	return &tc.testSchema, nil
 }
 
 // GetAllSchemaNamesForDB is part of the cat.Catalog interface.
@@ -331,9 +347,26 @@ func (tc *Catalog) UserHasAdminRole(ctx context.Context, user username.SQLUserna
 	return roleMembership.isMemberOfAdminRole, nil
 }
 
+// UserIsMemberOfAnyRole is part of the cat.Catalog interface.
+func (tc *Catalog) UserIsMemberOfAnyRole(
+	ctx context.Context, user username.SQLUsername, roles map[username.SQLUsername]struct{},
+) (bool, error) {
+	if _, found := roles[user]; found {
+		return true, nil
+	}
+	return false, nil
+}
+
 // HasRoleOption is part of the cat.Catalog interface.
 func (tc *Catalog) HasRoleOption(ctx context.Context, roleOption roleoption.Option) (bool, error) {
 	return true, nil
+}
+
+// UserHasGlobalPrivilegeOrRoleOption is part of the cat.Catalog interface.
+func (tc *Catalog) UserHasGlobalPrivilegeOrRoleOption(
+	ctx context.Context, privilege privilege.Kind, user username.SQLUsername,
+) (bool, error) {
+	return false, nil
 }
 
 // FullyQualifiedName is part of the cat.Catalog interface.
@@ -503,6 +536,14 @@ func (tc *Catalog) LeaseByStableID(ctx context.Context, id cat.StableID) (uint64
 	return 1, nil
 }
 
+// ForEachSessionVar applies the given function to the session variable
+// name-value pairs determined by previous SET statements.
+func (tc *Catalog) ForEachSessionVar(fn func(name string, value string)) {
+	for k, v := range tc.sessionVars {
+		fn(k, v)
+	}
+}
+
 // ExecuteMultipleDDL parses the given semicolon-separated DDL SQL statements
 // and applies each of them to the test catalog.
 func (tc *Catalog) ExecuteMultipleDDL(sql string) error {
@@ -519,6 +560,11 @@ func (tc *Catalog) ExecuteMultipleDDL(sql string) error {
 	}
 
 	return nil
+}
+
+// DisableUnsafeInternalCheck is part of the cat.Catalog interface.
+func (tc *Catalog) DisableUnsafeInternalCheck() func() {
+	return func() {}
 }
 
 // ExecuteDDL parses the given DDL SQL statement and creates objects in the test
@@ -833,10 +879,21 @@ func (tv *View) Trigger(i int) cat.Trigger {
 	return &tv.Triggers[i]
 }
 
+// IsSecurityInvoker is part of the cat.View interface.
+func (tv *View) IsSecurityInvoker() bool {
+	return false
+}
+
+// Owner is part of the cat.View interface.
+func (tv *View) Owner() username.SQLUsername {
+	return username.MakeSQLUsernameFromPreNormalizedString("root")
+}
+
 // Table implements the cat.Table interface for testing purposes.
 type Table struct {
 	TabID      cat.StableID
 	DatabaseID descpb.ID
+	SchemaID   descpb.ID
 	TabVersion int
 	TabName    tree.TableName
 	Columns    []cat.Column
@@ -867,7 +924,8 @@ type Table struct {
 
 	multiRegion bool
 
-	implicitRBRIndexElem *tree.IndexElem
+	implicitRBRIndexElem         *tree.IndexElem
+	regionalByRowUsingConstraint cat.ForeignKeyConstraint
 
 	homeRegion string
 
@@ -1073,9 +1131,22 @@ func (tt *Table) HomeRegionColName() (colName string, ok bool) {
 	return string(tree.RegionalByRowRegionDefaultColName), true
 }
 
+// RegionalByRowUsingConstraint is part of the cat.Table interface.
+func (tt *Table) RegionalByRowUsingConstraint() cat.ForeignKeyConstraint {
+	if !tt.IsRegionalByRow() {
+		return nil
+	}
+	return tt.regionalByRowUsingConstraint
+}
+
 // GetDatabaseID is part of the cat.Table interface.
 func (tt *Table) GetDatabaseID() descpb.ID {
 	return tt.DatabaseID
+}
+
+// GetSchemaID is part of the cat.Table interface.
+func (tt *Table) GetSchemaID() descpb.ID {
+	return tt.SchemaID
 }
 
 // IsHypothetical is part of the cat.Table interface.
@@ -1176,6 +1247,15 @@ func (tt *Table) IsRowLevelSecurityForced() bool { return tt.rlsForced }
 func (tt *Table) Policies() *cat.Policies {
 	return &tt.policies
 }
+
+// CanaryAndStableStatsDiffer is part of the cat.Table interface.
+func (tt *Table) CanaryAndStableStatsDiffer() bool { return false }
+
+// StatsCanaryWindow is part of the cat.Table interface.
+func (tt *Table) StatsCanaryWindow() time.Duration { return 0 }
+
+// CanaryExpiration is part of the cat.Table interface.
+func (tt *Table) CanaryExpiration() hlc.Timestamp { return hlc.Timestamp{} }
 
 // findPolicyByName will lookup the policy by its name. It returns it's policy
 // type and index within that policy type slice so that callers can do removal
@@ -1284,12 +1364,20 @@ type Index struct {
 	// inverted index.
 	geoConfig geopb.Config
 
+	// vecConfig is defined if this is a vector index.
+	vecConfig vecpb.Config
+
 	// version is the index descriptor version of the index.
 	version descpb.IndexDescriptorVersion
 
 	// numImplicitPartitioningColumns is the number of implicit partitioning
 	// columns defined in this index.
 	numImplicitPartitioningColumns int
+
+	// isTemporaryIndexForBackfill indicates that this is a temporary index
+	// used during an in-progress index backfill (UseDeletePreservingEncoding
+	// in the real catalog).
+	isTemporaryIndexForBackfill bool
 }
 
 // ID is part of the cat.Index interface.
@@ -1412,6 +1500,11 @@ func (ti *Index) GeoConfig() geopb.Config {
 	return ti.geoConfig
 }
 
+// VecConfig is part of the cat.Index interface.
+func (ti *Index) VecConfig() *vecpb.Config {
+	return &ti.vecConfig
+}
+
 // Version is part of the cat.Index interface.
 func (ti *Index) Version() descpb.IndexDescriptorVersion {
 	return ti.version
@@ -1425,6 +1518,11 @@ func (ti *Index) PartitionCount() int {
 // Partition is part of the cat.Index interface.
 func (ti *Index) Partition(i int) cat.Partition {
 	return &ti.partitions[i]
+}
+
+// IsTemporaryIndexForBackfill is part of the cat.Index interface.
+func (ti *Index) IsTemporaryIndexForBackfill() bool {
+	return ti.isTemporaryIndexForBackfill
 }
 
 // SetPartitions manually sets the partitions.
@@ -1801,9 +1899,8 @@ func (u *UniqueConstraint) Validated() bool {
 	return u.validated
 }
 
-// UniquenessGuaranteedByAnotherIndex is part of the cat.UniqueConstraint
-// interface.
-func (u *UniqueConstraint) UniquenessGuaranteedByAnotherIndex() bool {
+// CanElideUniqueCheck is part of the cat.UniqueConstraint interface.
+func (u *UniqueConstraint) CanElideUniqueCheck() bool {
 	return false
 }
 

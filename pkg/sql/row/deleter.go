@@ -18,8 +18,30 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc/valueside"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
+	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
+	"github.com/cockroachdb/cockroach/pkg/util/metamorphic"
 	"github.com/cockroachdb/errors"
 )
+
+// TODO(yuzefovich): we can probably increase this value.
+const defaultDeleteRangeChunkSize = 600
+
+var deleteRangeChunkSize = metamorphic.ConstantWithTestRange(
+	"row-delete-range-chunk-size",
+	defaultDeleteRangeChunkSize,
+	1,
+	32,
+)
+
+// DeleteRangeChunkSize returns the maximum number of keys deleted per chunk via
+// deleteRange fast-path operator.
+func DeleteRangeChunkSize(forceProductionValues bool) int {
+	if forceProductionValues {
+		return defaultDeleteRangeChunkSize
+	}
+	return deleteRangeChunkSize
+}
 
 // Deleter abstracts the key/value operations for deleting table rows.
 type Deleter struct {
@@ -57,8 +79,8 @@ func MakeDeleter(
 	tableDesc catalog.TableDescriptor,
 	lockedIndexes []catalog.Index,
 	requestedCols []catalog.Column,
+	sd *sessiondata.SessionData,
 	sv *settings.Values,
-	internal bool,
 	metrics *rowinfra.Metrics,
 ) Deleter {
 	indexes := tableDesc.DeletableNonPrimaryIndexes()
@@ -112,11 +134,15 @@ func MakeDeleter(
 			secondaryLocked = index
 		}
 	}
-	if len(lockedIndexes) > 1 && !primaryLocked {
+	if buildutil.CrdbTestBuild && len(lockedIndexes) > 1 && !primaryLocked {
+		// We don't expect multiple secondary indexes to be locked, yet if that
+		// happens in prod, we'll just not use the already acquired locks on all
+		// but the last secondary index, which means a possible performance hit
+		// but no correctness issues.
 		panic(errors.AssertionFailedf("locked at least two secondary indexes in the initial scan: %v", lockedIndexes))
 	}
 	rd := Deleter{
-		Helper:               NewRowHelper(codec, tableDesc, indexes, nil /* uniqueWithTombstoneIndexes */, sv, internal, metrics),
+		Helper:               NewRowHelper(codec, tableDesc, indexes, nil /* uniqueWithTombstoneIndexes */, sd, sv, metrics),
 		FetchCols:            fetchCols,
 		FetchColIDtoRowIndex: fetchColIDtoRowIndex,
 		primaryLocked:        primaryLocked,
@@ -134,10 +160,63 @@ func (rd *Deleter) DeleteRow(
 	values []tree.Datum,
 	pm PartialIndexUpdateHelper,
 	vh VectorIndexUpdateHelper,
-	oth *OriginTimestampCPutHelper,
+	oth OriginTimestampCPutHelper,
+	mustValidateOldPKValues bool,
 	traceKV bool,
 ) error {
 	b := &KVBatchAdapter{Batch: batch}
+
+	primaryIndexKey, err := rd.Helper.encodePrimaryIndexKey(rd.FetchColIDtoRowIndex, values)
+	if err != nil {
+		return err
+	}
+
+	// Delete the row from the primary index.
+	var called bool
+	err = rd.Helper.TableDesc.ForeachFamily(func(family *descpb.ColumnFamilyDescriptor) error {
+		if called {
+			// HACK: MakeFamilyKey appends to its argument, so on every loop iteration
+			// after the first, trim primaryIndexKey so nothing gets overwritten.
+			// TODO(dan): Instead of this, use something like engine.ChunkAllocator.
+			primaryIndexKey = primaryIndexKey[:len(primaryIndexKey):len(primaryIndexKey)]
+		} else {
+			called = true
+		}
+		familyID := family.ID
+		rd.key = keys.MakeFamilyKey(primaryIndexKey, uint32(familyID))
+
+		if oth.IsSet() || mustValidateOldPKValues {
+			var expValue []byte
+			if !oth.IsSet() || !oth.PreviousWasDeleted {
+				prevValue, err := rd.encodeValueForPrimaryIndexFamily(family, values)
+				if err != nil {
+					return err
+				}
+				if prevValue.IsPresent() {
+					expValue = prevValue.TagAndDataBytes()
+				}
+			}
+			if oth.IsSet() {
+				oth.DelWithCPut(ctx, b, &rd.key, expValue, traceKV)
+			} else {
+				delWithCPutFn(ctx, b, &rd.key, expValue, traceKV, &rd.Helper, primaryIndexDirs)
+			}
+		} else {
+			delFn(ctx, b, &rd.key, !rd.primaryLocked /* needsLock */, traceKV, &rd.Helper, primaryIndexDirs)
+		}
+
+		rd.key = nil
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	if oth.PreviousWasDeleted {
+		// If we are updating a tombstone, then there are no secondary index entries
+		// that need to be deleted.
+		return nil
+	}
 
 	// Delete the row from any secondary indices.
 	for i, index := range rd.Helper.Indexes {
@@ -161,54 +240,18 @@ func (rd *Deleter) DeleteRow(
 		if err != nil {
 			return err
 		}
-		needsLock := index.IsUnique() && (rd.secondaryLocked == nil || rd.secondaryLocked.GetID() != index.GetID())
+		alreadyLocked := rd.secondaryLocked != nil && rd.secondaryLocked.GetID() == index.GetID()
 		for _, e := range entries {
 			if err = rd.Helper.deleteIndexEntry(
-				ctx, b, index, &e.Key, needsLock, traceKV, rd.Helper.secIndexValDirs[i],
+				ctx, b, index, &e.Key, alreadyLocked, rd.Helper.sd.BufferedWritesUseLockingOnNonUniqueIndexes,
+				traceKV, secondaryIndexDirs(i),
 			); err != nil {
 				return err
 			}
 		}
 	}
 
-	primaryIndexKey, err := rd.Helper.encodePrimaryIndexKey(rd.FetchColIDtoRowIndex, values)
-	if err != nil {
-		return err
-	}
-
-	// Delete the row.
-	var called bool
-	return rd.Helper.TableDesc.ForeachFamily(func(family *descpb.ColumnFamilyDescriptor) error {
-		if called {
-			// HACK: MakeFamilyKey appends to its argument, so on every loop iteration
-			// after the first, trim primaryIndexKey so nothing gets overwritten.
-			// TODO(dan): Instead of this, use something like engine.ChunkAllocator.
-			primaryIndexKey = primaryIndexKey[:len(primaryIndexKey):len(primaryIndexKey)]
-		} else {
-			called = true
-		}
-		familyID := family.ID
-		rd.key = keys.MakeFamilyKey(primaryIndexKey, uint32(familyID))
-
-		if oth.IsSet() {
-			var expValue []byte
-			if !oth.PreviousWasDeleted {
-				prevValue, err := rd.encodeValueForPrimaryIndexFamily(family, values)
-				if err != nil {
-					return err
-				}
-				if prevValue.IsPresent() {
-					expValue = prevValue.TagAndDataBytes()
-				}
-			}
-			oth.DelWithCPut(ctx, b, &rd.key, expValue, traceKV)
-		} else {
-			delFn(ctx, b, &rd.key, !rd.primaryLocked /* needsLock */, traceKV, rd.Helper.primIndexValDirs)
-		}
-
-		rd.key = nil
-		return nil
-	})
+	return nil
 }
 
 // encodeValueForPrimaryIndexFamily encodes the expected roachpb.Value

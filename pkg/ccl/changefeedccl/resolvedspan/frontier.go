@@ -6,7 +6,6 @@
 package resolvedspan
 
 import (
-	"context"
 	"iter"
 	"slices"
 
@@ -15,8 +14,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
-	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/span"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -30,9 +29,13 @@ type AggregatorFrontier struct {
 
 // NewAggregatorFrontier returns a new AggregatorFrontier.
 func NewAggregatorFrontier(
-	statementTime hlc.Timestamp, initialHighWater hlc.Timestamp, spans ...roachpb.Span,
+	statementTime hlc.Timestamp,
+	initialHighWater hlc.Timestamp,
+	codec TableCodec,
+	perTableTracking bool,
+	spans ...roachpb.Span,
 ) (*AggregatorFrontier, error) {
-	rsf, err := newResolvedSpanFrontier(statementTime, initialHighWater, spans...)
+	rsf, err := newResolvedSpanFrontier(statementTime, initialHighWater, codec, perTableTracking, spans...)
 	if err != nil {
 		return nil, err
 	}
@@ -44,19 +47,19 @@ func NewAggregatorFrontier(
 // ForwardResolvedSpan forwards the progress of a resolved span and also does
 // some boundary validation.
 func (f *AggregatorFrontier) ForwardResolvedSpan(
-	ctx context.Context, r jobspb.ResolvedSpan,
-) (bool, error) {
+	r jobspb.ResolvedSpan,
+) (span.ForwardResult, error) {
 	switch boundaryType := r.BoundaryType; boundaryType {
 	case jobspb.ResolvedSpan_NONE:
 	case jobspb.ResolvedSpan_BACKFILL, jobspb.ResolvedSpan_EXIT, jobspb.ResolvedSpan_RESTART:
 		// Boundary resolved events should be ingested from the schema feed
 		// serially, where the changefeed won't ever observe a new schema change
 		// boundary until it has progressed past the current boundary.
-		if err := f.assertBoundaryNotEarlier(ctx, r); err != nil {
-			return false, err
+		if err := f.assertBoundaryNotEarlierOrDifferent(r); err != nil {
+			return span.ForwardNoChange, err
 		}
 	default:
-		return false, errors.AssertionFailedf("unknown boundary type: %v", boundaryType)
+		return span.ForwardNoChange, errors.AssertionFailedf("unknown boundary type: %v", boundaryType)
 	}
 	return f.resolvedSpanFrontier.ForwardResolvedSpan(r)
 }
@@ -75,9 +78,13 @@ type CoordinatorFrontier struct {
 
 // NewCoordinatorFrontier returns a new CoordinatorFrontier.
 func NewCoordinatorFrontier(
-	statementTime hlc.Timestamp, initialHighWater hlc.Timestamp, spans ...roachpb.Span,
+	statementTime hlc.Timestamp,
+	initialHighWater hlc.Timestamp,
+	codec TableCodec,
+	perTableTracking bool,
+	spans ...roachpb.Span,
 ) (*CoordinatorFrontier, error) {
-	rsf, err := newResolvedSpanFrontier(statementTime, initialHighWater, spans...)
+	rsf, err := newResolvedSpanFrontier(statementTime, initialHighWater, codec, perTableTracking, spans...)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +96,8 @@ func NewCoordinatorFrontier(
 // ForwardResolvedSpan forwards the progress of a resolved span and also does
 // some boundary validation.
 func (f *CoordinatorFrontier) ForwardResolvedSpan(
-	ctx context.Context, r jobspb.ResolvedSpan,
-) (bool, error) {
+	r jobspb.ResolvedSpan,
+) (span.ForwardResult, error) {
 	switch boundaryType := r.BoundaryType; boundaryType {
 	case jobspb.ResolvedSpan_NONE:
 	case jobspb.ResolvedSpan_BACKFILL:
@@ -103,39 +110,41 @@ func (f *CoordinatorFrontier) ForwardResolvedSpan(
 		// it is a BACKFILL we have already seen, then it is fine for it to be
 		// an earlier timestamp than the latest boundary.
 		boundaryTS := r.Timestamp
-		_, ok := slices.BinarySearchFunc(f.backfills, boundaryTS, func(elem hlc.Timestamp, ts hlc.Timestamp) int {
-			return elem.Compare(ts)
-		})
-		if ok {
+		if _, ok := slices.BinarySearchFunc(f.backfills, boundaryTS,
+			func(elem hlc.Timestamp, ts hlc.Timestamp) int {
+				return elem.Compare(ts)
+			},
+		); ok {
 			break
 		}
-		if err := f.assertBoundaryNotEarlier(ctx, r); err != nil {
-			return false, err
+		if err := f.assertBoundaryNotEarlierOrDifferent(r); err != nil {
+			return span.ForwardNoChange, err
 		}
 		f.backfills = append(f.backfills, boundaryTS)
 	case jobspb.ResolvedSpan_EXIT, jobspb.ResolvedSpan_RESTART:
 		// EXIT and RESTART are final boundaries that cause the changefeed
 		// processors to all move to draining and so should not be followed
 		// by any other boundaries.
-		if err := f.assertBoundaryNotEarlier(ctx, r); err != nil {
-			return false, err
+		if err := f.assertBoundaryNotEarlierOrDifferent(r); err != nil {
+			return span.ForwardNoChange, err
 		}
 	default:
-		return false, errors.AssertionFailedf("unknown boundary type: %v", boundaryType)
+		return span.ForwardNoChange, errors.AssertionFailedf("unknown boundary type: %v", boundaryType)
 	}
-	frontierChanged, err := f.resolvedSpanFrontier.ForwardResolvedSpan(r)
+	result, err := f.resolvedSpanFrontier.ForwardResolvedSpan(r)
 	if err != nil {
-		return false, err
+		return span.ForwardNoChange, err
 	}
 	// If the frontier changed, we check if the frontier has advanced past any known backfills.
-	if frontierChanged {
+	if result.FrontierForwarded() {
 		frontier := f.Frontier()
-		i, _ := slices.BinarySearchFunc(f.backfills, frontier, func(elem hlc.Timestamp, ts hlc.Timestamp) int {
-			return elem.Compare(ts)
-		})
+		i, _ := slices.BinarySearchFunc(f.backfills, frontier,
+			func(elem hlc.Timestamp, ts hlc.Timestamp) int {
+				return elem.Compare(ts)
+			})
 		f.backfills = f.backfills[i:]
 	}
-	return frontierChanged, nil
+	return result, nil
 }
 
 // InBackfill returns whether a resolved span is part of an ongoing backfill
@@ -145,10 +154,11 @@ func (f *CoordinatorFrontier) ForwardResolvedSpan(
 // happening at different timestamps.
 func (f *CoordinatorFrontier) InBackfill(r jobspb.ResolvedSpan) bool {
 	boundaryTS := r.Timestamp
-	_, ok := slices.BinarySearchFunc(f.backfills, boundaryTS, func(elem hlc.Timestamp, ts hlc.Timestamp) int {
-		return elem.Next().Compare(ts)
-	})
-	if ok {
+	if _, ok := slices.BinarySearchFunc(f.backfills, boundaryTS,
+		func(elem hlc.Timestamp, ts hlc.Timestamp) int {
+			return elem.Next().Compare(ts)
+		},
+	); ok {
 		return true
 	}
 
@@ -161,11 +171,12 @@ func (f *CoordinatorFrontier) All() iter.Seq[jobspb.ResolvedSpan] {
 		for resolvedSpan := range f.resolvedSpanFrontier.All() {
 			// Check if it's at an earlier backfill boundary.
 			if resolvedSpan.BoundaryType == jobspb.ResolvedSpan_NONE {
-				for _, b := range f.backfills {
-					if b.Equal(resolvedSpan.Timestamp) {
-						resolvedSpan.BoundaryType = jobspb.ResolvedSpan_BACKFILL
-						break
-					}
+				if _, ok := slices.BinarySearchFunc(f.backfills, resolvedSpan.Timestamp,
+					func(elem hlc.Timestamp, ts hlc.Timestamp) int {
+						return elem.Compare(ts)
+					},
+				); ok {
+					resolvedSpan.BoundaryType = jobspb.ResolvedSpan_BACKFILL
 				}
 			}
 			if !yield(resolvedSpan) {
@@ -182,15 +193,11 @@ func (f *CoordinatorFrontier) MakeCheckpoint(
 	return checkpoint.Make(f.Frontier(), f.Entries(), maxBytes, metrics)
 }
 
-// spanFrontier is a type alias to make it possible to embed and forward calls
-// (e.g. Frontier()) to the underlying span.Frontier.
-type spanFrontier = span.Frontier
-
 // resolvedSpanFrontier wraps a spanFrontier with additional bookkeeping fields
 // used to track resolved spans for a changefeed and methods for computing
 // lagging and checkpoint spans.
 type resolvedSpanFrontier struct {
-	spanFrontier
+	maybeTablePartitionedFrontier
 
 	// statementTime is the statement time of the changefeed.
 	statementTime hlc.Timestamp
@@ -209,35 +216,55 @@ type resolvedSpanFrontier struct {
 
 // newResolvedSpanFrontier returns a new resolvedSpanFrontier.
 func newResolvedSpanFrontier(
-	statementTime hlc.Timestamp, initialHighWater hlc.Timestamp, spans ...roachpb.Span,
+	statementTime hlc.Timestamp,
+	initialHighWater hlc.Timestamp,
+	codec TableCodec,
+	perTableTracking bool,
+	spans ...roachpb.Span,
 ) (*resolvedSpanFrontier, error) {
-	sf, err := span.MakeFrontierAt(initialHighWater, spans...)
+	sf, err := func() (maybeTablePartitionedFrontier, error) {
+		if perTableTracking {
+			return span.NewMultiFrontierAt(newTableIDPartitioner(codec), initialHighWater, spans...)
+		}
+		f, err := span.MakeFrontierAt(initialHighWater, spans...)
+		if err != nil {
+			return nil, err
+		}
+		return notTablePartitionedFrontier{spanFrontier: span.MakeConcurrentFrontier(f)}, nil
+	}()
 	if err != nil {
 		return nil, err
 	}
-	sf = span.MakeConcurrentFrontier(sf)
 	return &resolvedSpanFrontier{
-		spanFrontier:     sf,
-		statementTime:    statementTime,
-		initialHighWater: initialHighWater,
+		maybeTablePartitionedFrontier: sf,
+		statementTime:                 statementTime,
+		initialHighWater:              initialHighWater,
 	}, nil
 }
 
 // ForwardResolvedSpan forwards the progress of a resolved span.
-func (f *resolvedSpanFrontier) ForwardResolvedSpan(r jobspb.ResolvedSpan) (bool, error) {
-	forwarded, err := f.Forward(r.Span, r.Timestamp)
+// The frontier is considered forwarded if either the frontier
+// timestamp advances or the current frontier timestamp becomes
+// a boundary timestamp (for some non-NONE boundary type)
+// and all the spans are at the boundary timestamp already.
+func (f *resolvedSpanFrontier) ForwardResolvedSpan(
+	r jobspb.ResolvedSpan,
+) (span.ForwardResult, error) {
+	result, err := f.Forward(r.Span, r.Timestamp)
 	if err != nil {
-		return false, err
+		return span.ForwardNoChange, err
 	}
 	f.latestTS.Forward(r.Timestamp)
-	if r.BoundaryType != jobspb.ResolvedSpan_NONE {
-		newBoundary := resolvedSpanBoundary{
-			ts:  r.Timestamp,
-			typ: r.BoundaryType,
+	boundaryForwarded := f.boundary.Forward(r.Timestamp, r.BoundaryType)
+	if boundaryForwarded && !result.FrontierForwarded() {
+		// The frontier is considered forwarded if the boundary type
+		// changes to non-NONE and all the spans are at the boundary
+		// timestamp already.
+		if atBoundary, _, _ := f.AtBoundary(); atBoundary {
+			result = span.ForwardResolvedTime
 		}
-		f.boundary.Forward(newBoundary)
 	}
-	return forwarded, nil
+	return result, nil
 }
 
 // AtBoundary returns true at the single moment when all watched spans
@@ -284,23 +311,26 @@ func (f *resolvedSpanFrontier) InBackfill(r jobspb.ResolvedSpan) bool {
 	return false
 }
 
-// assertBoundaryNotEarlier is a helper method provided to assert that a
-// resolved span does not have an earlier boundary than the existing one.
-func (f *resolvedSpanFrontier) assertBoundaryNotEarlier(
-	ctx context.Context, r jobspb.ResolvedSpan,
-) error {
+// assertBoundaryNotEarlierOrDifferent is a helper method that asserts that a
+// resolved span does not have an earlier boundary than the existing one
+// nor is it at the same time as the existing one with a different type.
+func (f *resolvedSpanFrontier) assertBoundaryNotEarlierOrDifferent(r jobspb.ResolvedSpan) error {
 	boundaryType := r.BoundaryType
 	if boundaryType == jobspb.ResolvedSpan_NONE {
-		return errors.AssertionFailedf("assertBoundaryNotEarlier should not be called for NONE boundary")
+		return errors.AssertionFailedf(
+			"assertBoundaryNotEarlierOrDifferent should not be called for NONE boundary")
 	}
 	boundaryTS := r.Timestamp
+	newBoundary := newResolvedSpanBoundary(boundaryTS, boundaryType)
 	if f.boundary.After(boundaryTS) {
-		newBoundary := newResolvedSpanBoundary(boundaryTS, boundaryType)
-		err := errors.AssertionFailedf("received resolved span for %s "+
+		return errors.AssertionFailedf("received resolved span for %s "+
 			"with %v, which is earlier than previously received %v",
 			r.Span, newBoundary, f.boundary)
-		log.Errorf(ctx, "error while forwarding boundary resolved span: %v", err)
-		return err
+	}
+	if atBoundary, typ := f.boundary.At(boundaryTS); atBoundary && boundaryType != typ {
+		return errors.AssertionFailedf("received resolved span for %s "+
+			"with %v, which has a different type from previously received %v with same timestamp",
+			r.Span, newBoundary, f.boundary)
 	}
 	return nil
 }
@@ -320,10 +350,15 @@ func (f *resolvedSpanFrontier) HasLaggingSpans(sv *settings.Values) bool {
 	return frontier.Add(lagThresholdNanos, 0).Less(f.latestTS)
 }
 
+// LatestTS returns the latest timestamp in the frontier.
+func (f *resolvedSpanFrontier) LatestTS() hlc.Timestamp {
+	return f.latestTS
+}
+
 // All returns an iterator over the resolved spans in the frontier.
 func (f *resolvedSpanFrontier) All() iter.Seq[jobspb.ResolvedSpan] {
 	return func(yield func(jobspb.ResolvedSpan) bool) {
-		for sp, ts := range f.spanFrontier.Entries() {
+		for sp, ts := range f.Entries() {
 			var boundaryType jobspb.ResolvedSpan_BoundaryType
 			if ok, bt := f.boundary.At(ts); ok {
 				boundaryType = bt
@@ -369,28 +404,91 @@ func newResolvedSpanBoundary(
 // At returns whether a timestamp is equal to the boundary timestamp
 // and if so, the boundary type as well.
 func (b *resolvedSpanBoundary) At(ts hlc.Timestamp) (bool, jobspb.ResolvedSpan_BoundaryType) {
-	if ts.Equal(b.ts) {
+	if b.IsSet() && ts.Equal(b.ts) {
 		return true, b.typ
 	}
 	return false, 0
 }
 
-// After returns whether a timestamp is later than the boundary timestamp.
+// After returns whether the boundary is after a given timestamp.
 func (b *resolvedSpanBoundary) After(ts hlc.Timestamp) bool {
-	return ts.Less(b.ts)
+	return b.IsSet() && b.ts.After(ts)
 }
 
 // Forward forwards the boundary to the new boundary if it is later.
 // It returns true if the boundary changed and false otherwise.
-func (b *resolvedSpanBoundary) Forward(newBoundary resolvedSpanBoundary) bool {
-	if newBoundary.After(b.ts) {
-		*b = newBoundary
+func (b *resolvedSpanBoundary) Forward(
+	ts hlc.Timestamp, typ jobspb.ResolvedSpan_BoundaryType,
+) bool {
+	if typ != jobspb.ResolvedSpan_NONE && ts.After(b.ts) {
+		b.ts = ts
+		b.typ = typ
 		return true
 	}
 	return false
 }
 
+// IsSet returns whether the boundary is set.
+func (b *resolvedSpanBoundary) IsSet() bool {
+	return b.typ != jobspb.ResolvedSpan_NONE
+}
+
 // SafeFormat implements the redact.SafeFormatter interface.
 func (b *resolvedSpanBoundary) SafeFormat(s redact.SafePrinter, _ rune) {
 	s.Printf("%v boundary (%v)", b.typ, b.ts)
+}
+
+// A maybeTablePartitionedFrontier is a frontier that might be tracking
+// spans in per-table sub-frontiers.
+type maybeTablePartitionedFrontier interface {
+	span.Frontier
+
+	// Frontiers returns an iterator over the table ID and sub-frontiers
+	// being tracked by the frontier. If the frontier is not tracking
+	// on a per-table basis, the iterator will return a single frontier
+	// with descpb.InvalidID.
+	Frontiers() iter.Seq2[descpb.ID, span.ReadOnlyFrontier]
+}
+
+var _ maybeTablePartitionedFrontier = (*span.MultiFrontier[descpb.ID])(nil)
+
+// spanFrontier is a type alias to make it possible to embed and forward calls
+// (e.g. Frontier()) to the underlying span.Frontier.
+type spanFrontier = span.Frontier
+
+// notTablePartitionedFrontier is a frontier that does not track spans on
+// a per-table basis.
+type notTablePartitionedFrontier struct {
+	spanFrontier
+}
+
+var _ maybeTablePartitionedFrontier = notTablePartitionedFrontier{}
+
+// Frontiers implements maybeTablePartitionedFrontier.
+func (f notTablePartitionedFrontier) Frontiers() iter.Seq2[descpb.ID, span.ReadOnlyFrontier] {
+	return func(yield func(descpb.ID, span.ReadOnlyFrontier) bool) {
+		yield(descpb.InvalidID, f.spanFrontier)
+	}
+}
+
+// A TableCodec does table-related decoding/encoding.
+// The production implementation is keys.SQLCodec.
+type TableCodec interface {
+	DecodeTablePrefix(key roachpb.Key) ([]byte, uint32, error)
+	TableSpan(tableID uint32) roachpb.Span
+}
+
+func newTableIDPartitioner(codec TableCodec) span.PartitionerFunc[descpb.ID] {
+	return func(sp roachpb.Span) (descpb.ID, error) {
+		_, startKeyTableID, err := codec.DecodeTablePrefix(sp.Key)
+		if err != nil {
+			return 0, errors.Wrapf(err, "error decoding start key in %v", sp)
+		}
+		// Reject any spans that cross table boundaries.
+		tableSpan := codec.TableSpan(startKeyTableID)
+		if !tableSpan.Contains(sp) {
+			return 0, errors.AssertionFailedf("span encompassing multiple tables: %s", sp)
+		}
+		return descpb.ID(startKeyTableID), nil
+	}
 }

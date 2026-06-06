@@ -74,7 +74,7 @@ SELECT b FROM defaultdb.public.t@t_idx_b;
 SELECT c FROM defaultdb.public.t@t_idx_c;
 SELECT a FROM defaultdb.public.v;
 SELECT nextval(105:::REGCLASS);`,
-			funcDesc.GetFunctionBody())
+			string(funcDesc.GetFunctionBody()))
 
 		sort.Slice(funcDesc.GetDependsOn(), func(i, j int) bool {
 			return funcDesc.GetDependsOn()[i] < funcDesc.GetDependsOn()[j]
@@ -220,7 +220,7 @@ $$;
 			`SELECT b FROM defaultdb.public.t1@t1_idx_b;
 SELECT a FROM defaultdb.public.v1;
 SELECT nextval(106:::REGCLASS);`,
-			funcDesc.GetFunctionBody())
+			string(funcDesc.GetFunctionBody()))
 
 		sort.Slice(funcDesc.GetDependsOn(), func(i, j int) bool {
 			return funcDesc.GetDependsOn()[i] < funcDesc.GetDependsOn()[j]
@@ -264,7 +264,7 @@ $$;
 			`SELECT b FROM defaultdb.public.t2@t2_idx_b;
 SELECT a FROM defaultdb.public.v2;
 SELECT nextval(107:::REGCLASS);`,
-			funcDesc.GetFunctionBody())
+			string(funcDesc.GetFunctionBody()))
 
 		sort.Slice(funcDesc.GetDependsOn(), func(i, j int) bool {
 			return funcDesc.GetDependsOn()[i] < funcDesc.GetDependsOn()[j]
@@ -304,9 +304,9 @@ func TestCreateFunctionVisibilityInExplicitTransaction(t *testing.T) {
 	defer s.Stopper().Stop(ctx)
 	tDB := sqlutils.MakeSQLRunner(sqlDB)
 
-	tDB.Exec(t, `SET use_declarative_schema_changer = 'unsafe_always'`)
 	tDB.Exec(t, `CREATE TABLE t (a INT PRIMARY KEY, b INT NOT NULL)`)
 	tDB.Exec(t, `INSERT INTO t VALUES (1,1), (2,1)`)
+	tDB.Exec(t, `SET use_declarative_schema_changer = 'unsafe_always'`)
 
 	// Make sure that everything is rolled back if post commit job fails.
 	_, err := sqlDB.Exec(`
@@ -326,14 +326,13 @@ COMMIT;
 	tDB.Exec(t, `DELETE FROM t WHERE a = 2`)
 
 	// Make sure function cannot be used before job completes.
-	testingKnob.RunBeforeBackfill = func() error {
+	testingKnob.RunBeforeBackfill = func(_ []scexec.BackfillProgress) error {
 		_, err = sqlDB.Exec(`SELECT f()`)
 		require.Error(t, err, "")
 		require.Contains(t, err.Error(), `function "f" is being added`)
 		return nil
 	}
 
-	//tDB.Exec(t, `SET CLUSTER SETTING jobs.debug.pausepoints='newschemachanger.before.exec'`)
 	_, err = sqlDB.Exec(`
 BEGIN;
 SET LOCAL autocommit_before_ddl = false;

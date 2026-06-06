@@ -7,6 +7,7 @@ package rowexec
 
 import (
 	"context"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -15,12 +16,14 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra/execopnode"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
+	"github.com/cockroachdb/cockroach/pkg/sql/execstats"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann"
-	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecstore"
+	"github.com/cockroachdb/cockroach/pkg/util/optional"
 	"github.com/cockroachdb/cockroach/pkg/util/vector"
 	"github.com/cockroachdb/errors"
 )
@@ -28,16 +31,19 @@ import (
 type vectorSearchProcessor struct {
 	execinfra.ProcessorBase
 	fetchSpec   *fetchpb.IndexFetchSpec
-	colOrdMap   catalog.TableColMap
-	prefixKey   roachpb.Key
+	prefixKeys  []roachpb.Key
 	queryVector vector.T
 
 	searcher    vecindex.Searcher
+	searchIdx   int
+	currPrefix  roachpb.Key
 	targetCount uint64
-	searchDone  bool
 
-	row     rowenc.EncDatumRow
-	scratch rowenc.EncDatumRow
+	pkDecoder vecstore.PKDecoder
+
+	contentionEventsListener  execstats.ContentionEventsListener
+	scanStatsListener         execstats.ScanStatsListener
+	tenantConsumptionListener execstats.TenantConsumptionListener
 }
 
 var _ execinfra.RowSourcedProcessor = &vectorSearchProcessor{}
@@ -50,13 +56,9 @@ func newVectorSearchProcessor(
 	spec *execinfrapb.VectorSearchSpec,
 	post *execinfrapb.PostProcessSpec,
 ) (execinfra.Processor, error) {
-	if spec.PrefixKey != nil {
-		return nil, unimplemented.New("prefix columns",
-			"searching a vector index with prefix columns is not yet supported")
-	}
 	v := vectorSearchProcessor{
 		fetchSpec:   &spec.FetchSpec,
-		prefixKey:   spec.PrefixKey,
+		prefixKeys:  spec.PrefixKeys,
 		queryVector: spec.QueryVector,
 		targetCount: spec.TargetNeighborCount,
 	}
@@ -64,12 +66,20 @@ func newVectorSearchProcessor(
 	if err != nil {
 		return nil, err
 	}
-	v.searcher.Init(idx, flowCtx.Txn)
+	searchBeamSize := int(flowCtx.EvalCtx.SessionData().VectorSearchBeamSize)
+	maxResults := int(v.targetCount)
+	rerankMultiplier := int(flowCtx.EvalCtx.SessionData().VectorSearchRerankMultiplier)
+	v.searcher.Init(flowCtx.EvalCtx,
+		idx, flowCtx.Txn, &spec.GetFullVectorsFetchSpec, searchBeamSize, maxResults, rerankMultiplier)
+	if mgr, ok := flowCtx.Cfg.VecIndexManager.(*vecindex.Manager); ok {
+		v.searcher.SetTestingKnobs(mgr.TestingKnobs())
+	}
 	colTypes := make([]*types.T, len(v.fetchSpec.FetchedColumns))
 	for i, col := range v.fetchSpec.FetchedColumns {
 		colTypes[i] = col.Type
-		v.colOrdMap.Set(col.ColumnID, i)
 	}
+	v.pkDecoder.Init(&spec.FetchSpec)
+
 	if err := v.Init(
 		ctx,
 		&v,
@@ -78,89 +88,94 @@ func newVectorSearchProcessor(
 		flowCtx,
 		processorID,
 		nil, /* memMonitor */
-		execinfra.ProcStateOpts{},
+		execinfra.ProcStateOpts{
+			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				// We need to generate metadata before closing the processor
+				// because InternalClose() updates v.Ctx to the "original"
+				// context.
+				trailingMeta := v.generateMeta()
+				v.InternalClose()
+				return trailingMeta
+			},
+		},
 	); err != nil {
 		return nil, err
 	}
+
+	if execstats.ShouldCollectStats(ctx, flowCtx.CollectStats) {
+		if flowTxn := flowCtx.EvalCtx.Txn; flowTxn != nil {
+			v.contentionEventsListener.Init(flowTxn.ID())
+		}
+		v.ExecStatsForTrace = v.execStatsForTrace
+	}
+
 	return &v, nil
 }
 
 // Start is part of the RowSource interface.
 func (v *vectorSearchProcessor) Start(ctx context.Context) {
-	v.StartInternal(ctx, "vector search")
+	_ = v.StartInternal(
+		ctx, "vector search", &v.contentionEventsListener,
+		&v.scanStatsListener, &v.tenantConsumptionListener,
+	)
 }
 
 // Next is part of the RowSource interface.
 func (v *vectorSearchProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
-	var err error
-	if !v.searchDone {
-		v.searchDone = true
-		err := v.searcher.Search(v.Ctx(), v.prefixKey, v.queryVector, int(v.targetCount))
-		if err != nil {
-			v.MoveToDraining(err)
-		}
-	}
 	for v.State == execinfra.StateRunning {
 		next := v.searcher.NextResult()
 		if next == nil {
-			v.MoveToDraining(nil /* err */)
-			break
+			// Either we haven't searched yet, or we have exhausted the current
+			// search results.
+			ok, err := v.maybeSearch()
+			if !ok || err != nil {
+				v.MoveToDraining(err)
+				break
+			}
+			continue
 		}
-		if err = v.processSearchResult(next); err != nil {
+		_, err := v.pkDecoder.ExtractPrimaryKeyBytes(cspann.TreeKey(v.currPrefix), next.ChildKey.KeyBytes)
+		if err != nil {
 			v.MoveToDraining(err)
 			break
 		}
-		if outRow := v.ProcessRowHelper(v.row); outRow != nil {
+		row, err := v.pkDecoder.DecodeValueBytes(next.ValueBytes)
+		if err != nil {
+			v.MoveToDraining(err)
+			break
+		}
+		if outRow := v.ProcessRowHelper(row); outRow != nil {
 			return outRow, nil
 		}
 	}
 	return nil, v.DrainHelper()
 }
 
-// processSearchResult decodes the primary key columns from the search result
-// and stores them in v.vals.
-func (v *vectorSearchProcessor) processSearchResult(res *cspann.SearchResult) (err error) {
-	if v.row == nil {
-		v.row = make(rowenc.EncDatumRow, len(v.fetchSpec.FetchedColumns))
+// maybeSearch performs the next vector search operation. It should be called
+// when there are no further search results to process. It returns ok=false if
+// there are no more searches to perform.
+func (v *vectorSearchProcessor) maybeSearch() (ok bool, err error) {
+	if v.searchIdx > 0 && v.searchIdx >= len(v.prefixKeys) {
+		// We have conducted at least one search. If there are prefix keys, we have
+		// already exhausted all of them. Note that there can be more than one
+		// prefix key; this is useful for hash-sharded indexes and queries like the
+		// following:
+		//
+		//   SELECT * FROM t@id_v_vector_idx
+		//   WHERE id IN (100, 200, 300)
+		//   ORDER BY v <-> '[1,2]' LIMIT 1;
+		//
+		return false, nil
 	}
-	decodeFromKey := func(keyCols []fetchpb.IndexFetchSpec_KeyColumn, keyBytes []byte) error {
-		if len(keyCols) == 0 {
-			if len(keyBytes) > 0 {
-				return errors.AssertionFailedf("expected empty key bytes")
-			}
-			return nil
-		}
-		if cap(v.scratch) < len(keyCols) {
-			v.scratch = make(rowenc.EncDatumRow, len(keyCols))
-		}
-		v.scratch = v.scratch[:len(keyCols)]
-		_, _, err = rowenc.DecodeKeyValsUsingSpec(keyCols, keyBytes, v.scratch)
-		if err != nil {
-			return err
-		}
-		for i, col := range keyCols {
-			idx, ok := v.colOrdMap.Get(col.ColumnID)
-			if !ok {
-				continue
-			}
-			v.row[idx] = v.scratch[i]
-		}
-		return nil
+	if len(v.prefixKeys) > 0 {
+		v.currPrefix = v.prefixKeys[v.searchIdx]
 	}
-	// Decode the index prefix columns, if any,
-	keyPrefixCols := v.fetchSpec.KeyColumns()[:len(v.fetchSpec.KeyColumns())-1]
-	if err = decodeFromKey(keyPrefixCols, v.prefixKey); err != nil {
-		return err
+	v.searchIdx++
+	err = v.searcher.Search(v.Ctx(), v.currPrefix, v.queryVector)
+	if err != nil {
+		return false, err
 	}
-	// Decode the index suffix columns. This is usually the set of primary key
-	// columns.
-	keySuffixCols, keySuffixBytes := v.fetchSpec.KeySuffixColumns(), res.ChildKey.KeyBytes
-	if err = decodeFromKey(keySuffixCols, keySuffixBytes); err != nil {
-		return err
-	}
-	neededValueCols := len(v.fetchSpec.FetchedColumns)
-	_, err = rowenc.DecodeValueBytes(v.colOrdMap, res.ValueBytes, neededValueCols, v.row)
-	return err
+	return true, nil
 }
 
 // ChildCount is part of the execopnode.OpNode interface.
@@ -171,6 +186,52 @@ func (v *vectorSearchProcessor) ChildCount(verbose bool) int {
 // Child is part of the execopnode.OpNode interface.
 func (v *vectorSearchProcessor) Child(nth int, verbose bool) execopnode.OpNode {
 	panic(errors.AssertionFailedf("invalid index %d", nth))
+}
+
+// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
+func (v *vectorSearchProcessor) execStatsForTrace() *execinfrapb.ComponentStats {
+	kvStats := v.searcher.KVStats()
+	ret := &execinfrapb.ComponentStats{
+		KV: execinfrapb.KVStats{
+			BatchRequestsIssued: optional.MakeUint(uint64(kvStats.BatchRequestsIssued)),
+			BytesRead:           optional.MakeUint(uint64(kvStats.KVBytesRead)),
+			KVPairsRead:         optional.MakeUint(uint64(kvStats.KVPairsRead)),
+			KVTime:              optional.MakeTimeValue(kvStats.KVTime),
+			LocalKVCPUTime:      optional.MakeTimeValue(time.Duration(kvStats.LocalKVCPUTime)),
+			ContentionTime:      optional.MakeTimeValue(v.contentionEventsListener.GetContentionTime()),
+			LockWaitTime:        optional.MakeTimeValue(v.contentionEventsListener.GetLockWaitTime()),
+			LatchWaitTime:       optional.MakeTimeValue(v.contentionEventsListener.GetLatchWaitTime()),
+		},
+		Output: v.OutputHelper.Stats(),
+	}
+	ret.Exec.ConsumedRU = optional.MakeUint(v.tenantConsumptionListener.GetConsumedRU())
+	scanStats := v.scanStatsListener.GetScanStats()
+	execstats.PopulateKVMVCCStats(&ret.KV, &scanStats)
+	return ret
+}
+
+// generateMeta produces trailing metadata containing accumulated KV metrics
+// and, if applicable, the leaf transaction's final state.
+func (v *vectorSearchProcessor) generateMeta() []execinfrapb.ProducerMetadata {
+	kvStats := v.searcher.KVStats()
+
+	trailingMeta := make([]execinfrapb.ProducerMetadata, 1, 2)
+	meta := &trailingMeta[0]
+
+	meta.Metrics = execinfrapb.GetMetricsMeta()
+	meta.Metrics.KVCPUTime = kvStats.KVCPUTime
+	meta.Metrics.LocalKVCPUTime = kvStats.LocalKVCPUTime
+	meta.Metrics.BytesRead = kvStats.KVBytesRead
+
+	// Currently, vector search is not distributed, but when distribution
+	// support is added, the processor will run on remote nodes using a
+	// LeafTxn. This propagates the leaf's final state back to the RootTxn
+	// on the gateway for transaction correctness.
+	if tfs := execinfra.GetLeafTxnFinalState(v.Ctx(), v.FlowCtx.Txn); tfs != nil {
+		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	}
+
+	return trailingMeta
 }
 
 type vectorMutationSearchProcessor struct {
@@ -187,6 +248,10 @@ type vectorMutationSearchProcessor struct {
 
 	searcher   vecindex.MutationSearcher
 	isIndexPut bool
+
+	contentionEventsListener  execstats.ContentionEventsListener
+	scanStatsListener         execstats.ScanStatsListener
+	tenantConsumptionListener execstats.TenantConsumptionListener
 }
 
 var _ execinfra.RowSourcedProcessor = &vectorMutationSearchProcessor{}
@@ -213,7 +278,10 @@ func newVectorMutationSearchProcessor(
 	if err != nil {
 		return nil, err
 	}
-	v.searcher.Init(idx, flowCtx.Txn)
+	v.searcher.Init(flowCtx.EvalCtx, idx, flowCtx.Txn, &spec.GetFullVectorsFetchSpec)
+	if mgr, ok := flowCtx.Cfg.VecIndexManager.(*vecindex.Manager); ok {
+		v.searcher.SetTestingKnobs(mgr.TestingKnobs())
+	}
 
 	// Pass through the input columns, and add the partition column and optional
 	// quantized vector column.
@@ -233,16 +301,35 @@ func newVectorMutationSearchProcessor(
 		nil, /* memMonitor */
 		execinfra.ProcStateOpts{
 			InputsToDrain: []execinfra.RowSource{v.input},
+			TrailingMetaCallback: func() []execinfrapb.ProducerMetadata {
+				// We need to generate metadata before closing the processor
+				// because InternalClose() updates v.Ctx to the "original"
+				// context.
+				trailingMeta := v.generateMeta()
+				v.InternalClose()
+				return trailingMeta
+			},
 		},
 	); err != nil {
 		return nil, err
 	}
+
+	if execstats.ShouldCollectStats(ctx, flowCtx.CollectStats) {
+		if flowTxn := flowCtx.EvalCtx.Txn; flowTxn != nil {
+			v.contentionEventsListener.Init(flowTxn.ID())
+		}
+		v.ExecStatsForTrace = v.execStatsForTrace
+	}
+
 	return &v, nil
 }
 
 // Start is part of the RowSource interface.
 func (v *vectorMutationSearchProcessor) Start(ctx context.Context) {
-	ctx = v.StartInternal(ctx, "vector mutation search")
+	ctx = v.StartInternal(
+		ctx, "vector mutation search", &v.contentionEventsListener,
+		&v.scanStatsListener, &v.tenantConsumptionListener,
+	)
 	v.input.Start(ctx)
 }
 
@@ -299,13 +386,18 @@ func (v *vectorMutationSearchProcessor) Next() (rowenc.EncDatumRow, *execinfrapb
 					break
 				}
 				// It is possible for the search not to find the target index entry, in
-				// which case the result is nil.
-				partitionKey = v.searcher.PartitionKey()
+				// which case the result is nil. In this case, we leave the partition key
+				// as NULL to signal to rowenc that we didn't find a partition key, but that
+				// it's okay since it's expected that this can happen due to fixups moving
+				// vector index entries around.
+				if v.searcher.PartitionKey() != nil {
+					partitionKey = v.searcher.PartitionKey()
+				}
 			}
 		}
-		row = append(row, rowenc.DatumToEncDatum(types.Int, partitionKey))
+		row = append(row, rowenc.DatumToEncDatumUnsafe(types.Int, partitionKey))
 		if v.isIndexPut {
-			row = append(row, rowenc.DatumToEncDatum(types.Bytes, quantizedVec))
+			row = append(row, rowenc.DatumToEncDatumUnsafe(types.Bytes, quantizedVec))
 		}
 		if outRow := v.ProcessRowHelper(row); outRow != nil {
 			return outRow, nil
@@ -380,6 +472,50 @@ func (v *vectorMutationSearchProcessor) Child(nth int, verbose bool) execopnode.
 		panic("input to vector mutation search is not an execopnode.OpNode")
 	}
 	panic(errors.AssertionFailedf("invalid index %d", nth))
+}
+
+// execStatsForTrace implements ProcessorBase.ExecStatsForTrace.
+func (v *vectorMutationSearchProcessor) execStatsForTrace() *execinfrapb.ComponentStats {
+	kvStats := v.searcher.KVStats()
+	ret := &execinfrapb.ComponentStats{
+		KV: execinfrapb.KVStats{
+			BatchRequestsIssued: optional.MakeUint(uint64(kvStats.BatchRequestsIssued)),
+			BytesRead:           optional.MakeUint(uint64(kvStats.KVBytesRead)),
+			KVPairsRead:         optional.MakeUint(uint64(kvStats.KVPairsRead)),
+			KVTime:              optional.MakeTimeValue(kvStats.KVTime),
+			LocalKVCPUTime:      optional.MakeTimeValue(time.Duration(kvStats.LocalKVCPUTime)),
+			ContentionTime:      optional.MakeTimeValue(v.contentionEventsListener.GetContentionTime()),
+			LockWaitTime:        optional.MakeTimeValue(v.contentionEventsListener.GetLockWaitTime()),
+			LatchWaitTime:       optional.MakeTimeValue(v.contentionEventsListener.GetLatchWaitTime()),
+		},
+	}
+	ret.Exec.ConsumedRU = optional.MakeUint(v.tenantConsumptionListener.GetConsumedRU())
+	scanStats := v.scanStatsListener.GetScanStats()
+	execstats.PopulateKVMVCCStats(&ret.KV, &scanStats)
+	return ret
+}
+
+// generateMeta produces trailing metadata with KV metrics.
+func (v *vectorMutationSearchProcessor) generateMeta() []execinfrapb.ProducerMetadata {
+	kvStats := v.searcher.KVStats()
+
+	trailingMeta := make([]execinfrapb.ProducerMetadata, 1, 2)
+	meta := &trailingMeta[0]
+
+	meta.Metrics = execinfrapb.GetMetricsMeta()
+	meta.Metrics.KVCPUTime = kvStats.KVCPUTime
+	meta.Metrics.LocalKVCPUTime = kvStats.LocalKVCPUTime
+	meta.Metrics.BytesRead = kvStats.KVBytesRead
+
+	// Currently, vector mutation search is not distributed, but when
+	// distribution support is added, the processor will run on remote
+	// nodes using a LeafTxn. This propagates the leaf's final state back
+	// to the RootTxn on the gateway for transaction correctness.
+	if tfs := execinfra.GetLeafTxnFinalState(v.Ctx(), v.FlowCtx.Txn); tfs != nil {
+		trailingMeta = append(trailingMeta, execinfrapb.ProducerMetadata{LeafTxnFinalState: tfs})
+	}
+
+	return trailingMeta
 }
 
 func getVectorIndexForSearch(

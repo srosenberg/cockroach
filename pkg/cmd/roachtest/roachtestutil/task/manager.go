@@ -25,6 +25,7 @@ type (
 		Tasker
 		GroupProvider
 		Terminate(*logger.Logger)
+		Cancel()
 		CompletedEvents() <-chan Event
 	}
 
@@ -105,6 +106,11 @@ func (m *manager) Terminate(l *logger.Logger) {
 	}()
 
 	WaitForChannel(doneCh, "tasks", l)
+}
+
+// Cancel will cancel all tasks started by the manager.
+func (m *manager) Cancel() {
+	m.group.cancelAll()
 }
 
 // CompletedEvents returns a channel that will receive events for all tasks
@@ -199,7 +205,8 @@ func (t *group) GoWithCancel(fn Func, opts ...Option) context.CancelFunc {
 	t.ctxGroup.Go(func() error {
 		l, err := opt.L(opt.Name)
 		if err != nil {
-			return err
+			t.manager.logger.Errorf("WARN: defaulting to root logger after failing to create logger for task %q: %v", opt.Name, err)
+			l = t.manager.logger
 		}
 		err = internalFunc(l)
 		event := Event{
@@ -223,7 +230,18 @@ func (t *group) GoWithCancel(fn Func, opts ...Option) context.CancelFunc {
 			return nil
 		}
 		if !opt.DisableReporting {
-			t.manager.events <- event
+			// There's a slight chance that the context is canceled between the check
+			// above and this select. In which case Go might probabilistically select
+			// sending the event. This should not cause issues as the consumer of the
+			// events should also check if the parent context is canceled. But we
+			// require the select here to avoid blocking if the parent context is
+			// canceled, and the consumer is no longer consuming events.
+			select {
+			case t.manager.events <- event:
+			case <-t.manager.ctx.Done():
+				//  do not send the event if the parent context is canceled
+				return nil
+			}
 		}
 		return err
 	})
@@ -261,6 +279,13 @@ func (t *group) cancelAll() {
 	}
 }
 
+// Cancel cancels all tasks in the group and its subgroups. Cancel is idempotent
+// and safe to call multiple times. It marks all tasks as expecting cancellation
+// so that errors from context cancellation are not reported as test failures.
+func (t *group) Cancel() {
+	t.cancelAll()
+}
+
 // Wait implements the Group interface.
 func (t *group) Wait() {
 	_ = t.WaitE()
@@ -268,11 +293,19 @@ func (t *group) Wait() {
 
 // WaitE implements the ErrorGroup interface.
 func (t *group) WaitE() error {
-	var err error
-	t.groupMu.Lock()
-	defer t.groupMu.Unlock()
-	err = t.ctxGroup.Wait()
-	for _, g := range t.groupMu.groups {
+	// Wait for all tasks in this group's ctxGroup first, without holding
+	// groupMu. Holding the lock across ctxGroup.Wait() would deadlock if a
+	// running task calls NewGroup (which also needs groupMu).
+	err := t.ctxGroup.Wait()
+
+	// Take a snapshot of subgroups under the lock, then wait on each without
+	// the lock held.
+	subgroups := func() []*group {
+		t.groupMu.Lock()
+		defer t.groupMu.Unlock()
+		return append([]*group(nil), t.groupMu.groups...)
+	}()
+	for _, g := range subgroups {
 		err = errors.CombineErrors(g.WaitE(), err)
 	}
 	return err

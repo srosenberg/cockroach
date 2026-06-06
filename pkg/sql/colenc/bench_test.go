@@ -8,7 +8,6 @@ package colenc_test
 import (
 	"context"
 	"io"
-	"net/url"
 	"testing"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -24,7 +23,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
-	"github.com/cockroachdb/cockroach/pkg/testutils/pgurlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
@@ -90,7 +88,7 @@ func BenchmarkTCPHLineItem(b *testing.B) {
 	defer srv.Stopper().Stop(ctx)
 	s := srv.ApplicationLayer()
 
-	url, cleanup := pgurlutils.PGUrl(b, s.AdvSQLAddr(), "copytest", url.User(username.RootUser))
+	url, cleanup := s.PGUrl(b, serverutils.CertsDirPrefix("copytest"), serverutils.User(username.RootUser))
 	defer cleanup()
 	var sqlConnCtx clisqlclient.Context
 	conn := sqlConnCtx.MakeSQLConn(io.Discard, io.Discard, url.String())
@@ -124,8 +122,10 @@ func BenchmarkTCPHLineItem(b *testing.B) {
 	}
 	cb.SetLength(numRows)
 	desc := desctestutils.TestingGetTableDescriptor(kvdb, s.Codec(), "defaultdb", "public", "lineitem")
-	enc := colenc.MakeEncoder(s.Codec(), desc, &st.SV, cb, desc.PublicColumns(),
-		nil /*metrics*/, nil /*partialIndexMap*/, func() error { return nil })
+	enc := colenc.MakeEncoder(
+		s.Codec(), desc, evalCtx.SessionData(), &st.SV, cb, desc.PublicColumns(),
+		nil /* metrics */, nil /* partialIndexMap */, func() error { return nil },
+	)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		err = enc.PrepareBatch(ctx, &noopPutter{}, 0, cb.Length())

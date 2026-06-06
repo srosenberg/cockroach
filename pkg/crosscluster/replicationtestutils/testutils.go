@@ -30,6 +30,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
+	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
@@ -80,6 +81,7 @@ type TenantStreamingClustersArgs struct {
 	EnableReaderTenant             bool
 	TestingKnobs                   *sql.StreamingTestingKnobs
 	TenantCapabilitiesTestingKnobs *tenantcapabilities.TestingKnobs
+	ServerKnobs                    *server.TestingKnobs
 
 	MultitenantSingleClusterNumNodes    int
 	MultiTenantSingleClusterTestRegions []string
@@ -129,11 +131,12 @@ type TenantStreamingClusters struct {
 	SrcURL          url.URL
 	SrcCleanup      func()
 
-	DestCluster    *testcluster.TestCluster
-	DestSysServer  serverutils.ApplicationLayerInterface
-	DestSysSQL     *sqlutils.SQLRunner
-	DestTenantConn *gosql.DB
-	DestTenantSQL  *sqlutils.SQLRunner
+	DestCluster      *testcluster.TestCluster
+	DestSysServer    serverutils.ApplicationLayerInterface
+	DestSysSQL       *sqlutils.SQLRunner
+	DestTenantConn   *gosql.DB
+	DestTenantSQL    *sqlutils.SQLRunner
+	DestTenantServer serverutils.ApplicationLayerInterface
 
 	ReaderTenantSQL *sqlutils.SQLRunner
 
@@ -184,19 +187,18 @@ func (c *TenantStreamingClusters) init(ctx context.Context) {
 func (c *TenantStreamingClusters) StartDestTenant(
 	ctx context.Context, withTestingKnobs *base.TestingKnobs, server int,
 ) func() {
+	var err error
+	var testKnobs base.TestingKnobs
 	if withTestingKnobs != nil {
-		var err error
-		_, c.DestTenantConn, err = c.DestCluster.Server(server).TenantController().StartSharedProcessTenant(ctx, base.TestSharedProcessTenantArgs{
-			TenantID:    c.Args.DestTenantID,
-			TenantName:  c.Args.DestTenantName,
-			Knobs:       *withTestingKnobs,
-			UseDatabase: "defaultdb",
-		})
-		require.NoError(c.T, err)
-	} else {
-		c.DestSysSQL.Exec(c.T, `ALTER TENANT $1 START SERVICE SHARED`, c.Args.DestTenantName)
-		c.DestTenantConn = c.DestCluster.Server(server).SystemLayer().SQLConn(c.T, serverutils.DBName("cluster:"+string(c.Args.DestTenantName)+"/defaultdb"))
+		testKnobs = *withTestingKnobs
 	}
+	c.DestTenantServer, c.DestTenantConn, err = c.DestCluster.Server(server).TenantController().StartSharedProcessTenant(ctx, base.TestSharedProcessTenantArgs{
+		TenantID:    c.Args.DestTenantID,
+		TenantName:  c.Args.DestTenantName,
+		Knobs:       testKnobs,
+		UseDatabase: "defaultdb",
+	})
+	require.NoError(c.T, err)
 
 	c.DestTenantSQL = sqlutils.MakeSQLRunner(c.DestTenantConn)
 	testutils.SucceedsSoon(c.T, func() error {
@@ -416,6 +418,10 @@ func CreateServerArgs(args TenantStreamingClustersArgs) base.TestServerArgs {
 			MaxRetries:     TestingMaxDistSQLRetries,
 		}
 	}
+	if args.ServerKnobs == nil {
+		// Prevents panics in cluster startup.
+		args.ServerKnobs = &server.TestingKnobs{}
+	}
 	return base.TestServerArgs{
 		DefaultTestTenant: base.TestControlsTenantsExplicitly,
 		Knobs: base.TestingKnobs{
@@ -430,6 +436,7 @@ func CreateServerArgs(args TenantStreamingClustersArgs) base.TestServerArgs {
 				// easy-to-predict IDs when we create a tenant after a drop.
 				EnableTenantIDReuse: true,
 			},
+			Server: args.ServerKnobs,
 		},
 		ExternalIODir: args.ExternalIODir,
 	}
@@ -575,7 +582,7 @@ func (c *TenantStreamingClusters) SrcExec(exec srcInitExecFunc) {
 
 func WaitUntilStartTimeReached(t *testing.T, db *sqlutils.SQLRunner, ingestionJobID jobspb.JobID) {
 	timeout := 45 * time.Second
-	if skip.Stress() || util.RaceEnabled {
+	if skip.DevStress() || util.RaceEnabled {
 		timeout *= 5
 	}
 	testutils.SucceedsWithin(t, func() error {
@@ -594,6 +601,10 @@ func WaitUntilStartTimeReached(t *testing.T, db *sqlutils.SQLRunner, ingestionJo
 
 		return requireReplicatedTime(startTime, jobutils.GetJobProgress(t, db, ingestionJobID))
 	}, timeout)
+
+	var runningStatus string
+	db.QueryRow(t, "SELECT running_status FROM [SHOW JOB $1]", ingestionJobID).Scan(&runningStatus)
+	require.Equal(t, "replicating", runningStatus, "job should be in replicating state after reaching start time")
 }
 
 func WaitUntilReplicatedTime(

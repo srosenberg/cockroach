@@ -5,13 +5,12 @@
 
 import { cockroach } from "@cockroachlabs/crdb-protobuf-client";
 import { Tooltip } from "@cockroachlabs/ui-components";
-import classNames from "classnames/bind";
 import React, { ReactNode } from "react";
-import { Link } from "react-router-dom";
 
 import { ColumnDescriptor, SortedTable } from "src/sortedtable";
 
 import { Anchor } from "../../anchor";
+import { IndexStatsLink } from "../../components/links/indexStatsLink";
 import { Timestamp, Timezone } from "../../timestamp";
 import {
   Duration,
@@ -24,20 +23,17 @@ import {
   limitText,
   Count,
   intersperse,
-  EncodeDatabaseTableIndexUri,
 } from "../../util";
-
-import styles from "./plansTable.module.scss";
 
 export type PlanHashStats =
   cockroach.server.serverpb.StatementDetailsResponse.ICollectedStatementGroupedByPlanHash;
-export class PlansSortedTable extends SortedTable<PlanHashStats> {}
-
-const cx = classNames.bind(styles);
+export const PlansSortedTable = SortedTable<PlanHashStats>;
 
 const planDetailsColumnLabels = {
   avgExecTime: "Average Execution Time",
   avgRowsRead: "Average Rows Read",
+  generic: "Generic Query Plan",
+  stmtHints: "Statement Hints",
   distSQL: "Distributed",
   execCount: "Execution Count",
   fullScan: "Full Scan",
@@ -157,6 +153,28 @@ export const planDetailsTableTitles: PlanDetailsTableTitleType = {
       </Tooltip>
     );
   },
+  generic: () => {
+    return (
+      <Tooltip
+        style="tableTitle"
+        placement="bottom"
+        content={"If the Explain Plan was generic."}
+      >
+        {planDetailsColumnLabels.generic}
+      </Tooltip>
+    );
+  },
+  stmtHints: () => {
+    return (
+      <Tooltip
+        style="tableTitle"
+        placement="bottom"
+        content={"If hints from statement_hints were applied."}
+      >
+        {planDetailsColumnLabels.stmtHints}
+      </Tooltip>
+    );
+  },
   distSQL: () => {
     return (
       <Tooltip
@@ -219,7 +237,7 @@ export function formatIndexes(indexes: string[], database: string): ReactNode {
   }
   const indexMap: Map<string, Array<string>> = new Map<string, Array<string>>();
   let droppedCount = 0;
-  let tableName;
+  let tableName: string;
   let idxName;
   let indexInfo;
   for (let i = 0; i < indexes.length; i++) {
@@ -245,15 +263,14 @@ export function formatIndexes(indexes: string[], database: string): ReactNode {
     const table = value[0];
     newLine = i > 0 ? <br /> : "";
     const indexesList = intersperse<ReactNode>(
-      value[1].map(idx => {
+      value[1].map((idx, i) => {
         return (
-          <Link
-            className={cx("regular-link")}
-            to={EncodeDatabaseTableIndexUri(database, table, idx)}
-            key={`${table}${idx}`}
-          >
-            {idx}
-          </Link>
+          <IndexStatsLink
+            key={`index-${i}`}
+            dbName={database}
+            escSchemaQualifiedTableName={tableName}
+            indexName={idx}
+          />
         );
       }),
       ", ",
@@ -281,6 +298,7 @@ export function formatIndexes(indexes: string[], database: string): ReactNode {
 
 export function makeExplainPlanColumns(
   handleDetails: (plan: PlanHashStats) => void,
+  database: string,
 ): ColumnDescriptor<PlanHashStats>[] {
   const duration = (v: number) => Duration(v * 1e9);
   const count = (v: number) => v.toFixed(1);
@@ -302,7 +320,7 @@ export function makeExplainPlanColumns(
       name: "indexes",
       title: planDetailsTableTitles.indexes(),
       cell: (item: PlanHashStats) =>
-        formatIndexes(item.stats.indexes, item.metadata.databases[0]),
+        formatIndexes(item.stats.indexes, database),
       sort: (item: PlanHashStats) => item.stats.indexes?.join(""),
     },
     {
@@ -366,6 +384,22 @@ export function makeExplainPlanColumns(
       cell: (item: PlanHashStats) =>
         formatNumberForDisplay(item.stats.latency_info.max, duration),
       sort: (item: PlanHashStats) => item.stats.latency_info.max,
+    },
+    {
+      name: "generic",
+      title: planDetailsTableTitles.generic(),
+      cell: (item: PlanHashStats) =>
+        RenderCount(item.stats.generic_count, item.stats.count),
+      sort: (item: PlanHashStats) =>
+        RenderCount(item.stats.generic_count, item.stats.count),
+    },
+    {
+      name: "stmtHints",
+      title: planDetailsTableTitles.stmtHints(),
+      cell: (item: PlanHashStats) =>
+        RenderCount(item.stats.stmt_hints_count, item.stats.count),
+      sort: (item: PlanHashStats) =>
+        RenderCount(item.stats.stmt_hints_count, item.stats.count),
     },
     {
       name: "distSQL",

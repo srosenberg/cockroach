@@ -12,9 +12,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl/licenseccl"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/server/diagnostics/diagnosticspb"
+	"github.com/cockroachdb/cockroach/pkg/server/license/licensepb"
+	"github.com/cockroachdb/cockroach/pkg/server/status"
 	"github.com/cockroachdb/cockroach/pkg/util/cloudinfo"
 	"github.com/cockroachdb/cockroach/pkg/util/envutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
@@ -78,7 +79,7 @@ type ClusterInfo struct {
 	TenantID         roachpb.TenantID
 	IsInsecure       bool
 	IsInternal       bool
-	License          *licenseccl.License
+	License          *licensepb.License
 }
 
 // addInfoToURL sets query parameters on the URL used to report diagnostics. If
@@ -112,7 +113,7 @@ func addInfoToURL(
 		if license.OrganizationId != nil {
 			organizationUUID, err := uuid.FromBytes(license.OrganizationId)
 			if err != nil {
-				log.Infof(context.Background(), "unexpected error parsing organization id from license %s", err)
+				log.Dev.Infof(context.Background(), "unexpected error parsing organization id from license %s", err)
 			}
 			organizationID = organizationUUID.String()
 		}
@@ -120,7 +121,7 @@ func addInfoToURL(
 			licenseExpiry = strconv.Itoa(int(license.ValidUntilUnixSec))
 			licenseUUID, err := uuid.FromBytes(license.LicenseId)
 			if err != nil {
-				log.Infof(context.Background(), "unexpected error parsing organization id from license %s", err)
+				log.Dev.Infof(context.Background(), "unexpected error parsing organization id from license %s", err)
 			}
 			licenseID = licenseUUID.String()
 		}
@@ -149,9 +150,9 @@ func addInfoToURL(
 }
 
 // randomly shift `d` to be up to `jitterSeconds` shorter or longer.
-func addJitter(d time.Duration) time.Duration {
+func addJitter(d time.Duration, rng *rand.Rand) time.Duration {
 	const jitterSeconds = 120
-	j := time.Duration(rand.Intn(jitterSeconds*2)-jitterSeconds) * time.Second
+	j := time.Duration(rng.Intn(jitterSeconds*2)-jitterSeconds) * time.Second
 	return d + j
 }
 
@@ -183,6 +184,7 @@ func populateHardwareInfo(ctx context.Context, e *diagnosticspb.Environment) {
 	}
 
 	e.Hardware.Cpu.Numcpu = int32(system.NumCPU())
+	e.Hardware.Cpu.Numvcpu = float32(status.GetVCPUs(ctx))
 	if cpus, err := cpu.InfoWithContext(ctx); err == nil && len(cpus) > 0 {
 		e.Hardware.Cpu.Sockets = int32(len(cpus))
 		c := cpus[0]

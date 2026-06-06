@@ -24,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlclustersettings"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -48,10 +49,6 @@ type createFunctionNode struct {
 func (n *createFunctionNode) ReadingOwnWrites() {}
 
 func (n *createFunctionNode) startExec(params runParams) error {
-	if n.cf.RoutineBody != nil {
-		return unimplemented.NewWithIssue(85144, "CREATE FUNCTION...sql_body unimplemented")
-	}
-
 	if err := params.p.canCreateOnSchema(
 		params.ctx, n.scDesc.GetID(), n.dbDesc.GetID(), params.p.User(), skipCheckPublicSchema,
 	); err != nil {
@@ -81,7 +78,7 @@ func (n *createFunctionNode) startExec(params runParams) error {
 		return err
 	}
 	if scDesc.SchemaKind() == catalog.SchemaTemporary {
-		return unimplemented.NewWithIssue(104687, "cannot create UDFs under a temporary schema")
+		return unimplemented.NewWithIssue(104687, "cannot create user-defined functions under a temporary schema")
 	}
 
 	telemetry.Inc(sqltelemetry.SchemaChangeCreateCounter("function"))
@@ -309,20 +306,26 @@ func (n *createFunctionNode) replaceFunction(
 		return err
 	}
 
+	// We allow two types of "signature changes":
+	// - reordering OUT parameters in respect to input ones, and
+	// - changing the DEFAULT expression.
 	signatureChanged := len(existing.OutParamOrdinals) != len(outParamOrdinals) ||
 		len(existing.DefaultExprs) != len(defaultExprs)
 	for i := 0; !signatureChanged && i < len(outParamOrdinals); i++ {
 		signatureChanged = existing.OutParamOrdinals[i] != outParamOrdinals[i] ||
 			!existing.OutParamTypes.GetAt(i).Equivalent(outParamTypes[i])
 	}
-	for i := 0; !signatureChanged && i < len(defaultExprs); i++ {
-		typ := existing.Types.GetAt(i + existing.Types.Length() - len(defaultExprs))
-		// Update the overload to store the type-checked expression since this
-		// is what is stored in the FunctionSignature proto.
+	// Additionally, we must type-check all DEFAULT expressions since we need to
+	// store the type-checked serialized form in the FunctionSignature proto.
+	// (This is also assumed in ReplaceOverload.)
+	for i := 0; i < len(existing.DefaultExprs); i++ {
+		typ := existing.Types.GetAt(i + existing.Types.Length() - len(existing.DefaultExprs))
 		existing.DefaultExprs[i], err = tree.TypeCheck(params.ctx, existing.DefaultExprs[i], params.p.SemaCtx(), typ)
 		if err != nil {
 			return err
 		}
+	}
+	for i := 0; !signatureChanged && i < len(defaultExprs); i++ {
 		signatureChanged = tree.Serialize(existing.DefaultExprs[i]) != defaultExprs[i]
 	}
 	if signatureChanged {
@@ -581,11 +584,15 @@ func setFuncOptions(
 	}
 
 	if lang != catpb.Function_UNKNOWN_LANGUAGE && body != "" {
-		// Trigger functions do not analyze SQL statements beyond parsing, so type
-		// and sequence names should not be replaced during trigger-function
-		// creation.
+		// Trigger functions and late-bound PL/pgSQL procedures do not analyze SQL
+		// statements beyond parsing, so type and sequence names should not be
+		// replaced.
 		returnType := udfDesc.ReturnType.Type
 		lazilyEvalSQL := returnType != nil && returnType.Identical(types.Trigger)
+		if !lazilyEvalSQL && udfDesc.IsProcedure() && lang == catpb.Function_PLPGSQL &&
+			sqlclustersettings.PLpgSQLProcedureLateBindingEnabled(params.ctx, params.p.ExecCfg().Settings) {
+			lazilyEvalSQL = true
+		}
 		if !lazilyEvalSQL {
 			// Replace any sequence names in the function body with IDs.
 			body, err = replaceSeqNamesWithIDsLang(params.ctx, params.p, body, true, lang)
@@ -599,7 +606,7 @@ func setFuncOptions(
 				return err
 			}
 		}
-		udfDesc.SetFuncBody(body)
+		udfDesc.SetFuncBody(descpb.RoutineBody(body))
 	}
 	return nil
 }

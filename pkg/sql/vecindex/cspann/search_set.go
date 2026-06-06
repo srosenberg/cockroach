@@ -7,37 +7,30 @@ package cspann
 
 import (
 	"bytes"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/cockroach/pkg/util/container/heap"
 	"github.com/cockroachdb/cockroach/pkg/util/vector"
+	"github.com/cockroachdb/errors"
 )
 
 // SearchResults is a list of search results from the search set.
 type SearchResults []SearchResult
 
-// Sort re-orders the results in-place, by their distance.
-func (s *SearchResults) Sort() {
-	results := searchResultHeap(*s)
-	if len(results) > 1 {
-		// Sort the results in-place.
-		sort.Slice(results, func(i int, j int) bool {
-			return !results.Less(i, j)
-		})
-	}
-}
-
 // SearchResult contains a set of results from searching partitions for data
 // vectors that are nearest to a query vector.
 type SearchResult struct {
-	// QuerySquaredDistance is the estimated squared distance of the data vector
-	// from the query vector.
-	QuerySquaredDistance float32
+	// QueryDistance is the estimated distance of the data vector from the query
+	// vector. The quantizer used by the index determines the distance metric.
+	QueryDistance float32
 	// ErrorBound captures the uncertainty of the distance estimate, which is
-	// highly likely to fall within QuerySquaredDistance ± ErrorBound.
+	// highly likely to fall within QueryDistance ± ErrorBound.
 	ErrorBound float32
-	// CentroidDistance is the (non-squared) exact distance of the data vector
-	// from its partition's centroid.
+	// CentroidDistance is the exact distance of the result vector from its
+	// centroid, according to the distance metric in use (e.g. L2Squared or
+	// Cosine).
+	// NOTE: This is only returned if the SearchSet.IncludeCentroidDistances is
+	// set to true.
 	CentroidDistance float32
 	// ParentPartitionKey is the key of the parent of the partition that contains
 	// the data vector.
@@ -46,8 +39,7 @@ type SearchResult struct {
 	// partition, or the key of its partition if it's in a root/branch partition.
 	ChildKey ChildKey
 	// Vector is the original, full-size data vector. This is nil by default,
-	// and is only set when SearchOptions.SkipRerank is false or
-	// SearchOptions.ReturnVectors is true.
+	// and is only set when SearchOptions.SkipRerank is false.
 	// NOTE: If this is an interior centroid vector, then it is randomized.
 	// Otherwise, it's an original, un-randomized leaf vector.
 	Vector vector.T
@@ -60,13 +52,13 @@ type SearchResult struct {
 // MaybeCloser returns true if this result's data vector may be closer (or the
 // same distance) to the query vector than the given result's data vector.
 func (r *SearchResult) MaybeCloser(r2 *SearchResult) bool {
-	return r.QuerySquaredDistance-r.ErrorBound <= r2.QuerySquaredDistance+r2.ErrorBound
+	return r.QueryDistance-r.ErrorBound <= r2.QueryDistance+r2.ErrorBound
 }
 
 // Compare returns an integer comparing two search results. The result is zero
 // if the two are equal, -1 if this result is less than the other, and +1 if
 // this result is greater than the other. Results are ordered by distance. If
-// distances are equal, then the highest error bound breaks ties. If error
+// distances are equal, then the lowest error bound breaks ties. If error
 // bounds are equal, then the child key breaks ties.
 func (r *SearchResult) Compare(r2 *SearchResult) int {
 	// Equivalent to the following, but with lazy comparisons:
@@ -79,8 +71,8 @@ func (r *SearchResult) Compare(r2 *SearchResult) int {
 	//
 
 	// Compare distances.
-	distance1 := r.QuerySquaredDistance
-	distance2 := r2.QuerySquaredDistance
+	distance1 := r.QueryDistance
+	distance2 := r2.QueryDistance
 	if distance1 < distance2 {
 		return -1
 	} else if distance1 > distance2 {
@@ -100,39 +92,44 @@ func (r *SearchResult) Compare(r2 *SearchResult) int {
 	return r.ChildKey.Compare(r2.ChildKey)
 }
 
-// searchResultHeap implements heap.Interface for a max-heap of SearchResult.
-// Since the heap data structure is a min-heap, Less inverts its result to make
-// it into a max-heap. This is needed so that SearchSet can discard results
-// with the highest distances.
+// searchResultHeap implements heap.Interface for a min-heap of SearchResult.
+// However, its methods inverts indexes such that the minimum element is the
+// last element of the heap rather than the first. This is convenient, since it
+// means that as we pop results from the heap, they're naturally placed at the
+// beginning of the search results slice, sorted by ascending distance.
 type searchResultHeap SearchResults
 
 // Len implements heap.Interface.
 func (h searchResultHeap) Len() int { return len(h) }
 
-// Less implements heap.Interface.
+// Less implements heap.Interface. It inverts the "i" and "j" indexes so that
+// the heap will place the min element at the end of the slice rather than the
+// beginning.
 func (h searchResultHeap) Less(i, j int) bool {
-	// Flip the result of comparison in order to turn the min-heap into a
-	// max-heap.
-	return h[i].Compare(&h[j]) > 0
+	n := len(h) - 1
+	return h[n-i].Compare(&h[n-j]) < 0
 }
 
-// Swap implements heap.Interface.
+// Swap implements heap.Interface. It inverts the "i" and "j" indexes so that
+// the heap will place the min element at the end of the slice rather than the
+// beginning.
 func (h searchResultHeap) Swap(i, j int) {
+	n := len(h) - 1
+	i = n - i
+	j = n - j
 	h[i], h[j] = h[j], h[i]
 }
 
-// Push implements heap.Interface.
+// Push implements heap.Interface. However, it should never be called.
 func (h *searchResultHeap) Push(x *SearchResult) {
-	*h = append(*h, *x)
+	panic(errors.AssertionFailedf("Push should never be called"))
 }
 
-// Pop implements heap.Interface.
+// Pop implements heap.Interface. However, it simply returns nil, since we never
+// need the popped result. It also does not reduce the size of the slice, since
+// that's done in SearchSet.pruneCandidates.
 func (h *searchResultHeap) Pop() *SearchResult {
-	old := *h
-	n := len(old)
-	item := &old[n-1]
-	*h = old[0 : n-1]
-	return item
+	return nil
 }
 
 // SearchStats tracks useful information about searches, such as how many
@@ -173,110 +170,308 @@ func (ss *SearchStats) Add(other *SearchStats) {
 
 // SearchSet incrementally maintains the nearest candidates that result from
 // searching a partition for the data vectors that are nearest to a query
-// vector. Candidates are repeatedly added via the Add methods and the Pop
-// methods return a sorted list of the best candidates.
+// vector. Candidates are repeatedly added via the Add methods and then the Pop
+// methods returns a sorted list of the best candidates. Candidates are
+// de-duplicated, such that no two results will have the same child key.
 type SearchSet struct {
-	// MaxResults specifies the max number of search results to return. Although
-	// these are the best results, the search process may retrieve additional
-	// candidates for reranking and statistics (up to MaxExtraResults) that are
-	// within the error threshold of being among the best results.
+	// MaxResults specifies the max number of best search results to return from
+	// a call to the Pop methods.
 	MaxResults int
 
 	// MaxExtraResults is the maximum number of additional candidates (beyond
-	// MaxResults) that will be returned by the search process for reranking and
-	// statistics. These results are within the error threshold of being among the
-	// best results.
+	// MaxResults) that will be returned by the Pop methods. These results are
+	// within the error threshold of being among the best results and are used
+	// for reranking.
 	MaxExtraResults int
 
 	// MatchKey, if non-nil, filters out all search candidates that do not have a
 	// matching primary key.
 	MatchKey KeyBytes
 
+	// ExcludedPartitions specifies which partitions to skip during search.
+	// Vectors in any of these partitions will not be added to the set.
+	ExcludedPartitions []PartitionKey
+
+	// IncludeCentroidDistances indicates that search results need to have their
+	// CentroidDistance field set. This records the vector's distance from the
+	// centroid of its partition.
+	IncludeCentroidDistances bool
+
 	// Stats tracks useful information about the search, such as how many vectors
 	// and partitions were scanned.
 	Stats SearchStats
 
-	result       SearchResult
-	results      searchResultHeap
-	extraResults searchResultHeap
+	// deDuper is used to de-duplicate search results by their child keys.
+	deDuper ChildKeyDeDup
+	// pruningThreshold records how many results can be added to the search set
+	// before a pruning pass happens, where the best results are retained and
+	// worse results are discarded.
+	pruningThreshold int
+	// candidates is the slice of search results added so far to the set, in
+	// unsorted order. Periodically, these are pruned so that its length never
+	// exceeds the pruning threshold.
+	candidates searchResultHeap
+	// heapified is true if heap.Init has been called on the candidates so that
+	// the heap invariants hold.
+	heapified bool
+	// tempResult is used to avoid heap allocations when searching partitions.
+	tempResult SearchResult
 }
 
-// RemoveResults removes all results that are in the given parent partition.
-func (ss *SearchSet) RemoveResults(parentPartitionKey PartitionKey) {
-	// Remove all results, and then add back all but excluded results.
-	results := ss.PopUnsortedResults()
-	for i := range results {
-		res := &results[i]
-		if res.ParentPartitionKey != parentPartitionKey {
-			ss.Add(res)
-		}
+// Init sets up the search set for use. While it's not necessary to call this
+// when the search set has been newly allocated (i.e. with zero'd memory), this
+// method is useful for re-initializing it after previous usage has left it in
+// an undefined state.
+func (ss *SearchSet) Init() {
+	ss.deDuper.Clear()
+	*ss = SearchSet{
+		deDuper:    ss.deDuper,
+		candidates: ss.candidates[:0],
 	}
 }
 
-// Add includes a new candidate in the search set. If set limits have been
-// reached, then the candidate with the farthest distance will be discarded.
+// Count returns the number of search candidates in the set.
+// NOTE: This can be greater than MaxResults + MaxExtraResults in the case where
+// pruning has not yet taken place.
+func (ss *SearchSet) Count() int {
+	return len(ss.candidates)
+}
+
+// Clear removes all candidates from the set, but does not otherwise disturb
+// other settings.
+func (ss *SearchSet) Clear() {
+	ss.candidates = ss.candidates[:0]
+	ss.deDuper.Clear()
+}
+
+// RemoveByParent removes all results that are in the given parent partition.
+func (ss *SearchSet) RemoveByParent(parentPartitionKey PartitionKey) {
+	// Walk over candidates and remove any that have the specified parent
+	// partition key.
+	i := 0
+	for i < len(ss.candidates) {
+		if ss.candidates[i].ParentPartitionKey == parentPartitionKey {
+			// Remove the result by replacing it with the last candidate and
+			// reducing the length of the candidates slice by one.
+			n := len(ss.candidates) - 1
+			ss.candidates[i] = ss.candidates[n]
+			ss.candidates = ss.candidates[:n]
+			continue
+		}
+		i++
+	}
+	ss.heapified = false
+}
+
+// Add includes a new candidate in the search set.
 func (ss *SearchSet) Add(candidate *SearchResult) {
 	if ss.MatchKey != nil && !bytes.Equal(ss.MatchKey, candidate.ChildKey.KeyBytes) {
 		// Filter out candidates without a matching primary key.
 		return
 	}
 
-	// Fast path where no pruning is necessary.
-	if len(ss.results) < ss.MaxResults {
-		heap.Push(&ss.results, candidate)
-		return
-	}
-
-	// Candidate needs to be inserted into the results list. In this case, a
-	// previous candidate may need to go in the extra results list.
-	if candidate.QuerySquaredDistance <= ss.results[0].QuerySquaredDistance {
-		heap.Push(&ss.results, candidate)
-		candidate = heap.Pop(&ss.results)
-	}
-
-	if ss.MaxExtraResults == 0 {
-		return
-	}
-
-	if candidate.MaybeCloser(&ss.results[0]) {
-		// The result could still be a match, since it's within the error bound
-		// of the farthest remaining distance. Add it to the extra results heap.
-		heap.Push(&ss.extraResults, candidate)
-		if len(ss.extraResults) > ss.MaxExtraResults {
-			// Respect max extra results.
-			heap.Pop(&ss.extraResults)
+	// Skip vectors in excluded partitions.
+	if ss.ExcludedPartitions != nil {
+		if slices.Contains(ss.ExcludedPartitions, candidate.ParentPartitionKey) {
+			return
 		}
 	}
 
-	// Ensure that extra results within the error bound are still within it.
-	// NB: This potentially discards results it should not, as the heaps are
-	// sorted by distance rather than by distance ± error bounds. However, the
-	// error bounds are not exact anyway, so the impact should be minimal.
-	for len(ss.extraResults) > 0 && !ss.extraResults[0].MaybeCloser(&ss.results[0]) {
-		heap.Pop(&ss.extraResults)
+	if ss.candidates == nil {
+		// Pre-allocate some capacity for candidates.
+		ss.candidates = make(searchResultHeap, 0, 16)
 	}
+	ss.candidates = append(ss.candidates, *candidate)
+	ss.heapified = false
+	ss.checkPruneCandidates()
 }
 
 // AddAll includes a set of candidates in the search set.
 func (ss *SearchSet) AddAll(candidates SearchResults) {
+	ss.candidates = slices.Grow(ss.candidates, len(candidates))
 	for i := range candidates {
 		ss.Add(&candidates[i])
 	}
 }
 
-// PopResults removes all results from the set and returns them in order of
-// their distance.
-func (ss *SearchSet) PopResults() SearchResults {
-	results := ss.PopUnsortedResults()
-	results.Sort()
-	return results
+// AddSet copies all candidates from the given search set to this search set.
+func (ss *SearchSet) AddSet(searchSet *SearchSet) {
+	if searchSet.Count() == 0 {
+		return
+	}
+	ss.candidates = slices.Grow(ss.candidates, len(searchSet.candidates))
+	if ss.MatchKey != nil || ss.ExcludedPartitions != nil {
+		// Add each candidate individually in order to check the match key.
+		ss.AddAll(SearchResults(searchSet.candidates))
+	} else {
+		// Append entire candidates slice.
+		ss.candidates = append(ss.candidates, searchSet.candidates...)
+		ss.heapified = false
+		ss.checkPruneCandidates()
+	}
 }
 
-// PopUnsortedResults removes the nearest candidates by distance from the set
-// and returns them in unsorted order.
-func (ss *SearchSet) PopUnsortedResults() SearchResults {
-	popped := append(ss.results, ss.extraResults...)
-	ss.results = nil
-	ss.extraResults = nil
-	return SearchResults(popped)
+// FindBestDistances sets the input "distances" slice to the QueryDistance
+// values for the closest candidate search results. It returns the "distances"
+// slice, possibly truncated if there are not enough search results to fill it.
+// The returned distances are unsorted and duplicates are not filtered.
+func (ss *SearchSet) FindBestDistances(distances []float64) []float64 {
+	// Can't return more distances than there are candidates.
+	n := len(ss.candidates)
+	k := min(len(distances), n)
+
+	// Copy all distances to the output slice. Track the max distance.
+	var maxDistance float32
+	maxOffset := -1
+	for i := range k {
+		distance := ss.candidates[i].QueryDistance
+		if maxOffset == -1 || distance > maxDistance {
+			maxDistance = distance
+			maxOffset = i
+		}
+		distances[i] = float64(distance)
+	}
+
+	// For each remaining candidate, if its distance is smaller than the largest
+	// in our result so far, replace that largest one.
+	for i := k; i < n; i++ {
+		distance := ss.candidates[i].QueryDistance
+		if distance < maxDistance {
+			// Find the largest distance in our current result.
+			distances[maxOffset] = float64(distance)
+			maxDistance64 := distances[0]
+			maxOffset = 0
+			for j := 1; j < k; j++ {
+				if distances[j] > maxDistance64 {
+					maxDistance64 = distances[j]
+					maxOffset = j
+				}
+			}
+			maxDistance = float32(maxDistance64)
+		}
+	}
+
+	return distances[:k]
+}
+
+// PopResults removes the best results from the set, returning them in sorted
+// order, by distance. The number of best results is always <= ss.MaxResults +
+// ss.MaxExtraResults. This method may be called repeatedly to get additional
+// results that may be cached in the set. As long as the Add methods are not
+// called between calls to Pop methods, duplicates will never be returned.
+func (ss *SearchSet) PopResults() SearchResults {
+	// findBestCandidates moves the best candidates to the beginning of the
+	// ss.candidates list, so return those and preserve remaining candidates for
+	// any future calls to PopResults. Discard any duplicates by reslicing after
+	// both best and duplicate candidates. Note that any remaining candidates are
+	// still in heap order.
+	count, dups := ss.findBestCandidates(ss.MaxResults, ss.MaxExtraResults)
+	popped := SearchResults(ss.candidates[:count])
+	ss.candidates = ss.candidates[count+dups:]
+	return popped
+}
+
+// PopBestResult removes the best result from the set and returns it, or nil if
+// there are no more results. This method may be called repeatedly to get
+// additional results that may be cached in the set. As long as the Add methods
+// are not called between calls to Pop methods, duplicates will never be
+// returned.
+func (ss *SearchSet) PopBestResult() *SearchResult {
+	count, dups := ss.findBestCandidates(1, 0)
+	if count == 0 {
+		return nil
+	}
+	popped := &ss.candidates[0]
+	ss.candidates = ss.candidates[count+dups:]
+	return popped
+}
+
+// checkPruneCandidates checks if the length of the candidates slice has reached
+// the pruning threshold. If so, it prunes results with the highest distances.
+func (ss *SearchSet) checkPruneCandidates() {
+	if ss.pruningThreshold == 0 {
+		ss.pruningThreshold = max(1024, (ss.MaxResults+ss.MaxExtraResults)*2)
+	}
+	if len(ss.candidates) >= ss.pruningThreshold {
+		ss.pruneCandidates()
+	}
+}
+
+// pruneCandidates reduces the number of search candidates to ss.MaxResults +
+// ss.MaxExtraResults, retaining only the best candidates by distance.
+// Candidates that are farther away are discarded. Pruning happens only after a
+// sizeable number of candidates have been added to the search set.
+func (ss *SearchSet) pruneCandidates() {
+	// The best candidates are moved to the beginning of the ss.candidates slice,
+	// so this amounts to truncating the slice.
+	count, _ := ss.findBestCandidates(ss.MaxResults, ss.MaxExtraResults)
+	ss.candidates = ss.candidates[:count]
+
+	// The candidates are not in heap order. Also clear the de-duper, to release
+	// the memory from discarded candidates.
+	ss.heapified = false
+	ss.deDuper.Clear()
+}
+
+// findBestCandidates finds the best candidates by distance, up to the specified
+// maximum number of results, and returns their count. The best candidates are
+// moved to the front of the candidates slice in sorted order.
+// findBestCandidates also returns the number of duplicate candidates it found.
+// These are moved just beyond the best candidates.
+//
+// Finding in batches is O(N + K + K*logN), where N is the total number of
+// candidates and K is the specified maximum number of results. Compare that to
+// pruning as results are added to the search set, which has complexity
+// O(N + N + N*logN). The savings come from being able to short-circuit results
+// that are outside the best distance bounds. For example, there's no need to
+// perform expensive duplicate detection if a result's distance could never be
+// among the best results.
+func (ss *SearchSet) findBestCandidates(maxResults, extraResults int) (count, dups int) {
+	candidates := ss.candidates
+	totalCount := 0
+	nonDupCount := 0
+	var thresholdCandidate *SearchResult
+
+	if ss.deDuper.Count() == 0 {
+		ss.deDuper.Init(maxResults + extraResults)
+	}
+
+	if !ss.heapified {
+		heap.Init(&candidates)
+		ss.heapified = true
+	}
+
+	for len(candidates) > 0 && nonDupCount < maxResults+extraResults {
+		// Pop will copy the candidate with the smallest distance to candidates[0].
+		heap.Pop(&candidates)
+
+		if thresholdCandidate != nil && !candidates[0].MaybeCloser(thresholdCandidate) {
+			// Remaining candidates are not likely to have distance <= the threshold
+			// candidate, so prune all remaining candidates.
+			break
+		}
+
+		// Check for duplicate child keys.
+		if ss.deDuper.TryAdd(candidates[0].ChildKey) {
+			// Not a duplicate. If we found previous duplicates, then need to
+			// "close the gap" in the slice by copying the non-duplicate candidate
+			// to its correct position.
+			if nonDupCount != totalCount {
+				ss.candidates[nonDupCount] = candidates[0]
+			}
+			nonDupCount++
+
+			// Once we have maxResults candidates, then we need to start looking
+			// for maxExtraResults candidates. A candidate is only eligible to be
+			// an extra result if it could be among the best results, according to
+			// its error bounds.
+			if extraResults > 0 && thresholdCandidate == nil && nonDupCount >= maxResults {
+				thresholdCandidate = &ss.candidates[nonDupCount-1]
+			}
+		}
+		totalCount++
+		candidates = candidates[1:]
+	}
+
+	return nonDupCount, totalCount - nonDupCount
 }

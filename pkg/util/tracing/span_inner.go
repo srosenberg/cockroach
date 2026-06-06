@@ -7,6 +7,7 @@ package tracing
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb"
@@ -65,6 +66,12 @@ func (s *spanInner) GetTraceRecording(recType tracingpb.RecordingType, finishing
 	return s.crdb.GetRecording(recType, finishing)
 }
 
+// GetFullTraceRecording returns the span's full recording, including detached
+// children, as a Trace. See GetTraceRecording and WithDetachedRecording.
+func (s *spanInner) GetFullTraceRecording(recType tracingpb.RecordingType) Trace {
+	return s.crdb.GetFullRecording(recType)
+}
+
 // GetRecording returns the span's recording.
 //
 // finishing indicates whether s is in the process of finishing. If it isn't,
@@ -115,11 +122,17 @@ func treeifyRecordingInner(
 }
 
 func (s *spanInner) Finish() {
+	s.FinishAt(time.Time{})
+}
+
+// FinishAt finishes the span at the specified time. If endTime is zero, the
+// current time is used.
+func (s *spanInner) FinishAt(endTime time.Time) {
 	if s == nil {
 		return
 	}
 
-	if !s.crdb.finish() {
+	if !s.crdb.finish(endTime) {
 		// Short-circuit because netTr.Finish does not tolerate double-finish.
 		return
 	}
@@ -141,7 +154,11 @@ func (s *spanInner) Finish() {
 			}
 		}
 
-		s.otelSpan.End()
+		if endTime.IsZero() {
+			s.otelSpan.End()
+		} else {
+			s.otelSpan.End(oteltrace.WithTimestamp(endTime))
+		}
 	}
 
 	if s.netTr != nil {

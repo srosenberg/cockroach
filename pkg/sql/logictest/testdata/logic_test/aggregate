@@ -1,3 +1,5 @@
+# LogicTest: !local-prepared
+
 subtest other
 
 statement ok
@@ -1097,7 +1099,7 @@ SELECT bool_and(b), bool_or(b) FROM bools
 ----
 false true
 
-statement ok
+statement count 3
 DELETE FROM bools WHERE b
 
 query BB
@@ -1443,7 +1445,7 @@ CREATE TABLE statistics_agg_test (
   int_x int,
   dy decimal,
   dx decimal
-)
+) WITH (schema_locked=false);
 
 statement ok
 INSERT INTO statistics_agg_test (y, x, int_y, int_x, dy, dx) VALUES
@@ -2583,7 +2585,7 @@ CREATE TABLE string_agg_test (
   id INT PRIMARY KEY,
   company_id INT,
   employee STRING
-)
+) WITH (schema_locked=false);
 
 query IT colnames
 SELECT company_id, string_agg(employee, ',')
@@ -3044,8 +3046,10 @@ count_1  count_lower  count_upper  concat
 3        3            3            bbb
 
 # Tests for selecting any columns when grouping by the PK.
-statement ok
+statement count 2
 DELETE FROM ab WHERE true;
+
+statement ok
 INSERT INTO ab VALUES (1,1), (2,1), (3,3), (4, 7)
 
 query I rowsort
@@ -3174,7 +3178,7 @@ SELECT x, SUM (y) FROM t GROUP BY (x) ORDER BY SUM (y)
 subtest every
 
 statement ok
-CREATE TABLE t_every (x BOOL)
+CREATE TABLE t_every (x BOOL) WITH (schema_locked=false)
 
 query B
 SELECT every (x) FROM t_every
@@ -3345,7 +3349,7 @@ SELECT bit_or(v), bit_or(b) FROM vals
 
 # Testing bit aggregate functions over a sequence with all nulls.
 
-statement ok
+statement count 7
 DELETE FROM vals
 
 statement ok
@@ -3554,7 +3558,7 @@ osagg_view  CREATE VIEW public.osagg_view (
                 percentile_disc(0.50)WITHIN GROUP (ORDER BY f),
                 percentile_cont(0.50)WITHIN GROUP (ORDER BY f DESC)
               FROM
-                test.public.osagg
+                test.public.osagg;
 
 # Test malformed ordered-set aggregation.
 statement error ordered-set aggregations must have a WITHIN GROUP clause containing one ORDER BY column

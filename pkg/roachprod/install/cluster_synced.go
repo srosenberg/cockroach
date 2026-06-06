@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/roachprod/cloud"
+	cloudcluster "github.com/cockroachdb/cockroach/pkg/roachprod/cloud/types"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/config"
 	rperrors "github.com/cockroachdb/cockroach/pkg/roachprod/errors"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
@@ -66,10 +66,14 @@ var scpTimeout = func() time.Duration {
 // components.
 type SyncedCluster struct {
 	// Cluster metadata, obtained from the respective cloud provider.
-	cloud.Cluster
+	cloudcluster.Cluster
 
 	// Nodes is used by most commands (e.g. Start, Stop, Monitor). It describes
 	// the list of nodes the operation pertains to.
+	//	$ roachprod create local -n 4
+	//	$ roachprod start local          # [1, 2, 3, 4]
+	//	$ roachprod start local:2-4      # [2, 3, 4]
+	//	$ roachprod start local:2,1,4    # [1, 2, 4]
 	Nodes Nodes
 
 	ClusterSettings
@@ -89,7 +93,7 @@ type SyncedCluster struct {
 //
 // See ListNodes for a description of the node selector string.
 func NewSyncedCluster(
-	metadata *cloud.Cluster, nodeSelector string, settings ClusterSettings,
+	metadata *cloudcluster.Cluster, nodeSelector string, settings ClusterSettings,
 ) (*SyncedCluster, error) {
 	c := &SyncedCluster{
 		Cluster:         *metadata,
@@ -115,6 +119,14 @@ func NewSyncedCluster(
 		return nil, err
 	}
 	c.Nodes = nodes
+
+	if c.ClusterSettings.secureFlagsOpt != nil {
+		err = c.ClusterSettings.secureFlagsOpt.overrideBasedOnClusterSettings(c)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return c, nil
 }
 
@@ -128,6 +140,34 @@ var DefaultRetryOpt = &retry.Options{
 	MaxBackoff:     1 * time.Minute,
 	// This will run a total of 3 times `runWithMaybeRetry`
 	MaxRetries: 2,
+}
+
+type RetryOptionFunc func(options *retry.Options)
+
+// WithMaxRetries will retry the function up to maxRetries times.
+func WithMaxRetries(maxRetries int) RetryOptionFunc {
+	return func(opts *retry.Options) {
+		opts.MaxRetries = maxRetries
+	}
+}
+
+// RetryEveryDuration will retry the function every duration until it succeeds
+// or the context is cancelled. This is useful for when we want to see incremental
+// progress that is not subject to the backoff/jitter.
+func RetryEveryDuration(duration time.Duration) RetryOptionFunc {
+	return func(opts *retry.Options) {
+		opts.MaxRetries = 0
+		opts.Multiplier = 1
+		opts.InitialBackoff = duration
+	}
+}
+
+// WithMaxDuration sets the max duration the function will be retried for.
+// It will be run at least once.
+func WithMaxDuration(timeout time.Duration) RetryOptionFunc {
+	return func(opts *retry.Options) {
+		opts.MaxDuration = timeout
+	}
 }
 
 var DefaultShouldRetryFn = func(res *RunResultDetails) bool { return rperrors.IsTransient(res.Err) }
@@ -239,17 +279,6 @@ func (c *SyncedCluster) localVMDir(n Node) string {
 	return local.VMDir(c.Name, int(n))
 }
 
-// TargetNodes is the fully expanded, ordered list of nodes that any given
-// roachprod command is intending to target.
-//
-//	$ roachprod create local -n 4
-//	$ roachprod start local          # [1, 2, 3, 4]
-//	$ roachprod start local:2-4      # [2, 3, 4]
-//	$ roachprod start local:2,1,4    # [1, 2, 4]
-func (c *SyncedCluster) TargetNodes() Nodes {
-	return append(Nodes{}, c.Nodes...)
-}
-
 // GetInternalIP returns the internal IP address of the specified node.
 func (c *SyncedCluster) GetInternalIP(n Node) (string, error) {
 	if c.IsLocal() {
@@ -261,6 +290,19 @@ func (c *SyncedCluster) GetInternalIP(n Node) (string, error) {
 		return "", errors.Errorf("no private IP for node %d", n)
 	}
 	return ip, nil
+}
+
+// GetHostname returns the hostname of the specified node.
+func (c *SyncedCluster) GetHostname(n Node) (string, error) {
+	if c.IsLocal() {
+		return c.Host(n), nil
+	}
+
+	hostname := c.VMs[n-1].Name
+	if hostname == "" {
+		return "", errors.Errorf("no private hostname for node %d", n)
+	}
+	return hostname, nil
 }
 
 // roachprodEnvValue returns the value of the ROACHPROD environment variable
@@ -350,7 +392,7 @@ func (c *SyncedCluster) roachprodEnvRegex(node Node) string {
 // By wrapping every command with a hostname check as is done here, we
 // ensure that the cached cluster information is still correct.
 func (c *SyncedCluster) validateHostnameCmd(cmd string, node Node) string {
-	isValidHost := fmt.Sprintf("[[ `hostname` == '%s' ]]", vm.Name(c.Name, int(node)))
+	isValidHost := fmt.Sprintf("[[ `hostname` == '%s' ]]", c.VMs[node-1].Name)
 	errMsg := fmt.Sprintf("expected host to be part of %s, but is `hostname`", c.Name)
 	elseBranch := "fi"
 	if cmd != "" {
@@ -458,30 +500,26 @@ func (c *SyncedCluster) Stop(
 	// killProcesses indicates whether processed need to be stopped.
 	killProcesses := true
 
+	// For shared process secondary tenants, we just stop the service via SQL.
+	// Find out of this is a shared process secondary tenant.
 	if virtualClusterLabel != "" {
 		name, sqlInstance, err := VirtualClusterInfoFromLabel(virtualClusterLabel)
 		if err != nil {
 			return err
 		}
 
-		services, err := c.DiscoverServices(ctx, name, ServiceTypeSQL)
-		if err != nil {
-			return err
-		}
+		if !IsSystemInterface(name) {
+			isExternal, err := c.IsExternalService(ctx, name)
+			if err != nil {
+				return err
+			}
 
-		if len(services) == 0 {
-			return fmt.Errorf("no service for virtual cluster %q", virtualClusterName)
+			if isExternal {
+				virtualClusterDisplay = fmt.Sprintf(" virtual cluster %q, instance %d", virtualClusterName, sqlInstance)
+			} else {
+				killProcesses = false
+			}
 		}
-
-		virtualClusterName = name
-		if services[0].ServiceMode == ServiceModeShared {
-			// For shared process virtual clusters, we just stop the service
-			// via SQL.
-			killProcesses = false
-		} else {
-			virtualClusterDisplay = fmt.Sprintf(" virtual cluster %q, instance %d", virtualClusterName, sqlInstance)
-		}
-
 	}
 
 	if killProcesses {
@@ -589,7 +627,6 @@ fi`,
 				sig,                       // [5]
 				waitCmd,                   // [6]
 			)
-
 			res, err := c.runCmdOnSingleNode(ctx, l, node, cmd, defaultCmdOpts("kill"))
 			if err != nil {
 				return res, err
@@ -1041,27 +1078,36 @@ func (c *SyncedCluster) RunWithDetails(
 	return results, nil
 }
 
-// Wait TODO(peter): document
+// Wait waits for all nodes in the cluster to finish initializing by
+// checking for the existence of the OS initialized file. Uses
+// exponential backoff with a 5-minute timeout.
 func (c *SyncedCluster) Wait(ctx context.Context, l *logger.Logger) error {
 	display := fmt.Sprintf("%s: waiting for nodes to start", c.Name)
 	results, hasError, err := c.ParallelE(ctx, l, WithNodes(c.Nodes).WithDisplay(display).WithRetryDisabled(),
 		func(ctx context.Context, node Node) (*RunResultDetails, error) {
 			res := &RunResultDetails{Node: node}
 			var err error
-			cmd := fmt.Sprintf("test -e %s -a -e %s", vm.DisksInitializedFile, vm.OSInitializedFile)
+			// Only the `vm.OSInitializedFile` file is checked and not the
+			// `vm.DisksInitializedFile`, because it's possible to create VMs without
+			// any attached disks other than the boot disk.
+			cmd := fmt.Sprintf("test -e %s", vm.OSInitializedFile)
 			// N.B. we disable ssh debug output capture, lest we end up with _thousands_ of useless .log files.
 			opts := cmdOptsWithDebugDisabled()
-			for j := 0; j < 600; j++ {
+			retryOpts := retry.Options{
+				InitialBackoff: 500 * time.Millisecond,
+				MaxBackoff:     30 * time.Second,
+				Multiplier:     2,
+				MaxDuration:    5 * time.Minute,
+			}
+			for r := retry.StartWithCtx(ctx, retryOpts); r.Next(); {
 				res, err = c.runCmdOnSingleNode(ctx, l, node, cmd, opts)
 				if err != nil {
 					return nil, err
 				}
 
-				if res.Err != nil {
-					time.Sleep(500 * time.Millisecond)
-					continue
+				if res.Err == nil {
+					return res, nil
 				}
-				return res, nil
 			}
 			res.Err = errors.Wrapf(res.Err, "timed out after 5m")
 			logContent, err := c.runCmdOnSingleNode(ctx, nil, node, fmt.Sprintf("tail -n %d %s", 20, vm.StartupLogs), cmdOptsWithDebugDisabled())
@@ -1151,9 +1197,9 @@ tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
 	}
 
 	// Populate the known_hosts file with both internal and external IPs of all
-	// nodes in the cluster. Internal IPs are populated within its provider peers
-	// only, and external IPs are populated for all providers. Note that as a side
-	// effect, this creates the known hosts file in unhashed format, working
+	// nodes in the cluster. Internal IPs are populated within its network peer
+	// group only, and external IPs are populated for all nodes. Note that as a
+	// side effect, this creates the known hosts file in unhashed format, working
 	// around a limitation of jsch (which is used in jepsen tests).
 
 	mu := syncutil.Mutex{}
@@ -1161,31 +1207,52 @@ tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
 		node Node
 		ip   string
 	}
-	// Build a list of internal IPs for each provider and
+	// Build a list of internal IPs grouped by network peer group and
 	// public IPs for all nodes.
-	providerPrivateIPs := make(map[string][]nodeInfo)
+	//
+	// For most providers, VMs within the same provider can reach each other via
+	// private IPs, so they are grouped by provider. However, for AWS, each
+	// region has its own VPC, and cross-region private IP connectivity via VPC
+	// peering may not be reliably available (e.g., due to infrastructure
+	// configuration or peering state). We group AWS nodes by region to avoid
+	// ssh-keyscan timing out on potentially unreachable cross-region private
+	// IPs. This is safe because multi-region clusters advertise public IPs
+	// (see shouldAdvertisePublicIP).
+	networkPeerGroup := func(v vm.VM) string {
+		if v.Provider == aws.ProviderName {
+			// AWS zones are formatted as "<region><az-letter>" (e.g. "us-east-1a").
+			// Strip the trailing letter to get the region.
+			zone := v.Zone
+			if len(zone) > 0 {
+				return v.Provider + ":" + zone[:len(zone)-1]
+			}
+		}
+		return v.Provider
+	}
+	peerGroupPrivateIPs := make(map[string][]nodeInfo)
 	publicIPs := make([]string, 0, len(c.Nodes))
 	for _, node := range c.Nodes {
 		v := c.VMs[node-1]
-		providerPrivateIPs[v.Provider] = append(providerPrivateIPs[v.Provider], nodeInfo{node: node, ip: v.PrivateIP})
+		group := networkPeerGroup(v)
+		peerGroupPrivateIPs[group] = append(peerGroupPrivateIPs[group], nodeInfo{node: node, ip: v.PrivateIP})
 		publicIPs = append(publicIPs, c.Host(node))
 	}
 
-	providerKnownHostData := make(map[string][]byte)
-	providers := maps.Keys(providerPrivateIPs)
+	peerGroupKnownHostData := make(map[string][]byte)
+	peerGroups := maps.Keys(peerGroupPrivateIPs)
 
-	// Only need to scan on the first node of each provider.
-	firstNodes := make([]Node, len(providers))
-	for i, provider := range providers {
-		firstNodes[i] = providerPrivateIPs[provider][0].node
+	// Only need to scan on the first node of each peer group.
+	firstNodes := make([]Node, len(peerGroups))
+	for i, group := range peerGroups {
+		firstNodes[i] = peerGroupPrivateIPs[group][0].node
 	}
 	if err := c.Parallel(ctx, l, WithNodes(firstNodes).WithDisplay("scanning hosts"),
 		func(ctx context.Context, node Node) (*RunResultDetails, error) {
-			// Scan a combination of all remote IPs and local IPs pertaining to this
-			// node's cloud provider.
+			// Scan a combination of all public IPs and private IPs within this
+			// node's network peer group.
 			scanIPs := append([]string{}, publicIPs...)
-			nodeProvider := c.VMs[node-1].Provider
-			for _, nodeInfo := range providerPrivateIPs[nodeProvider] {
+			nodeGroup := networkPeerGroup(c.VMs[node-1])
+			for _, nodeInfo := range peerGroupPrivateIPs[nodeGroup] {
 				scanIPs = append(scanIPs, nodeInfo.ip)
 			}
 
@@ -1223,7 +1290,7 @@ exit 1
 			}
 			mu.Lock()
 			defer mu.Unlock()
-			providerKnownHostData[nodeProvider] = []byte(res.Stdout)
+			peerGroupKnownHostData[nodeGroup] = []byte(res.Stdout)
 			return res, nil
 		}); err != nil {
 		return err
@@ -1231,7 +1298,7 @@ exit 1
 
 	if err := c.Parallel(ctx, l, WithNodes(c.Nodes).WithDisplay("distributing known_hosts"),
 		func(ctx context.Context, node Node) (*RunResultDetails, error) {
-			provider := c.VMs[node-1].Provider
+			group := networkPeerGroup(c.VMs[node-1])
 			const cmd = `
 known_hosts_data="$(cat)"
 set -e
@@ -1260,7 +1327,7 @@ if [[ "$(whoami)" != "` + config.SharedUser + `" ]]; then
 fi
 `
 			runOpts := defaultCmdOpts("ssh-dist-known-hosts")
-			runOpts.stdin = bytes.NewReader(providerKnownHostData[provider])
+			runOpts.stdin = bytes.NewReader(peerGroupKnownHostData[group])
 			return c.runCmdOnSingleNode(ctx, l, node, cmd, runOpts)
 		}); err != nil {
 		return err
@@ -1491,6 +1558,7 @@ fi
 %[3]s cert create-node %[4]s $SHARED_ARGS
 %[3]s cert create-tenant-client %[5]d %[4]s $SHARED_ARGS
 %[3]s cert create-client root $TENANT_SCOPE_OPT $SHARED_ARGS
+%[3]s mt cert create-tenant-signing --certs-dir=$CERT_DIR %[5]d
 tar cvf %[6]s $CERT_DIR
 `,
 				CockroachNodeTenantCertsDir,
@@ -1679,6 +1747,26 @@ func (c *SyncedCluster) PutString(
 	// will symlink them when running locally.
 
 	return errors.Wrap(c.Put(ctx, l, nodes, src, dest), "syncedCluster.PutString")
+}
+
+// GetString retrieves the contents of a file from a remote node.
+// Returns an error if the file does not exist.
+func (c *SyncedCluster) GetString(
+	ctx context.Context, l *logger.Logger, node Node, src string,
+) (string, error) {
+	opts := defaultCmdOpts("get-string")
+	opts.combinedOut = true
+
+	result, err := c.runCmdOnSingleNode(ctx, l, node, fmt.Sprintf("cat %s", src), opts)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to read file %s from node %d", src, node)
+	}
+
+	if result.Err != nil {
+		return "", errors.Wrapf(result.Err, "failed to read file %s from node %d", src, node)
+	}
+
+	return result.CombinedOut, nil
 }
 
 // Put TODO(peter): document
@@ -2260,11 +2348,11 @@ func (c *SyncedCluster) pgurls(
 	}
 	m := make(map[Node]string, len(hosts))
 	for node, host := range hosts {
-		desc, err := c.DiscoverService(ctx, node, virtualClusterName, ServiceTypeSQL, sqlInstance)
+		desc, err := c.ServiceDescriptor(ctx, node, virtualClusterName, ServiceTypeSQL, sqlInstance)
 		if err != nil {
 			return nil, err
 		}
-		m[node] = c.NodeURL(host, desc.Port, virtualClusterName, desc.ServiceMode, DefaultAuthMode(), "" /* database */)
+		m[node] = c.NodeURL(host, desc.Port, virtualClusterName, desc.ServiceMode, DefaultAuthMode(), "" /* database */, false /* disallowUnsafeInternals */)
 	}
 	return m, nil
 }
@@ -2295,24 +2383,19 @@ func (c *SyncedCluster) loadBalancerURL(
 	sqlInstance int,
 	auth PGAuthMode,
 ) (string, error) {
-	services, err := c.DiscoverServices(ctx, virtualClusterName, ServiceTypeSQL)
+	// Note that it's possible for our service to not be running on the entire roachprod
+	// cluster, e.g. one of the nodes is a workload node, or we have a separate process
+	// virtual cluster running on a subset of nodes. We must search for our service on
+	// the entire cluster.
+	descs, err := c.ServiceDescriptors(ctx, c.Nodes, virtualClusterName, ServiceTypeSQL, sqlInstance)
 	if err != nil {
 		return "", err
 	}
-	port := config.DefaultSQLPort
-	serviceMode := ServiceModeExternal
-	for _, service := range services {
-		if service.VirtualClusterName == virtualClusterName && service.Instance == sqlInstance {
-			serviceMode = service.ServiceMode
-			port = service.Port
-			break
-		}
-	}
-	address, err := c.FindLoadBalancer(l, port)
+	address, err := c.FindLoadBalancer(l, descs[0].Port)
 	if err != nil {
 		return "", err
 	}
-	loadBalancerURL := c.NodeURL(address.IP, address.Port, virtualClusterName, serviceMode, auth, "" /* database */)
+	loadBalancerURL := c.NodeURL(address.IP, address.Port, virtualClusterName, descs[0].ServiceMode, auth, "" /* database */, false /* disallowUnsafeInternals */)
 	return loadBalancerURL, nil
 }
 
@@ -2641,6 +2724,13 @@ func (c *SyncedCluster) WithNodes(nodes Nodes) *SyncedCluster {
 	return &clusterCopy
 }
 
+// WithCerts creates a new copy of SyncedCluster with the given PGURLCerts.
+func (c *SyncedCluster) WithCerts(certs string) *SyncedCluster {
+	clusterCopy := *c
+	clusterCopy.PGUrlCertsDir = certs
+	return &clusterCopy
+}
+
 // GenFilenameFromArgs given a list of cmd args, returns an alphahumeric string up to
 // `maxLen` in length with hyphen delimiters, suitable for use in a filename.
 // e.g. ["/bin/bash", "-c", "'sudo dmesg > dmesg.txt'"] -> binbash-c-sudo-dmesg
@@ -2670,4 +2760,60 @@ func GenFilenameFromArgs(maxLen int, args ...string) string {
 	}
 
 	return sb.String()
+}
+
+func (c *SyncedCluster) PopulateEtcHosts(ctx context.Context, l *logger.Logger) error {
+	if err := c.validateHost(ctx, l, c.Nodes); err != nil {
+		return err
+	}
+
+	hosts := make([]string, len(c.Nodes))
+	for i, node := range c.Nodes {
+		hosts[i] = fmt.Sprintf("{ip:%d}:{hostname:%d}", node, node)
+	}
+
+	cmd := fmt.Sprintf(`
+HOSTS_LIST="%s"
+
+while IFS= read -r entry; do
+  # Skip empty lines if any
+  [[ -z "$entry" ]] && continue
+
+  # Parse IP and hostname
+  i="${entry%%%%:*}"
+  h="${entry##*:}"
+
+  # Remove any existing entries for this IP or hostname
+  # The \b "word boundary" in the regex helps avoid partial matches
+  sudo sed -i "/\b${i}\b/d" /etc/hosts
+  sudo sed -i "/\b${h}\b/d" /etc/hosts
+
+  # Append the new entry
+  echo "$i    $h" | sudo tee -a /etc/hosts >/dev/null
+
+done <<< "$HOSTS_LIST"
+`, strings.Join(hosts, "\n"))
+
+	if err := c.Run(ctx, l, l.Stdout, l.Stderr, WithNodes(c.Nodes), "populating cluster /etc/hosts", cmd); err != nil {
+		return rperrors.TransientFailure(err, "install_flake")
+	}
+
+	return nil
+}
+
+// Reset resets VMs in a cluster.
+func (c *SyncedCluster) Reset(l *logger.Logger) error {
+	if c.IsLocal() {
+		return nil
+	}
+
+	nodes := c.Nodes
+	targetVMs := make(vm.List, len(nodes))
+	for idx, node := range nodes {
+		targetVMs[idx] = c.VMs[node-1]
+	}
+
+	return vm.FanOut(targetVMs, func(p vm.Provider, vms vm.List) error {
+		return p.Reset(l, vms)
+	})
 }

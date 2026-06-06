@@ -8,6 +8,7 @@ package cdcevent
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -173,7 +174,6 @@ CREATE TABLE foo (
   FAMILY main (a, b, e),
   FAMILY only_c (c)
 )`)
-
 	for _, tc := range []struct {
 		schemaChange string
 		// Each new primary index generated during the test will pause at each stage
@@ -210,16 +210,21 @@ CREATE TABLE foo (
 			expectedUDTCols: [][]string{{"e"}, {"e"}, {"e"}},
 		},
 		{
-			// We are going to execute a mix of add, drop and alter primary key operations,
+			// We are going to execute a mix of add, drop and alter primary key operations;
 			// this will result in 3 primary indexes being swapped.
-			// 1) The first primary index key will be the same as previous test
+			// 1) The first primary index key will be the same as the previous test
 			// 2) The second primary key will use the column "a", without a hash
 			//    sharding column since that needs to be created next.
-			// 3) The final primary key will "a" and have hash sharding on it.
+			// 3) The final primary key will "a" and have hash sharding on it (repeated
+			//    for the column removal).
+			// The values stored will have the following transitions:
+			// 1) Existing columns in the table
+			// 2) New column j added (repeated for the final PK switch)
+			// 3) Old column b removed (final state)
 			schemaChange:    "ALTER TABLE foo ADD COLUMN j INT DEFAULT 32, DROP COLUMN d, DROP COLUMN crdb_internal_a_b_shard_16, DROP COLUMN b, ALTER PRIMARY KEY USING COLUMNS(a) USING HASH",
-			expectedKeyCols: [][]string{{"crdb_internal_c_e_shard_16", "c", "e"}, {"a"}, {"crdb_internal_a_shard_16", "a"}},
-			expectedColumns: [][]string{{"a", "b", "e"}, {"a", "b", "e"}, {"a", "e", "j"}},
-			expectedUDTCols: [][]string{{"e"}, {"e"}, {"e"}},
+			expectedKeyCols: [][]string{{"crdb_internal_c_e_shard_16", "c", "e"}, {"a"}, {"crdb_internal_a_shard_16", "a"}, {"crdb_internal_a_shard_16", "a"}},
+			expectedColumns: [][]string{{"a", "b", "e"}, {"a", "b", "e"}, {"a", "b", "e", "j"}, {"a", "e", "j"}},
+			expectedUDTCols: [][]string{{"e"}, {"e"}, {"e"}, {"e"}},
 		},
 	} {
 		t.Run(tc.schemaChange, func(t *testing.T) {
@@ -526,12 +531,12 @@ CREATE TABLE foo (
 			targets := changefeedbase.Targets{}
 			targets.Add(changefeedbase.Target{
 				Type:       targetType,
-				TableID:    tableDesc.GetID(),
+				DescID:     tableDesc.GetID(),
 				FamilyName: tc.familyName,
 			})
 			execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 			ctx := context.Background()
-			decoder, err := NewEventDecoder(ctx, &execCfg, targets, tc.includeVirtual, tc.keyOnly)
+			decoder, err := NewEventDecoder(ctx, &execCfg, targets, tc.includeVirtual, tc.keyOnly, DecoderOptions{})
 			require.NoError(t, err)
 			expectedEvents := len(tc.expectMainFamily) + len(tc.expectOnlyCFamily)
 			for i := 0; i < expectedEvents; i++ {
@@ -546,15 +551,17 @@ CREATE TABLE foo (
 				} else {
 					expect, tc.expectOnlyCFamily = tc.expectOnlyCFamily[0], tc.expectOnlyCFamily[1:]
 				}
-				updatedRow, err := decoder.DecodeKV(
+				updatedRow, status, err := decoder.DecodeKV(
 					ctx, roachpb.KeyValue{Key: v.Key, Value: v.Value}, CurrentRow, v.Timestamp(), tc.keyOnly)
 
 				if expect.expectUnwatchedErr {
-					require.ErrorIs(t, err, ErrUnwatchedFamily)
+					require.NoError(t, err)
+					require.Equal(t, DecodeSkipUnwatchedFamily, status)
 					continue
 				}
 
 				require.NoError(t, err)
+				require.Equal(t, DecodeOK, status)
 				require.True(t, updatedRow.IsInitialized())
 				if expect.deleted {
 					require.True(t, updatedRow.IsDeleted())
@@ -563,9 +570,10 @@ CREATE TABLE foo (
 					require.Equal(t, expect.allValues, slurpDatums(t, updatedRow.ForEachColumn()))
 				}
 
-				prevRow, err := decoder.DecodeKV(
+				prevRow, prevStatus, err := decoder.DecodeKV(
 					ctx, roachpb.KeyValue{Key: v.Key, Value: v.PrevValue}, PrevRow, v.Timestamp(), tc.keyOnly)
 				require.NoError(t, err)
+				require.Equal(t, DecodeOK, prevStatus)
 
 				// prevRow always has key columns initialized.
 				require.Equal(t, expect.keyValues, slurpDatums(t, prevRow.ForEachKeyColumn()))
@@ -770,19 +778,19 @@ func TestEventColumnOrderingWithSchemaChanges(t *testing.T) {
 			targets := changefeedbase.Targets{}
 			targets.Add(changefeedbase.Target{
 				Type:       targetType,
-				TableID:    tableDesc.GetID(),
+				DescID:     tableDesc.GetID(),
 				FamilyName: tc.familyName,
 			})
 			execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 			ctx := context.Background()
-			decoder, err := NewEventDecoder(ctx, &execCfg, targets, tc.includeVirtual, false)
+			decoder, err := NewEventDecoder(ctx, &execCfg, targets, tc.includeVirtual, false, DecoderOptions{})
 			require.NoError(t, err)
 
 			expectedEvents := len(tc.expectMainFamily) + len(tc.expectECFamily)
-			log.Infof(ctx, "expectedEvents: %d\n", expectedEvents)
+			log.Changefeed.Infof(ctx, "expectedEvents: %d\n", expectedEvents)
 			for i := 0; i < expectedEvents; i++ {
 				v, deleteRange := popRow(t)
-				log.Infof(ctx, "event[%d]: v=%+v, deleteRange=%+v", i, v, deleteRange)
+				log.Changefeed.Infof(ctx, "event[%d]: v=%+v, deleteRange=%+v", i, v, deleteRange)
 
 				if deleteRange != nil {
 					// Should not see a RangeFeedValue and a RangeFeedDeleteRange
@@ -811,15 +819,17 @@ func TestEventColumnOrderingWithSchemaChanges(t *testing.T) {
 				} else {
 					expect, tc.expectECFamily = tc.expectECFamily[0], tc.expectECFamily[1:]
 				}
-				updatedRow, err := decoder.DecodeKV(
+				updatedRow, status, err := decoder.DecodeKV(
 					ctx, roachpb.KeyValue{Key: v.Key, Value: v.Value}, CurrentRow, v.Timestamp(), false)
 
 				if expect.expectUnwatchedErr {
-					require.ErrorIs(t, err, ErrUnwatchedFamily)
+					require.NoError(t, err)
+					require.Equal(t, DecodeSkipUnwatchedFamily, status)
 					continue
 				}
 
 				require.NoError(t, err)
+				require.Equal(t, DecodeOK, status)
 				require.True(t, updatedRow.IsInitialized())
 
 				require.Equal(t, expect.keyValues, slurpDatums(t, updatedRow.ForEachKeyColumn()), "row %d", i)
@@ -917,8 +927,25 @@ func expectResultColumnsWithFamily(
 		colNamesSet[colName] = -1
 	}
 	ord := 0
-	for _, col := range desc.PublicColumns() {
+	nameOverrides := make(map[string]string)
+	// Sort the columns based on the attribute number and if they are PK columns.
+	sortedAllColumns := desc.AllColumns()
+	slices.SortStableFunc(sortedAllColumns, func(a, b catalog.Column) int {
+		return int(a.GetPGAttributeNum()) - int(b.GetPGAttributeNum())
+	})
+	for _, col := range sortedAllColumns {
+		// Skip add mutations.
+		if col.Adding() {
+			continue
+		}
+		// Only include WriteAndDeleteOnly columns.
+		if col.Dropped() && !col.WriteAndDeleteOnly() {
+			continue
+		}
 		colName := string(col.ColName())
+		if found, oldName := catalog.FindPreviousColumnNameForDeclarativeSchemaChange(desc, col.GetID()); found {
+			nameOverrides[oldName] = colName
+		}
 		if _, ok := colNamesSet[colName]; ok {
 			switch {
 			case col.IsVirtual():
@@ -936,18 +963,31 @@ func expectResultColumnsWithFamily(
 	}
 
 	for _, colName := range colNames {
-		col, err := catalog.MustFindColumnByName(desc, colName)
-		require.NoError(t, err)
+		searchName := colName
+		if nameOverrides[colName] != "" {
+			searchName = nameOverrides[colName]
+		}
+		// If a column is missing add a dummy column, which
+		// will force a mismatch / skip this set.
+		col := catalog.FindColumnByName(desc, searchName)
+		if col == nil {
+			res = append(res, ResultColumn{
+				ResultColumn: colinfo.ResultColumn{
+					Name: "Missing column",
+				},
+			})
+			continue
+		}
 		res = append(res, ResultColumn{
 			ResultColumn: colinfo.ResultColumn{
-				Name:           col.GetName(),
+				Name:           colName,
 				Typ:            col.GetType(),
 				TableID:        desc.GetID(),
 				PGAttributeNum: uint32(col.GetPGAttributeNum()),
 			},
 			Computed:  col.IsComputed(),
 			Nullable:  col.IsNullable(),
-			ord:       colNamesSet[colName],
+			ord:       colNamesSet[searchName],
 			sqlString: col.ColumnDesc().SQLStringNotHumanReadable(),
 		})
 	}
@@ -1059,11 +1099,11 @@ CREATE TABLE foo (
 
 	targets := changefeedbase.Targets{}
 	targets.Add(changefeedbase.Target{
-		TableID: tableDesc.GetID(),
+		DescID: tableDesc.GetID(),
 	})
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	ctx := context.Background()
-	decoder, err := NewEventDecoder(ctx, &execCfg, targets, false, false)
+	decoder, err := NewEventDecoder(ctx, &execCfg, targets, false, false, DecoderOptions{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -1071,10 +1111,13 @@ CREATE TABLE foo (
 	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, err := decoder.DecodeKV(
+		_, status, err := decoder.DecodeKV(
 			ctx, roachpb.KeyValue{Key: v.Key, Value: v.Value}, CurrentRow, v.Timestamp(), false)
 		if err != nil {
 			b.Fatal(err)
+		}
+		if status != DecodeOK {
+			b.Fatalf("unexpected decode status: %v", status)
 		}
 	}
 }

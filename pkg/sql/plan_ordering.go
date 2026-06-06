@@ -21,13 +21,13 @@ func planReqOrdering(plan planNode) ReqOrdering {
 		return planReqOrdering(n.input)
 	case *max1RowNode:
 		return planReqOrdering(n.input)
-	case *spoolNode:
-		return planReqOrdering(n.input)
 	case *saveTableNode:
 		return planReqOrdering(n.input)
-	case *serializeNode:
-		return planReqOrdering(n.source)
 	case *deleteNode:
+		if n.run.rowsNeeded {
+			return planReqOrdering(n.input)
+		}
+	case *deleteSwapNode:
 		if n.run.rowsNeeded {
 			return planReqOrdering(n.input)
 		}
@@ -57,7 +57,7 @@ func planReqOrdering(plan planNode) ReqOrdering {
 		return n.reqOrdering
 	case *insertNode, *insertFastPathNode:
 		// TODO(knz): RETURNING is ordered by the PK.
-	case *updateNode, *upsertNode:
+	case *updateNode, *updateSwapNode, *upsertNode:
 		// After an update, the original order may have been destroyed.
 		// For example, if the PK is updated by a SET expression.
 		// So we can't assume any ordering.

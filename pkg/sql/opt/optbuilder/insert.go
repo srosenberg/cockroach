@@ -298,7 +298,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		if ins.OnConflict != nil {
 			panic(errors.AssertionFailedf("vectorized insert with on conflict is not supported"))
 		}
-		if ins.Returning != nil {
+		if ins.Returning != tree.AbsentReturningClause {
 			panic(errors.AssertionFailedf("vectorized insert with returning is not supported"))
 		}
 	}
@@ -310,7 +310,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		mb.buildRowLevelBeforeTriggers(tree.TriggerEventInsert, false /* cascade */)
 
 		// Build the final insert statement, including any returned expressions.
-		mb.buildInsert(returning, ins.VectorInsert())
+		mb.buildInsert(returning, ins.VectorInsert(), false /* hasOnConflict */)
 
 	// Case 2: INSERT..ON CONFLICT DO NOTHING.
 	case ins.OnConflict.DoNothing:
@@ -325,7 +325,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 
 		// Since buildInputForDoNothing filters out rows with conflicts, always
 		// insert rows that are not filtered.
-		mb.buildInsert(returning, false /* vectorInsert */)
+		mb.buildInsert(returning, false /* vectorInsert */, true /* hasOnConflict */)
 
 	// Case 3: UPSERT statement.
 	case ins.OnConflict.IsUpsertAlias():
@@ -389,7 +389,7 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		mb.addTargetColsForUpdate(ins.OnConflict.Exprs)
 
 		// Build each of the SET expressions.
-		mb.addUpdateCols(ins.OnConflict.Exprs)
+		mb.addUpdateCols(ins.OnConflict.Exprs, nil /* colRefs */)
 
 		// Project row-level BEFORE triggers for UPDATE.
 		mb.buildRowLevelBeforeTriggers(tree.TriggerEventUpdate, false /* cascade */)
@@ -398,7 +398,10 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 		mb.buildUpsert(returning)
 	}
 
-	if b.trackSchemaDeps {
+	mb.trackTargetColDeps()
+
+	// Legacy path for resolving insert target column dependencies.
+	if b.trackSchemaDeps && !b.evalCtx.SessionData().UseImprovedRoutineDepsTriggersAndComputedCols {
 		dep := opt.SchemaDep{DataSource: tab}
 		// Track dependencies on insert columns.
 		for i := range mb.insertColIDs {
@@ -425,6 +428,8 @@ func (b *Builder) buildInsert(ins *tree.Insert, inScope *scope) (outScope *scope
 //  4. Each update value is the same as the corresponding insert value.
 //  5. There are no inbound foreign keys containing non-key columns.
 //  6. There are no UPDATE triggers on the target table.
+//  7. Row-level security is disabled for the table. RLS may need to check for
+//     policy violations on the old rows, so we always need to fetch them.
 //
 // TODO(andyk): The fast path is currently only enabled when the UPSERT alias
 // is explicitly selected by the user. It's possible to fast path some queries
@@ -490,7 +495,9 @@ func (mb *mutationBuilder) needExistingRows() bool {
 		}
 	}
 
-	return false
+	// If RLS is enabled, we need to fetch the old rows to check for policy
+	// violations.
+	return mb.tab.IsRowLevelSecurityEnabled()
 }
 
 // addTargetNamedColsForInsert adds a list of user-specified column names to the
@@ -720,6 +727,10 @@ func (mb *mutationBuilder) buildInputForInsert(inScope *scope, inputRows *tree.S
 	// Add assignment casts for insert columns.
 	mb.addAssignmentCasts(mb.insertColIDs)
 	mb.inputForInsertExpr = mb.outScope.expr
+
+	// Track whether the value for the region column is explicitly specified. This
+	// is a no-op if the table isn't regional-by-row.
+	mb.setRegionColExplicitlyMutated(mb.insertColIDs)
 }
 
 // addSynthesizedColsForInsert wraps an Insert input expression with a Project
@@ -741,7 +752,8 @@ func (mb *mutationBuilder) addSynthesizedColsForInsert() {
 	mb.addAssignmentCasts(mb.insertColIDs)
 
 	// Now add all computed columns.
-	mb.addSynthesizedComputedCols(mb.insertColIDs, false /* restrict */)
+	mb.addSynthesizedComputedCols(mb.insertColIDs,
+		&mb.targetColList, &mb.targetColSet, false /* restrict */)
 
 	// Add assignment casts for computed column values.
 	mb.addAssignmentCasts(mb.insertColIDs)
@@ -749,13 +761,54 @@ func (mb *mutationBuilder) addSynthesizedColsForInsert() {
 
 // buildInsert constructs an Insert operator, possibly wrapped by a Project
 // operator that corresponds to the given RETURNING clause.
-func (mb *mutationBuilder) buildInsert(returning *tree.ReturningExprs, vectorInsert bool) {
+func (mb *mutationBuilder) buildInsert(
+	returning *tree.ReturningExprs, vectorInsert bool, hasOnConflict bool,
+) {
+	mb.maybeAddRegionColLookup(opt.InsertOp)
+
 	// Disambiguate names so that references in any expressions, such as a
 	// check constraint, refer to the correct columns.
 	mb.disambiguateColumns()
 
+	// Build the scopes for the RETURNING clause early (if present). The
+	// returning expression is built later on, but for RLS we need to build the
+	// scopes and collect column references in order to determine whether SELECT
+	// policies should be applied as check constraints, which are built prior to
+	// the returning expression. RLS SELECT policies are applied as check
+	// constraints if the RETURNING clause references columns in the target
+	// table.
+	//
+	// RLS SELECT policies are applied as check constraints if:
+	// - There is an ON CONFLICT clause, which always requires SELECT policies
+	//   due to the conflict scan accessing existing data.
+	// - The RETURNING clause references any columns, which also necessitates
+	//   SELECT policies.
+	//
+	// These checks only matter if the target table has RLS enabled, so we gate
+	// the logic behind that for performance reasons.
+	var returningInScope, returningOutScope *scope
+	includeSelectPolicies := false
+	if mb.tab.IsRowLevelSecurityEnabled() {
+		includeSelectPolicies = hasOnConflict
+		if !includeSelectPolicies {
+			// Only track column references if RLS is enabled and there is no
+			// ON CONFLICT clause that automatically requires SELECT policies.
+			var colRefs opt.ColSet
+			returningInScope, returningOutScope = mb.buildReturningScopes(returning, &colRefs)
+			for i, n := 0, mb.tab.ColumnCount(); i < n; i++ {
+				if colRefs.Contains(mb.tabID.ColumnID(i)) {
+					includeSelectPolicies = true
+					break
+				}
+			}
+		}
+	}
+	if returningOutScope == nil {
+		returningInScope, returningOutScope = mb.buildReturningScopes(returning, nil /* colRefs */)
+	}
+
 	// Add any check constraint boolean columns to the input.
-	mb.addCheckConstraintCols(false /* isUpdate */)
+	mb.addCheckConstraintCols(false /* isUpdate */, cat.PolicyScopeInsert, includeSelectPolicies)
 
 	// Project partial index PUT boolean columns.
 	mb.projectPartialIndexPutCols()
@@ -774,7 +827,7 @@ func (mb *mutationBuilder) buildInsert(returning *tree.ReturningExprs, vectorIns
 		mb.outScope.expr, mb.uniqueChecks, mb.fastPathUniqueChecks, mb.fkChecks, private,
 	)
 
-	mb.buildReturning(returning)
+	mb.buildReturning(returning, returningInScope, returningOutScope)
 }
 
 // buildInputForDoNothing wraps the input expression in ANTI JOIN expressions,
@@ -792,6 +845,13 @@ func (mb *mutationBuilder) buildInputForDoNothing(
 	// Ignore any ordering requested by the input.
 	// TODO(andyk): do we need to do more here?
 	mb.outScope.ordering = nil
+
+	if !mb.arbiters.Empty() &&
+		mb.b.evalCtx.SessionData().UseImprovedRoutineDepsTriggersAndComputedCols {
+		// Avoid resolving transitive dependencies on columns and UDTs referenced by
+		// any partial index predicates among the arbiters.
+		defer mb.b.DisableSchemaDepTracking()()
+	}
 
 	// Create an anti-join for each arbiter.
 	mb.arbiters.ForEach(func(
@@ -848,6 +908,13 @@ func (mb *mutationBuilder) buildInputForUpsert(
 
 	// Ignore any ordering requested by the input.
 	mb.outScope.ordering = nil
+
+	if !mb.arbiters.Empty() &&
+		mb.b.evalCtx.SessionData().UseImprovedRoutineDepsTriggersAndComputedCols {
+		// Avoid resolving transitive dependencies on columns and UDTs referenced by
+		// any partial index predicates among the arbiters.
+		defer mb.b.DisableSchemaDepTracking()()
+	}
 
 	// Create an UpsertDistinctOn and a left-join for the single arbiter.
 	mb.arbiters.ForEach(func(
@@ -952,6 +1019,8 @@ func (mb *mutationBuilder) setUpsertCols(insertCols tree.NameList) {
 // buildUpsert constructs an Upsert operator, possibly wrapped by a Project
 // operator that corresponds to the given RETURNING clause.
 func (mb *mutationBuilder) buildUpsert(returning *tree.ReturningExprs) {
+	mb.maybeAddRegionColLookup(opt.UpsertOp)
+
 	// Merge input insert and update columns using CASE expressions.
 	mb.projectUpsertColumns()
 
@@ -960,7 +1029,8 @@ func (mb *mutationBuilder) buildUpsert(returning *tree.ReturningExprs) {
 	mb.disambiguateColumns()
 
 	// Add any check constraint boolean columns to the input.
-	mb.addCheckConstraintCols(false /* isUpdate */)
+	mb.addCheckConstraintCols(false, /* isUpdate */
+		cat.PolicyScopeUpsert, false /* includeSelectPolicies */)
 
 	// Add the partial index predicate expressions to the table metadata.
 	// These expressions are used to prune fetch columns during
@@ -994,7 +1064,8 @@ func (mb *mutationBuilder) buildUpsert(returning *tree.ReturningExprs) {
 		mb.outScope.expr, mb.uniqueChecks, mb.fkChecks, private,
 	)
 
-	mb.buildReturning(returning)
+	returningInScope, returningOutScope := mb.buildReturningScopes(returning, nil /* colRefs */)
+	mb.buildReturning(returning, returningInScope, returningOutScope)
 }
 
 // projectUpsertColumns projects a set of merged columns that will be either
@@ -1097,5 +1168,5 @@ func (mb *mutationBuilder) buildOnConflictWhereClause(
 			Right: whereClause.Expr,
 		},
 	}
-	mb.b.buildWhere(where, mb.outScope)
+	mb.b.buildWhere(where, mb.outScope, nil /* colRefs */)
 }

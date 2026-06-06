@@ -68,6 +68,7 @@ type windower struct {
 	outputTypes         []*types.T
 	datumAlloc          tree.DatumAlloc
 	acc                 mon.BoundAccount
+	aggFuncsAcc         mon.BoundAccount
 	unlimitedMemMonitor *mon.BytesMonitor
 	diskMonitor         *mon.BytesMonitor
 
@@ -115,12 +116,20 @@ func newWindower(
 	limitedMon := execinfra.NewLimitedMonitorWithLowerBound(
 		ctx, flowCtx, "windower-limited", memRequiredByWindower,
 	)
+	// TODO(yuzefovich): w.acc is bound to the limited monitor, but it's used in
+	// several places where we don't know how to spill to disk. Consider
+	// implementing a strategy where we start out using the limited account, and
+	// when hitting the memory limit, we spill what we can, and if that is
+	// insufficient, then we use the unlimited account.
 	w.acc = limitedMon.MakeBoundAccount()
+	mn := mon.MakeName("windower")
+	w.unlimitedMemMonitor = execinfra.NewMonitor(ctx, flowCtx.Mon, mn.Unlimited())
 	// If we have aggregate builtins that aggregate a single datum, we want
 	// them to reuse the same shared memory account with the windower. Notably,
 	// we need to update the eval context before constructing the window
 	// builtins.
-	w.evalCtx.SingleDatumAggMemAccount = &w.acc
+	w.aggFuncsAcc = w.unlimitedMemMonitor.MakeBoundAccount()
+	w.evalCtx.SingleDatumAggMemAccount = &w.aggFuncsAcc
 
 	w.partitionBy = spec.PartitionBy
 	windowFns := spec.WindowFns
@@ -173,8 +182,7 @@ func newWindower(
 		return nil, err
 	}
 
-	w.unlimitedMemMonitor = execinfra.NewMonitor(ctx, flowCtx.Mon, "windower-unlimited")
-	w.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, "windower-disk")
+	w.diskMonitor = execinfra.NewMonitor(ctx, flowCtx.DiskMonitor, mn.Disk())
 	w.allRowsPartitioned = rowcontainer.NewHashDiskBackedRowContainer(
 		w.evalCtx, w.MemMonitor, w.unlimitedMemMonitor, w.diskMonitor, flowCtx.Cfg.TempStorage,
 	)
@@ -215,7 +223,7 @@ func (w *windower) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
 		case windowerEmittingRows:
 			w.runningState, row, meta = w.emitRow()
 		default:
-			log.Fatalf(w.Ctx(), "unsupported state: %d", w.runningState)
+			log.Dev.Fatalf(w.Ctx(), "unsupported state: %d", w.runningState)
 		}
 
 		if row == nil && meta == nil {
@@ -246,6 +254,7 @@ func (w *windower) close() {
 		}
 		w.acc.Close(w.Ctx())
 		w.MemMonitor.Stop(w.Ctx())
+		w.aggFuncsAcc.Close(w.Ctx())
 		w.unlimitedMemMonitor.Stop(w.Ctx())
 		w.diskMonitor.Stop(w.Ctx())
 	}
@@ -721,7 +730,10 @@ func (w *windower) populateNextOutputRow() (bool, error) {
 		copy(w.outputRow, inputRow[:len(w.inputTypes)])
 		for windowFnIdx, windowFn := range w.windowFns {
 			windowFnRes := w.windowValues[w.partitionIdx][windowFnIdx][rowIdx]
-			encWindowFnRes := rowenc.DatumToEncDatum(w.outputTypes[windowFn.outputColIdx], windowFnRes)
+			encWindowFnRes, err := rowenc.DatumToEncDatum(w.outputTypes[windowFn.outputColIdx], windowFnRes)
+			if err != nil {
+				return false, err
+			}
 			w.outputRow[windowFn.outputColIdx] = encWindowFnRes
 		}
 		w.rowsInBucketEmitted++

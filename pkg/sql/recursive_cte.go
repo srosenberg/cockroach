@@ -30,6 +30,10 @@ type recursiveCTENode struct {
 	// The input plan node is for the initial query.
 	singleInputPlanNode
 
+	// forwarder allows propagating the ProducerMetadata towards the
+	// DistSQLReceiver.
+	forwarder metadataForwarder
+
 	genIterationFn exec.RecursiveCTEIterationFn
 	// iterationCount tracks the number of invocations of genIterationFn.
 	iterationCount int
@@ -135,21 +139,27 @@ func (n *recursiveCTENode) Next(params runParams) (bool, error) {
 		rows:                lastWorkingRows,
 		label:               n.label,
 	}
-	newPlan, err := n.genIterationFn(newExecFactory(params.ctx, params.p), buf)
+
+	// Create a separate tracing span that will be used when planning and
+	// running this iteration. Note that we'll still use the "outer" params.ctx
+	// when accessing rows in the container.
+	n.iterationCount++
+	opName := "recursive-cte-iteration-" + strconv.Itoa(n.iterationCount)
+	planAndRunCtx, sp := tracing.ChildSpan(params.ctx, opName)
+	defer sp.Finish()
+
+	newPlan, err := n.genIterationFn(planAndRunCtx, newExecFactory(planAndRunCtx, params.p), buf)
 	if err != nil {
 		return false, err
 	}
-
-	n.iterationCount++
-	opName := "recursive-cte-iteration-" + strconv.Itoa(n.iterationCount)
-	ctx, sp := tracing.ChildSpan(params.ctx, opName)
-	defer sp.Finish()
-	if err := runPlanInsidePlan(
-		ctx, params, newPlan.(*planComponents), rowResultWriter(n),
-		nil /* deferredRoutineSender */, "", /* stmtForDistSQLDiagram */
-	); err != nil {
+	queryStats, err := runPlanInsidePlan(
+		planAndRunCtx, params, newPlan.(*planComponents), rowResultWriter(n),
+		nil /* deferredRoutineSender */, "" /* stmtForDistSQLDiagram */, nil, /* sqlStatsBuilder */
+	)
+	if err != nil {
 		return false, err
 	}
+	forwardInnerQueryStats(n.forwarder, queryStats)
 
 	n.iterator = newRowContainerIterator(params.ctx, n.workingRows)
 	n.currentRow, err = n.iterator.Next()

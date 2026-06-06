@@ -151,10 +151,24 @@ message BackupManifest {
   int32 elided_prefix = 28 [(gogoproto.nullable) = false,
     (gogoproto.customtype) = "github.com/cockroachdb/cockroach/pkg/sql/execinfrapb.ElidePrefix"];
 
-  // NEXT ID: 29.
+  bool is_compacted = 29;
+
+  // NEXT ID: 30.
 }
 
-message BackupPartitionDescriptor{
+message BackupIndexMetadata {
+  util.hlc.Timestamp start_time = 1 [(gogoproto.nullable) = false];
+  util.hlc.Timestamp end_time = 2 [(gogoproto.nullable) = false];
+  // The path to the directory containing the backup relative to the collection
+  // URI.
+  string path = 3;
+  bool is_compacted = 4;
+  MVCCFilter mvcc_filter = 5 [(gogoproto.customname) = "MVCCFilter"];
+  util.hlc.Timestamp revision_start_time = 6 [(gogoproto.nullable) = false];
+  // Next ID: 7.
+}
+
+message BackupPartitionDescriptor {
   string locality_kv = 1 [(gogoproto.customname) = "LocalityKV"];
   repeated BackupManifest.File files = 2 [(gogoproto.nullable) = false];
   bytes backup_id = 3 [(gogoproto.nullable) = false,
@@ -198,6 +212,12 @@ message ScheduledBackupExecutionArgs {
   ];
 
   reserved 5;
+  // If an automated compaction is currently running on backups created by this
+  // schedule, this field will be set to the ID of the compaction job.
+  // A value of 0 indicates that there is no compaction job running.
+  int64 compaction_job_id = 9 [(gogoproto.customname) = "CompactionJobID", (gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/jobs/jobspb.JobID"];
+
+  // Next ID: 10
 }
 
 // RestoreProgress is the information that the RestoreData processor sends back

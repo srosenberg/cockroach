@@ -481,11 +481,97 @@ func TestEnforceFileSSTSinkAssumeNotMidRow(t *testing.T) {
 	})
 }
 
+func TestSSTSinkWriterSafeAgainstKeyMutation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	st := cluster.MakeTestingClusterSettings()
+	sink, _ := sstSinkKeyWriterTestSetup(t, st, execinfrapb.ElidePrefix_TenantAndTable)
+	defer func() {
+		require.NoError(t, sink.Close())
+	}()
+
+	mutateSpan := func(span *roachpb.Span) {
+		span.Key = append(span.Key[:0], make([]byte, len(span.Key))...)
+		span.EndKey = append(span.EndKey[:0], make([]byte, len(span.EndKey))...)
+	}
+
+	t.Run("safe on reset on new span", func(t *testing.T) {
+		keySet := newMVCCKeySet("a", "c").withKVs([]kvAndTS{{key: "a", timestamp: 10}})
+		require.NoError(t, sink.Reset(ctx, keySet.span))
+		require.Len(t, sink.flushedFiles, 1)
+		originalSpan := sink.flushedFiles[0].Span.Clone()
+		mutateSpan(&keySet.span)
+		require.Equal(t, originalSpan, sink.flushedFiles[0].Span)
+		require.NoError(t, sink.Flush(ctx))
+	})
+
+	t.Run("safe on reset on extending span", func(t *testing.T) {
+		keySet := newMVCCKeySet("a", "c").withKVs([]kvAndTS{{key: "a", timestamp: 10}})
+		extendingSet := newMVCCKeySet("c", "e").withKVs([]kvAndTS{{key: "c", timestamp: 10}})
+		require.NoError(t, sink.Reset(ctx, keySet.span))
+		require.NoError(t, sink.WriteKey(ctx, keySet.kvs[0].key, keySet.kvs[0].value))
+		sink.AssumeNotMidRow()
+
+		require.NoError(t, sink.Reset(ctx, extendingSet.span))
+		require.Len(t, sink.flushedFiles, 1)
+		originalSpan := sink.flushedFiles[0].Span.Clone()
+		mutateSpan(&extendingSet.span)
+		require.Equal(t, originalSpan, sink.flushedFiles[0].Span)
+		require.NoError(t, sink.Flush(ctx))
+	})
+
+	t.Run("safe on size flush split", func(t *testing.T) {
+		defer testutils.HookGlobal(&fileSpanByteLimit, int64(8<<10))()
+		sizeFlushSink, _ := sstSinkKeyWriterTestSetup(t, st, execinfrapb.ElidePrefix_TenantAndTable)
+		defer func() {
+			require.NoError(t, sizeFlushSink.Close())
+		}()
+
+		require.NoError(t, sizeFlushSink.Reset(ctx, roachpb.Span{
+			Key: s2k0("a"), EndKey: s2k0("z"),
+		}))
+
+		// Push the open file's accumulated data size past fileSpanByteLimit so
+		// that the next WriteKey triggers maybeDoSizeFlush.
+		bigVal := make([]byte, fileSpanByteLimit)
+		require.NoError(t, sizeFlushSink.WriteKey(ctx, storage.MVCCKey{
+			Key:       s2k0("a"),
+			Timestamp: hlc.Timestamp{WallTime: 10},
+		}, bigVal))
+
+		// Mirror compactSpanEntry's scratch-reuse pattern: the splitting key
+		// lives in a buffer that the caller will overwrite after WriteKey
+		// returns. Without the defensive clone in maybeDoSizeFlush, the
+		// just-shrunk file's EndKey would alias this buffer.
+		splitKey := s2k0("b")
+		scratch := append(roachpb.Key(nil), splitKey...)
+		require.NoError(t, sizeFlushSink.WriteKey(ctx, storage.MVCCKey{
+			Key:       scratch,
+			Timestamp: hlc.Timestamp{WallTime: 10},
+		}, []byte("v")))
+
+		require.Len(t, sizeFlushSink.flushedFiles, 2)
+		require.Equal(t, splitKey, sizeFlushSink.flushedFiles[0].Span.EndKey)
+
+		// Overwrite scratch in place. The just-shrunk file's EndKey must
+		// remain byte-stable; otherwise it aliased caller memory.
+		for i := range scratch {
+			scratch[i] = 0xFF
+		}
+		require.Equal(t, splitKey, sizeFlushSink.flushedFiles[0].Span.EndKey)
+
+		sizeFlushSink.AssumeNotMidRow()
+		require.NoError(t, sizeFlushSink.Flush(ctx))
+	})
+}
+
 func sstSinkKeyWriterTestSetup(
 	t *testing.T, settings *cluster.Settings, elideMode execinfrapb.ElidePrefix,
 ) (*SSTSinkKeyWriter, cloud.ExternalStorage) {
 	conf, store := sinkTestSetup(t, settings, elideMode)
-	sink, err := MakeSSTSinkKeyWriter(conf, store, nil /* pacer */)
+	sink, err := MakeSSTSinkKeyWriter(conf, store, "" /* localityKV */)
 	require.NoError(t, err)
 	return sink, store
 }

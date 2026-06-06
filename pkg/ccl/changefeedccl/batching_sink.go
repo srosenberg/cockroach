@@ -21,6 +21,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 )
 
@@ -44,7 +46,7 @@ type SinkClient interface {
 // BatchBuffer is an interface to aggregate KVs into a payload that can be sent
 // to the sink.
 type BatchBuffer interface {
-	Append(key []byte, value []byte, attributes attributes)
+	Append(ctx context.Context, key []byte, value []byte, attributes attributes)
 	ShouldFlush() bool
 
 	// Once all data has been Append'ed, Close can be called to return a finalized
@@ -100,8 +102,10 @@ type flushReq struct {
 // attributes contain additional metadata which may be emitted alongside a row
 // but separate from the encoded keys and values.
 type attributes struct {
-	tableName string
-	headers   map[string][]byte
+	tableName       string
+	headers         map[string][]byte
+	mvcc            hlc.Timestamp
+	csvColumnHeader []byte
 }
 
 type rowEvent struct {
@@ -109,6 +113,7 @@ type rowEvent struct {
 	val             []byte
 	topicDescriptor TopicDescriptor
 	headers         rowHeaders
+	csvColumnHeader []byte
 
 	alloc kvevent.Alloc
 	mvcc  hlc.Timestamp
@@ -195,6 +200,7 @@ func (s *batchingSink) EmitRow(
 	ctx context.Context,
 	topic TopicDescriptor,
 	key, value []byte,
+	csvColumnHeader []byte,
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
 	headers rowHeaders,
@@ -206,6 +212,7 @@ func (s *batchingSink) EmitRow(
 	payload.val = value
 	payload.topicDescriptor = topic
 	payload.headers = headers
+	payload.csvColumnHeader = csvColumnHeader
 	payload.mvcc = mvcc
 	payload.alloc = alloc
 
@@ -263,7 +270,7 @@ type sinkBatch struct {
 	numMessages int
 	numKVBytes  int          // the total amount of uncompressed kv data in the batch
 	keys        intsets.Fast // the set of keys within the batch to provide to parallelIO
-	bufferTime  time.Time    // the earliest time a message was inserted into the batch
+	bufferTime  crtime.Mono  // the earliest time a message was inserted into the batch
 	mvcc        hlc.Timestamp
 
 	alloc  kvevent.Alloc
@@ -302,14 +309,16 @@ func hashToInt(h hash.Hash32, buf []byte) int {
 }
 
 // Append adds the contents of a kvEvent to the batch, merging its alloc pool.
-func (sb *sinkBatch) Append(e *rowEvent) {
+func (sb *sinkBatch) Append(ctx context.Context, e *rowEvent) {
 	if sb.isEmpty() {
-		sb.bufferTime = timeutil.Now()
+		sb.bufferTime = crtime.NowMono()
 	}
 
-	sb.buffer.Append(e.key, e.val, attributes{
-		tableName: e.topicDescriptor.GetTableName(),
-		headers:   e.headers,
+	sb.buffer.Append(ctx, e.key, e.val, attributes{
+		tableName:       e.topicDescriptor.GetTableName(),
+		headers:         e.headers,
+		mvcc:            e.mvcc,
+		csvColumnHeader: e.csvColumnHeader,
 	})
 
 	sb.keys.Add(hashToInt(sb.hasher, e.key))
@@ -349,10 +358,13 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 	// Once finalized, batches are sent to a parallelIO struct which handles
 	// performing multiple Flushes in parallel while maintaining Keys() ordering.
 	ioHandler := func(ctx context.Context, req IORequest) error {
+		ctx, sp := tracing.ChildSpan(ctx, "changefeed.batching_sink.io_handler")
+		defer sp.Finish()
+
 		batch, _ := req.(*sinkBatch)
 		defer s.metrics.recordSinkIOInflightChange(int64(-batch.numMessages))
 		s.metrics.recordSinkIOInflightChange(int64(batch.numMessages))
-		defer s.metrics.timers().DownstreamClientSend.Start()()
+		defer s.metrics.timers().DownstreamClientSend.Start().End()
 
 		return s.client.Flush(ctx, batch.payload)
 	}
@@ -388,6 +400,9 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 	}
 
 	tryFlushBatch := func(topic string) error {
+		ctx, sp := tracing.ChildSpan(ctx, "changefeed.batching_sink.try_flush_batch")
+		defer sp.Finish()
+
 		batchBuffer, ok := topicBatches[topic]
 		if !ok || batchBuffer.isEmpty() {
 			return nil
@@ -400,6 +415,8 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 
 		req, send, err := ioEmitter.AdmitRequest(ctx, batchBuffer)
 		if errors.Is(err, ErrNotEnoughQuota) {
+			waitStart := crtime.NowMono()
+
 			// Quota can only be freed by consuming a result.
 			select {
 			case <-ctx.Done():
@@ -419,8 +436,12 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 			} else if err != nil {
 				return err
 			}
+
+			s.metrics.recordSinkBackpressure(waitStart.Elapsed())
 		} else if err != nil {
 			return err
+		} else {
+			s.metrics.recordSinkBackpressure(0)
 		}
 
 		// The request was admitted, it must be sent. There are no concurrent requests being sent which
@@ -460,7 +481,7 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 			// TODO(yevgeniy): rework this function: this function should simply
 			// return an error, and not rely on "handleError".
 			// It's hard to reason about this functions correctness otherwise.
-			_ = s.pacer.Pace(ctx)
+			_, _ = s.pacer.Pace(ctx)
 
 			switch r := req.(type) {
 			case *rowEvent:
@@ -495,7 +516,7 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 					topicBatches[topic] = batchBuffer
 				}
 
-				batchBuffer.Append(r)
+				batchBuffer.Append(ctx, r)
 				if s.knobs.OnAppend != nil {
 					s.knobs.OnAppend(r)
 				}
@@ -525,7 +546,6 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 		case result := <-ioEmitter.GetResult():
 			handleResult(result)
 		case <-flushTimer.Ch():
-			flushTimer.MarkRead()
 			isTimerPending = false
 			if err := flushAll(); err != nil {
 				s.handleError(err)
@@ -570,6 +590,9 @@ func makeBatchingSink(
 	}
 
 	sink.wg.GoCtx(func(ctx context.Context) error {
+		ctx, sp := tracing.ChildSpan(ctx, "changefeed.batching_sink.worker")
+		defer sp.Finish()
+
 		sink.runBatchingWorker(ctx)
 		return nil
 	})

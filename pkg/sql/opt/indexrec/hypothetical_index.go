@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/errors"
 )
@@ -44,6 +45,10 @@ type hypotheticalIndex struct {
 
 	// typ indicates the type of the index - forward, inverted, or vector.
 	typ idxtype.T
+
+	// vectorConfig stores the vector index configuration, including the distance
+	// metric. Only set for vector indexes.
+	vectorConfig *vecpb.Config
 }
 
 var _ cat.Index = &hypotheticalIndex{}
@@ -55,13 +60,19 @@ func (hi *hypotheticalIndex) init(
 	indexOrd int,
 	typ idxtype.T,
 	zone cat.Zone,
+	vecConfig *vecpb.Config,
 ) {
+	if typ == idxtype.VECTOR && vecConfig == nil {
+		panic(errors.AssertionFailedf("vector index requires non-nil vecConfig"))
+	}
+
 	hi.tab = tab
 	hi.name = name
 	hi.cols = cols
 	hi.indexOrdinal = indexOrd
 	hi.typ = typ
 	hi.zone = zone
+	hi.vectorConfig = vecConfig
 
 	// Build an index column ordinal set.
 	var colsOrdSet intsets.Fast
@@ -177,7 +188,10 @@ func (hi *hypotheticalIndex) InvertedColumn() cat.IndexColumn {
 
 // VectorColumn is part of the cat.Index interface.
 func (hi *hypotheticalIndex) VectorColumn() cat.IndexColumn {
-	panic(errors.AssertionFailedf("hypothetical indexes do not have vector columns"))
+	if hi.Type() != idxtype.VECTOR {
+		panic(errors.AssertionFailedf("non-vector indexes do not have vector columns"))
+	}
+	return hi.cols[len(hi.cols)-1]
 }
 
 // Predicate is part of the cat.Index interface.
@@ -229,6 +243,14 @@ func (hi *hypotheticalIndex) GeoConfig() geopb.Config {
 	return geopb.Config{}
 }
 
+// VecConfig is part of the cat.Index interface.
+func (hi *hypotheticalIndex) VecConfig() *vecpb.Config {
+	if hi.Type() != idxtype.VECTOR {
+		return nil
+	}
+	return hi.vectorConfig
+}
+
 // Version is part of the cat.Index interface.
 func (hi *hypotheticalIndex) Version() descpb.IndexDescriptorVersion {
 	return descpb.LatestIndexDescriptorVersion
@@ -242,6 +264,24 @@ func (hi *hypotheticalIndex) PartitionCount() int {
 // Partition is part of the cat.Index interface.
 func (hi *hypotheticalIndex) Partition(i int) cat.Partition {
 	return nil
+}
+
+// IsTemporaryIndexForBackfill is part of the cat.Index interface.
+func (hi *hypotheticalIndex) IsTemporaryIndexForBackfill() bool {
+	return false
+}
+
+// isVecConfigCompatible returns true if the existing index has the same vector
+// configuration as the hypothetical index. For non-vector hypothetical indexes
+// this always returns true. For vector hypothetical indexes, the existing index
+// must also be a vector index with the same distance metric (e.g., an L2 index
+// is not interchangeable with a cosine index on the same column).
+func (hi *hypotheticalIndex) isVecConfigCompatible(existingIndex cat.Index) bool {
+	if hi.typ != idxtype.VECTOR || hi.vectorConfig == nil {
+		return true
+	}
+	return existingIndex.Type() == idxtype.VECTOR &&
+		existingIndex.VecConfig().DistanceMetric == hi.vectorConfig.DistanceMetric
 }
 
 // hasSameExplicitCols checks whether the given existing index has identical

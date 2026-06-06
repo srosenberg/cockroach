@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,13 +23,13 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/rpc"
+	"github.com/cockroachdb/cockroach/pkg/rpc/rpcbase"
 	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/desctestutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/testcluster"
-	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
@@ -48,10 +49,10 @@ type testRangefeedClient struct {
 }
 
 func (c *testRangefeedClient) MuxRangeFeed(
-	ctx context.Context, opts ...grpc.CallOption,
-) (kvpb.Internal_MuxRangeFeedClient, error) {
+	ctx context.Context,
+) (kvpb.RPCInternal_MuxRangeFeedClient, error) {
 	defer c.count()
-	return c.RestrictedInternalClient.MuxRangeFeed(ctx, opts...)
+	return c.RestrictedInternalClient.MuxRangeFeed(ctx)
 }
 
 type internalClientCounts struct {
@@ -128,14 +129,19 @@ func rangeFeed(
 	startFrom hlc.Timestamp,
 	onValue func(event kvcoord.RangeFeedMessage),
 	opts ...kvcoord.RangeFeedOption,
-) func() {
+) (chan error, func()) {
 	ds := dsI.(*kvcoord.DistSender)
 	events := make(chan kvcoord.RangeFeedMessage)
 	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), testFeedCtxKey{}, struct{}{}))
 
+	errCh := make(chan error, 1)
 	g := ctxgroup.WithContext(ctx)
-	g.GoCtx(func(ctx context.Context) (err error) {
-		return ds.RangeFeed(ctx, []kvcoord.SpanTimePair{{Span: sp, StartAfter: startFrom}}, events, opts...)
+	g.GoCtx(func(ctx context.Context) error {
+		err := ds.RangeFeed(ctx, []kvcoord.SpanTimePair{{Span: sp, StartAfter: startFrom}}, events, opts...)
+		if err != nil {
+			errCh <- err
+		}
+		return err
 	})
 	g.GoCtx(func(ctx context.Context) error {
 		for {
@@ -148,7 +154,7 @@ func rangeFeed(
 		}
 	})
 
-	return func() {
+	return errCh, func() {
 		cancel()
 		_ = g.Wait()
 	}
@@ -167,7 +173,7 @@ func observeNValues(n int) (chan struct{}, func(ev kvcoord.RangeFeedMessage)) {
 			count.Lock()
 			defer count.Unlock()
 			count.c++
-			log.Infof(context.Background(), "Waiting N values: saw %d, want %d; current=%s", count.c, n, ev.Val.Key)
+			log.Dev.Infof(context.Background(), "Waiting N values: saw %d, want %d; current=%s", count.c, n, ev.Val.Key)
 			if count.c == n {
 				close(allSeen)
 			}
@@ -175,19 +181,17 @@ func observeNValues(n int) (chan struct{}, func(ev kvcoord.RangeFeedMessage)) {
 	}
 }
 
-func channelWaitWithTimeout(t *testing.T, ch chan struct{}) {
+func channelWaitWithTimeout(t *testing.T, ch chan struct{}, errCh chan error) {
 	t.Helper()
-	timeOut := 30 * time.Second
-	if util.RaceEnabled {
-		timeOut *= 10
-	}
-	if syncutil.DeadlockEnabled {
-		timeOut = 2 * deadlock.Opts.DeadlockTimeout
-	}
+	timeOut := testutils.SucceedsSoonDuration()
 	select {
 	case <-ch:
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("unexpected error while waiting on channel: %v", err)
+		}
 	case <-time.After(timeOut):
-		t.Fatal("test timed out")
+		t.Fatalf("test timed out after %s", timeOut)
 	}
 }
 
@@ -219,7 +223,7 @@ func TestMuxRangeFeedConnectsToNodeOnce(t *testing.T) {
 	// test cluster nodes.
 	sqlDB.ExecMultiple(t,
 		`SET CLUSTER SETTING kv.rangefeed.enabled = true`,
-		`ALTER DATABASE defaultdb  CONFIGURE ZONE USING num_replicas = 1`,
+		`ALTER DATABASE defaultdb CONFIGURE ZONE USING num_replicas = 1`,
 		`CREATE TABLE foo (key INT PRIMARY KEY)`,
 		`INSERT INTO foo (key) SELECT * FROM generate_series(1, 1000)`,
 		`ALTER TABLE foo SPLIT AT (SELECT * FROM generate_series(100, 900, 100))`,
@@ -240,9 +244,9 @@ func TestMuxRangeFeedConnectsToNodeOnce(t *testing.T) {
 	fooSpan := fooDesc.PrimaryIndexSpan(keys.SystemSQLCodec)
 
 	allSeen, onValue := observeNValues(1000)
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startTime, onValue)
+	errCh, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startTime, onValue)
 	defer closeFeed()
-	channelWaitWithTimeout(t, allSeen)
+	channelWaitWithTimeout(t, allSeen, errCh)
 	closeFeed() // Explicitly shutdown the feed to make sure counters no longer change.
 
 	// Verify we connected to each node once.
@@ -253,7 +257,7 @@ func TestMuxRangeFeedConnectsToNodeOnce(t *testing.T) {
 	}
 }
 
-func TestMuxRangeCatchupScanQuotaReleased(t *testing.T) {
+func TestMuxRangeFeedCatchupScanQuotaReleased(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
@@ -288,12 +292,15 @@ func TestMuxRangeCatchupScanQuotaReleased(t *testing.T) {
 	noValuesExpected := func(event kvcoord.RangeFeedMessage) {
 		panic("received value when none expected")
 	}
-	const numErrsToReturn = 100
+	const numErrsToReturn = 42
 	var numErrors atomic.Int32
 	enoughErrors := make(chan struct{})
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startTime, noValuesExpected,
+	errCh, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startTime, noValuesExpected,
 		kvcoord.TestingWithOnRangefeedEvent(
 			func(_ context.Context, _ roachpb.Span, _ int64, event *kvpb.RangeFeedEvent) (skip bool, _ error) {
+				if event.Error != nil {
+					return false, nil
+				}
 				*event = transientErrEvent
 				if numErrors.Add(1) == numErrsToReturn {
 					close(enoughErrors)
@@ -301,7 +308,7 @@ func TestMuxRangeCatchupScanQuotaReleased(t *testing.T) {
 				return false, nil
 			}))
 	defer closeFeed()
-	channelWaitWithTimeout(t, enoughErrors)
+	channelWaitWithTimeout(t, enoughErrors, errCh)
 }
 
 // TestMuxRangeFeedDoesNotStallOnError tests that the mux rangefeed
@@ -323,7 +330,7 @@ func TestMuxRangeFeedDoesNotStallOnError(t *testing.T) {
 		errCount    int
 	)
 
-	streamInterceptor := func(target string, class rpc.ConnectionClass) grpc.StreamClientInterceptor {
+	streamInterceptor := func(target string, class rpcbase.ConnectionClass) grpc.StreamClientInterceptor {
 		return func(
 			ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn,
 			method string, streamer grpc.Streamer, opts ...grpc.CallOption,
@@ -412,14 +419,14 @@ func TestMuxRangeFeedDoesNotStallOnError(t *testing.T) {
 
 	shouldError.Store(true)
 	allSeen, onValue := observeNValues(100)
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startFrom, onValue)
+	errCh, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startFrom, onValue)
 	defer closeFeed()
-	channelWaitWithTimeout(t, allSeen)
+	channelWaitWithTimeout(t, allSeen, errCh)
 }
 
 // Test to make sure the various metrics used by rangefeed are correctly
 // updated during the lifetime of the rangefeed and when the rangefeed completes.
-func TestRangeFeedMetricsManagement(t *testing.T) {
+func TestMuxRangeFeedMetricsManagement(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
@@ -432,6 +439,9 @@ func TestRangeFeedMetricsManagement(t *testing.T) {
 	ts := tc.Server(0)
 	sqlDB := sqlutils.MakeSQLRunner(tc.ServerConn(0))
 	startTime := ts.Clock().Now()
+
+	kvserver.RangefeedEnabled.Override(
+		context.Background(), &tc.SystemLayer(0).ClusterSettings().SV, true)
 
 	// Insert 1000 rows, and split them into 10 ranges.
 	const numRanges = 10
@@ -501,8 +511,15 @@ func TestRangeFeedMetricsManagement(t *testing.T) {
 		return skipSet.stuck.Contains(k)
 	}
 
+	var closeOnce sync.Once
+	frontierAdvanced := make(chan struct{})
+	frontierHasAdvanced := func() {
+		closeOnce.Do(func() {
+			close(frontierAdvanced)
+		})
+	}
 	ignoreValues := func(event kvcoord.RangeFeedMessage) {}
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startTime, ignoreValues,
+	errCh, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startTime, ignoreValues,
 		kvcoord.TestingWithRangeFeedMetrics(&metrics),
 		kvcoord.TestingWithOnRangefeedEvent(
 			func(ctx context.Context, s roachpb.Span, _ int64, event *kvpb.RangeFeedEvent) (skip bool, _ error) {
@@ -529,14 +546,17 @@ func TestRangeFeedMetricsManagement(t *testing.T) {
 							skipSet.Lock()
 							skipSet.retry.Add(checkpoint.Span)
 							skipSet.Unlock()
-							log.Infof(ctx, "skipping span %s", checkpoint.Span)
+							log.Dev.Infof(ctx, "skipping span %s", checkpoint.Span)
 							*event = transientErrEvent
 							return false, nil
 						}
 
-						_, err := frontier.Forward(checkpoint.Span, checkpoint.ResolvedTS)
+						result, err := frontier.Forward(checkpoint.Span, checkpoint.ResolvedTS)
 						if err != nil {
 							return false, err
+						}
+						if result.FrontierForwarded() {
+							defer frontierHasAdvanced()
 						}
 
 						if numCatchupBlocked.Add(1) <= numCatchupToBlock {
@@ -545,7 +565,7 @@ func TestRangeFeedMetricsManagement(t *testing.T) {
 							skipSet.Lock()
 							skipSet.stuck.Add(checkpoint.Span)
 							skipSet.Unlock()
-							log.Infof(ctx, "skipping stuck span %s", checkpoint.Span)
+							log.Dev.Infof(ctx, "skipping stuck span %s", checkpoint.Span)
 							return true /* skip */, nil
 						}
 					}
@@ -555,14 +575,10 @@ func TestRangeFeedMetricsManagement(t *testing.T) {
 			}))
 	defer closeFeed()
 
-	// Wait for the test frontier to advance.  Once it advances,
-	// we know the rangefeed is started, all ranges are running (even if some of them are blocked).
-	testutils.SucceedsWithin(t, func() error {
-		if frontier.Frontier().IsEmpty() {
-			return errors.Newf("waiting for frontier advance: %s", frontier.String())
-		}
-		return nil
-	}, 10*time.Second)
+	// Wait for the test frontier to advance. Once it advances, we know the
+	// rangefeed is started, all ranges are running (even if some of them are
+	// blocked).
+	channelWaitWithTimeout(t, frontierAdvanced, errCh)
 
 	// At this point, we know the rangefeed for all ranges are running.
 	require.EqualValues(t, numRanges, metrics.RangefeedRanges.Value(), frontier.String())
@@ -570,13 +586,29 @@ func TestRangeFeedMetricsManagement(t *testing.T) {
 	// All ranges expected to be local.
 	require.EqualValues(t, numRanges, metrics.RangefeedLocalRanges.Value(), frontier.String())
 
-	// We also know that we have blocked numCatchupToBlock ranges in their catchup scan.
-	require.EqualValues(t, numCatchupToBlock, metrics.RangefeedCatchupRanges.Value())
+	// We also know that we have blocked numCatchupToBlock ranges from emitting
+	// the checkpoint that would allow them to mark their catch-up scan as done.
+	//
+	// We use succeed soon here because we could observe extra ranges in catch-up
+	// scan if our testing hook _just_ observed the checkpoint such that we were
+	// unblocked from channelWaitWithTimeout above but the metric hasn't been
+	// decremented yet.
+	//
+	// We should never observed fewer ranges in catchup, so test for that case
+	// without waiting.
+	require.GreaterOrEqual(t, metrics.RangefeedCatchupRanges.Value(), numCatchupToBlock)
+	testutils.SucceedsSoon(t, func() error {
+		if count := metrics.RangefeedCatchupRanges.Value(); count != numCatchupToBlock {
+			return errors.Errorf("expected %d catchup ranges, got %d",
+				numCatchupToBlock, count)
+		}
+		return nil
+	})
 }
 
-// TestRangefeedRangeObserver ensures the kvcoord.WithRangeObserver option
+// TestMuxRangefeedRangeObserver ensures the kvcoord.WithRangeObserver option
 // works correctly.
-func TestRangefeedRangeObserver(t *testing.T) {
+func TestMuxRangefeedRangeObserver(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
@@ -639,7 +671,7 @@ func TestRangefeedRangeObserver(t *testing.T) {
 		})
 	}
 
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, ts.Clock().Now(), ignoreValues,
+	_, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, ts.Clock().Now(), ignoreValues,
 		kvcoord.WithRangeObserver(observer))
 	defer closeFeed()
 
@@ -734,7 +766,7 @@ func TestMuxRangeFeedCanCloseStream(t *testing.T) {
 	ignoreValues := func(event kvcoord.RangeFeedMessage) {}
 	var numRestartStreams atomic.Int32
 
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, ts.Clock().Now(), ignoreValues,
+	_, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, ts.Clock().Now(), ignoreValues,
 		kvcoord.TestingWithMuxRangeFeedRequestSenderCapture(
 			// We expect a single mux sender since we have 1 node in this test.
 			func(nodeID roachpb.NodeID, capture func(request *kvpb.RangeFeedRequest) error) {
@@ -754,7 +786,7 @@ func TestMuxRangeFeedCanCloseStream(t *testing.T) {
 					// Keep track of mux errors due to RangeFeedRetryError_REASON_RANGEFEED_CLOSED.
 					// Those results when we issue CloseStream request.
 					err := t.Error.GoError()
-					log.Infof(ctx, "Got err: %v", err)
+					log.Dev.Infof(ctx, "Got err: %v", err)
 					var retryErr *kvpb.RangeFeedRetryError
 					if ok := errors.As(err, &retryErr); ok && retryErr.Reason == kvpb.RangeFeedRetryError_REASON_RANGEFEED_CLOSED {
 						numRestartStreams.Add(1)
@@ -862,7 +894,7 @@ func TestMuxRangeFeedDoesNotDeadlockWithLocalStreams(t *testing.T) {
 	fooSpan := fooDesc.PrimaryIndexSpan(keys.SystemSQLCodec)
 
 	allSeen, onValue := observeNValues(1000)
-	closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startFrom, onValue,
+	_, closeFeed := rangeFeed(ts.DistSenderI(), fooSpan, startFrom, onValue,
 		kvcoord.TestingWithBeforeSendRequest(func() {
 			// Prior to sending rangefeed request, block for just a bit
 			// to make deadlock more likely.
@@ -870,5 +902,5 @@ func TestMuxRangeFeedDoesNotDeadlockWithLocalStreams(t *testing.T) {
 		}),
 	)
 	defer closeFeed()
-	channelWaitWithTimeout(t, allSeen)
+	channelWaitWithTimeout(t, allSeen, nil)
 }

@@ -130,6 +130,7 @@ func (s *sqlSink) EmitRow(
 	ctx context.Context,
 	topicDescr TopicDescriptor,
 	key, value []byte,
+	csvColumnHeader []byte,
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
 	_headers rowHeaders,
@@ -168,7 +169,7 @@ func (s *sqlSink) EmitResolvedTimestamp(
 		if err != nil {
 			return err
 		}
-		s.scratch, payload = s.scratch.Copy(payload, 0 /* extraCap */)
+		s.scratch, payload = s.scratch.Copy(payload)
 		for partition := int32(0); partition < sqlSinkNumPartitions; partition++ {
 			if err := s.emit(ctx, topic, partition, noKey, noValue, payload); err != nil {
 				return err

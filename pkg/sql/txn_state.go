@@ -7,6 +7,7 @@ package sql
 
 import (
 	"context"
+	"math/rand"
 	"sync/atomic"
 	"time"
 
@@ -69,11 +70,9 @@ type txnState struct {
 		// bundles, and also is surfaced in the DB Console.
 		autoRetryReason error
 
-		// autoRetryCounter keeps track of the number of automatic retries that have
-		// occurred. It includes per-statement retries performed under READ
-		// COMMITTED as well as transaction retries for serialization failures under
-		// REPEATABLE READ and SERIALIZABLE. It's 0 whenever the transaction state
-		// is not stateOpen.
+		// autoRetryCounter keeps track of the number of automatic transaction
+		// retries that have occurred. It's 0 whenever the transaction state is not
+		// stateOpen.
 		autoRetryCounter int32
 
 		hasSavepoints bool
@@ -93,6 +92,15 @@ type txnState struct {
 	// txnCancelFn is a function that can be used to cancel the current
 	// txn context.
 	txnCancelFn context.CancelFunc
+
+	// shouldRecord is used to indicate whether this transaction should record a
+	// trace. This is set to true if we have a positive sample rate and a
+	// positive duration trigger for logging.
+	shouldRecord bool
+
+	// outputJaegerJSON is used to indicate whether the traces in logs
+	// should be in a plaintext or Jaeger format.
+	outputJaegerJSON bool
 
 	// recordingThreshold, is not zero, indicates that sp is recording and that
 	// the recording should be dumped to the log if execution of the transaction
@@ -116,9 +124,10 @@ type txnState struct {
 	// flag.
 	injectedTxnRetryCounter int
 
-	// mon tracks txn-bound objects like the running state of
-	// planNode in the midst of performing a computation.
-	mon *mon.BytesMonitor
+	// txnMon tracks txn-bound objects like the cursor state that outlives a
+	// single query execution step. Its children will also track query planning
+	// and execution state.
+	txnMon *mon.BytesMonitor
 
 	// adv is overwritten after every transition. It represents instructions for
 	// for moving the cursor over the stream of input statements to the next
@@ -134,6 +143,13 @@ type txnState struct {
 	// testingForceRealTracingSpans is a test-only knob that forces the use of
 	// real (i.e. not no-op) tracing spans for every statement.
 	testingForceRealTracingSpans bool
+
+	// execType records the executor type for the transaction.
+	execType executorType
+
+	// txnInstrumentationHelper contains state used to manage transaction
+	// bundle collection.
+	txnInstrumentationHelper txnInstrumentationHelper
 }
 
 // txnType represents the type of a SQL transaction.
@@ -180,6 +196,9 @@ const (
 //
 // qualityOfService: If txn is nil, the QoSLevel/WorkPriority to assign the new
 // transaction for use in admission queues.
+//
+// resourceGroupID: If txn is nil, the resource group id to bind the new
+// transaction to for admission control. Zero means unbound.
 func (ts *txnState) resetForNewSQLTxn(
 	connCtx context.Context,
 	txnType txnType,
@@ -190,9 +209,11 @@ func (ts *txnState) resetForNewSQLTxn(
 	txn *kv.Txn,
 	tranCtx transitionCtx,
 	qualityOfService sessiondatapb.QoSLevel,
+	resourceGroupID uint64,
 	isoLevel isolation.Level,
 	omitInRangefeeds bool,
 	bufferedWritesEnabled bool,
+	rng *rand.Rand,
 ) (txnID uuid.UUID) {
 	// Reset state vars to defaults.
 	ts.sqlTimestamp = sqlTimestamp
@@ -206,8 +227,17 @@ func (ts *txnState) resetForNewSQLTxn(
 	alreadyRecording := tranCtx.sessionTracing.Enabled()
 	ctx, cancelFn := context.WithCancel(connCtx)
 	var sp *tracing.Span
-	duration := traceTxnThreshold.Get(&tranCtx.settings.SV)
-	if alreadyRecording || duration > 0 {
+	duration := TraceTxnThreshold.Get(&tranCtx.settings.SV)
+
+	sampleRate := TraceTxnSampleRate.Get(&tranCtx.settings.SV)
+	includeInternal := TraceTxnIncludeInternal.Get(&tranCtx.settings.SV)
+	ts.shouldRecord = sampleRate > 0 && duration > 0 && rng.Float64() < sampleRate
+	if !includeInternal && ts.execType == executorTypeInternal {
+		ts.shouldRecord = false
+	}
+	ts.outputJaegerJSON = TraceTxnOutputJaegerJSON.Get(&tranCtx.settings.SV)
+
+	if alreadyRecording || ts.shouldRecord {
 		ts.Ctx, sp = tracing.EnsureChildSpan(ctx, tranCtx.tracer, opName,
 			tracing.WithRecording(tracingpb.RecordingVerbose))
 	} else if ts.testingForceRealTracingSpans {
@@ -220,12 +250,12 @@ func (ts *txnState) resetForNewSQLTxn(
 		sp.SetTag("implicit", attribute.StringValue("true"))
 	}
 
-	if !alreadyRecording && (duration > 0) {
+	if !alreadyRecording && ts.shouldRecord {
 		ts.recordingThreshold = duration
 		ts.recordingStart = timeutil.Now()
 	}
 
-	ts.mon.StartNoReserved(ts.Ctx, tranCtx.connMon)
+	ts.txnMon.StartNoReserved(ts.Ctx, tranCtx.connMon)
 	txnID = func() (txnID uuid.UUID) {
 		ts.mu.Lock()
 		defer ts.mu.Unlock()
@@ -234,6 +264,11 @@ func (ts *txnState) resetForNewSQLTxn(
 		if txn == nil {
 			ts.mu.txn = kv.NewTxnWithSteppingEnabled(ts.Ctx, tranCtx.db, tranCtx.nodeIDOrZero, qualityOfService)
 			ts.mu.txn.SetDebugName(opName)
+			// Bind the txn to the session's resource group, if any. Like
+			// qualityOfService, this is captured once at txn creation and is
+			// stable for the life of the txn; a zero id leaves the txn on the
+			// server's default admission routing.
+			ts.mu.txn.SetResourceGroup(resourceGroupID)
 			if omitInRangefeeds {
 				ts.mu.txn.SetOmitInRangefeeds()
 			}
@@ -242,6 +277,9 @@ func (ts *txnState) resetForNewSQLTxn(
 			}
 			if err := ts.setIsolationLevelLocked(isoLevel); err != nil {
 				panic(err)
+			}
+			if !bufferedWritesIsAllowedForIsolationLevel(connCtx, tranCtx.settings, isoLevel) {
+				bufferedWritesEnabled = false
 			}
 			if bufferedWritesEnabled {
 				ts.mu.txn.SetBufferedWritesEnabled(true /* enabled */)
@@ -269,7 +307,20 @@ func (ts *txnState) resetForNewSQLTxn(
 		panic(err)
 	}
 
+	ts.txnInstrumentationHelper.diagnosticsCollector.UpdateState(txnDiagnosticsNotStarted)
 	return txnID
+}
+
+func (ts *txnState) shouldCollectTxnDiagnostics(
+	ctx context.Context, stmtFingerprintId uint64, stmt *Statement, tracer *tracing.Tracer,
+) (newCtx context.Context, collectingDiagnostics bool) {
+	txnID := ts.mu.txn.ID()
+	if ts.txnInstrumentationHelper.diagnosticsCollector.NotStarted() {
+		newCtx, collectingDiagnostics = ts.txnInstrumentationHelper.MaybeStartDiagnostics(ctx, stmt.AST, stmtFingerprintId, tracer, txnID)
+	} else {
+		newCtx, collectingDiagnostics = ts.txnInstrumentationHelper.MaybeContinueDiagnostics(ctx, stmt.AST, stmtFingerprintId, txnID)
+	}
+	return
 }
 
 // finishSQLTxn finalizes a transaction's results and closes the root span for
@@ -277,26 +328,29 @@ func (ts *txnState) resetForNewSQLTxn(
 // called for starting another SQL txn. The ID of the finalized transaction is
 // returned.
 func (ts *txnState) finishSQLTxn() (txnID uuid.UUID, commitTimestamp hlc.Timestamp) {
-	ts.mon.Stop(ts.Ctx)
+	ts.txnMon.Stop(ts.Ctx)
 	sp := tracing.SpanFromContext(ts.Ctx)
 
-	if ts.recordingThreshold > 0 {
-		if elapsed := timeutil.Since(ts.recordingStart); elapsed >= ts.recordingThreshold {
+	elapsed := timeutil.Since(ts.recordingStart)
+	if ts.shouldRecord {
+		if elapsed >= ts.recordingThreshold {
 			logTraceAboveThreshold(ts.Ctx,
 				sp.GetRecording(sp.RecordingType()), /* recording */
 				"SQL txn",                           /* opName */
 				redact.Sprint(redact.Safe(txnID)),   /* detail */
 				ts.recordingThreshold,               /* threshold */
 				elapsed,                             /* elapsed */
+				ts.outputJaegerJSON,                 /* outputJaegerJSON */
 			)
 		}
 	}
-
+	ts.txnInstrumentationHelper.Finalize(ts.Ctx, elapsed, ts.mu.txn.ID())
 	sp.Finish()
 	if ts.txnCancelFn != nil {
 		ts.txnCancelFn()
 	}
 	ts.Ctx = nil
+	ts.shouldRecord = false
 	ts.recordingThreshold = 0
 	return func() (txnID uuid.UUID, timestamp hlc.Timestamp) {
 		ts.mu.Lock()
@@ -321,9 +375,9 @@ func (ts *txnState) finishSQLTxn() (txnID uuid.UUID, commitTimestamp hlc.Timesta
 // but still want to clean up other stuff.
 func (ts *txnState) finishExternalTxn() {
 	if ts.Ctx == nil {
-		ts.mon.Stop(ts.connCtx)
+		ts.txnMon.Stop(ts.connCtx)
 	} else {
-		ts.mon.Stop(ts.Ctx)
+		ts.txnMon.Stop(ts.Ctx)
 	}
 
 	if ts.Ctx != nil {

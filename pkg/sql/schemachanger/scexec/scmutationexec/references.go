@@ -11,6 +11,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/funcdesc"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/typedesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/schemachanger/scop"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -291,7 +293,7 @@ func (i *immediateVisitor) UpdateTableBackReferencesInSequences(
 				ids.ForEach(forwardRefs.Add)
 			}
 			for _, p := range tbl.GetPolicies() {
-				for _, pexpr := range []string{p.WithCheckExpr, p.UsingExpr} {
+				for _, pexpr := range []descpb.Expression{p.WithCheckExpr, p.UsingExpr} {
 					if pexpr != "" {
 						ids, err := sequenceIDsInExpr(pexpr)
 						if err != nil {
@@ -299,6 +301,12 @@ func (i *immediateVisitor) UpdateTableBackReferencesInSequences(
 						}
 						ids.ForEach(forwardRefs.Add)
 					}
+				}
+			}
+			for _, t := range tbl.GetTriggers() {
+				// This contains all relation references from the trigger.
+				for _, rel := range t.DependsOn {
+					forwardRefs.Add(rel)
 				}
 			}
 		}
@@ -400,6 +408,65 @@ func (i *immediateVisitor) RemoveTableColumnBackReferencesInFunctions(
 	return nil
 }
 
+func (i *immediateVisitor) AddTableIndexBackReferencesInFunctions(
+	ctx context.Context, op scop.AddTableIndexBackReferencesInFunctions,
+) error {
+	tblDesc, err := i.checkOutTable(ctx, op.BackReferencedTableID)
+	if err != nil {
+		return err
+	}
+	var fnIDsInUse catalog.DescriptorIDSet
+	if !tblDesc.Dropped() {
+		// If table is dropped then there is no functions in use.
+		fnIDsInUse, err = tblDesc.GetAllReferencedFunctionIDsInIndex(op.BackReferencedIndexID)
+		if err != nil {
+			return err
+		}
+	}
+	for _, id := range op.FunctionIDs {
+		// If the fnIDsInUse are functions that we are not "adding" back in, do nothing.
+		if !fnIDsInUse.Contains(id) {
+			continue
+		}
+		fnDesc, err := i.checkOutFunction(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err = fnDesc.AddIndexReference(op.BackReferencedTableID, op.BackReferencedIndexID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (i *immediateVisitor) RemoveTableIndexBackReferencesInFunctions(
+	ctx context.Context, op scop.RemoveTableIndexBackReferencesInFunctions,
+) error {
+	tblDesc, err := i.checkOutTable(ctx, op.BackReferencedTableID)
+	if err != nil {
+		return err
+	}
+	var fnIDsInUse catalog.DescriptorIDSet
+	if !tblDesc.Dropped() {
+		// If table is dropped then there is no functions in use.
+		fnIDsInUse, err = tblDesc.GetAllReferencedFunctionIDsInIndex(op.BackReferencedIndexID)
+		if err != nil {
+			return err
+		}
+	}
+	for _, id := range op.FunctionIDs {
+		if fnIDsInUse.Contains(id) {
+			continue
+		}
+		fnDesc, err := i.checkOutFunction(ctx, id)
+		if err != nil {
+			return err
+		}
+		fnDesc.RemoveIndexReference(op.BackReferencedTableID, op.BackReferencedIndexID)
+	}
+	return nil
+}
+
 func (i *immediateVisitor) AddTriggerBackReferencesInRoutines(
 	ctx context.Context, op scop.AddTriggerBackReferencesInRoutines,
 ) error {
@@ -476,10 +543,13 @@ func updateBackReferencesInSequences(
 		return err
 	}
 	var current, updated catalog.TableColSet
-	var hasExistingFwdRef bool
+	var hasExistingGenericBackRef bool
 	_ = seq.ForeachDependedOnBy(func(dep *descpb.TableDescriptor_Reference) error {
-		if dep.ID == tblID {
-			hasExistingFwdRef = true
+		// Only consider generic backrefs (TriggerID=0) as existing. Trigger-specific
+		// backrefs are managed separately and should not prevent policies/views from
+		// creating their own generic backrefs.
+		if dep.ID == tblID && dep.TriggerID == 0 {
+			hasExistingGenericBackRef = true
 			current = catalog.MakeTableColSet(dep.ColumnIDs...)
 			return iterutil.StopIteration()
 		}
@@ -490,7 +560,7 @@ func updateBackReferencesInSequences(
 		// current reference is sufficient. We can skip updating if the forward reference
 		// already points to the correct column (if specified) or, if no column is given,
 		// the table itself has an existing reference.
-		if current.Contains(colID) || (colID == 0 && hasExistingFwdRef) {
+		if current.Contains(colID) || (colID == 0 && hasExistingGenericBackRef) {
 			return nil
 		}
 		updated.UnionWith(current)
@@ -501,7 +571,7 @@ func updateBackReferencesInSequences(
 		// The sequence should no longer reference the table—either for the specified
 		// column (if provided) or for the entire table if no column is given. Check
 		// if an update is needed.
-		if (colID != 0 && !current.Contains(colID)) || (colID == 0 && !hasExistingFwdRef) {
+		if (colID != 0 && !current.Contains(colID)) || (colID == 0 && !hasExistingGenericBackRef) {
 			return nil
 		}
 		current.ForEach(func(id descpb.ColumnID) {
@@ -575,6 +645,10 @@ func (i *immediateVisitor) RemoveObjectParent(
 			return err
 		}
 		sc.RemoveFunction(obj.GetName(), obj.GetID())
+	case catalog.Table, catalog.Type:
+		// Schemas don't maintain back-references to tables or types.
+	default:
+		return errors.AssertionFailedf("unexpected descriptor type %v for RemoveObjectParent", obj.DescriptorType())
 	}
 	return nil
 }
@@ -605,6 +679,13 @@ func (i *immediateVisitor) UpdateFunctionRelationReferences(
 	if err != nil {
 		return err
 	}
+
+	// Capture old references before updating, so we can clean up stale
+	// back-references from relations and functions that are no longer
+	// depended on (needed for CREATE OR REPLACE FUNCTION).
+	oldRelIDs := catalog.MakeDescriptorIDSet(fn.DependsOn...)
+	oldFunctionIDs := catalog.MakeDescriptorIDSet(fn.DependsOnFunctions...)
+
 	relIDs := catalog.DescriptorIDSet{}
 	relIDToReferences := make(map[descpb.ID][]descpb.TableDescriptor_Reference)
 	functionIDs := catalog.DescriptorIDSet{}
@@ -638,6 +719,15 @@ func (i *immediateVisitor) UpdateFunctionRelationReferences(
 	}
 
 	for _, functionRef := range op.FunctionReferences {
+		functionIDs.Add(functionRef)
+	}
+
+	// Set DependsOnFunctions before adding back-references so that cycle
+	// detection in AddFunctionReference works correctly (it checks the
+	// caller's DependsOnFunctions to detect cycles).
+	fn.DependsOnFunctions = functionIDs.Ordered()
+
+	for _, functionRef := range op.FunctionReferences {
 		backRefFunc, err := i.checkOutFunction(ctx, functionRef)
 		if err != nil {
 			return err
@@ -645,9 +735,36 @@ func (i *immediateVisitor) UpdateFunctionRelationReferences(
 		if err := backRefFunc.AddFunctionReference(op.FunctionID); err != nil {
 			return err
 		}
-		functionIDs.Add(functionRef)
 	}
-	fn.DependsOnFunctions = functionIDs.Ordered()
+
+	// Remove back-references from old relations no longer in the new set.
+	oldRelIDs.ForEach(func(id descpb.ID) {
+		if !relIDs.Contains(id) {
+			if err2 := removeBackReferencesInRelation(ctx, i, id, op.FunctionID); err2 != nil {
+				err = err2
+			}
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	// Remove back-references from old functions no longer in the new set.
+	oldFunctionIDs.ForEach(func(id descpb.ID) {
+		if !functionIDs.Contains(id) {
+			backRefFunc, err2 := i.checkOutFunction(ctx, id)
+			if err2 != nil {
+				err = err2
+				return
+			}
+			if err2 := backRefFunc.RemoveFunctionReference(op.FunctionID); err2 != nil {
+				err = err2
+			}
+		}
+	})
+	if err != nil {
+		return err
+	}
 
 	for relID, refs := range relIDToReferences {
 		if err := updateBackReferencesInRelation(ctx, i, relID, op.FunctionID, refs); err != nil {
@@ -682,25 +799,40 @@ func updateBackReferencesInRelation(
 	return nil
 }
 
-func (i *immediateVisitor) UpdateTableBackReferencesInRelations(
-	ctx context.Context, op scop.UpdateTableBackReferencesInRelations,
+func (i *immediateVisitor) UpdateTriggerBackReferencesInRelations(
+	ctx context.Context, op scop.UpdateTriggerBackReferencesInRelations,
 ) error {
 	backRefTbl, err := i.checkOutTable(ctx, op.TableID)
 	if err != nil {
 		return err
 	}
-	forwardRefs := backRefTbl.GetAllReferencedTableIDs()
-	for _, relID := range op.RelationIDs {
-		referenced, err := i.checkOutTable(ctx, relID)
+	// Get all trigger forward references from this table.
+	refsByTriggerID, _, _ := backRefTbl.GetAllReferencedRelationIDsExceptFKs()
+
+	for _, ref := range op.RelationReferences {
+		referenced, err := i.checkOutTable(ctx, ref.ID)
 		if err != nil {
 			return err
 		}
 		newBackRefIsDupe := false
-		newBackRef := descpb.TableDescriptor_Reference{ID: op.TableID, ByID: referenced.IsSequence()}
-		removeBackRefs := !forwardRefs.Contains(referenced.GetID())
+		newBackRef := descpb.TableDescriptor_Reference{
+			ID:        op.TableID,
+			IndexID:   ref.IndexID,
+			ColumnIDs: ref.ColumnIDs,
+			ByID:      referenced.IsSequence(),
+			TriggerID: op.TriggerID,
+		}
+
+		// Check if this relation is still referenced by THIS trigger.
+		isInForwardRefs := false
+		if triggerRefs, ok := refsByTriggerID[op.TriggerID]; ok {
+			isInForwardRefs = triggerRefs.Contains(ref.ID)
+		}
+
+		removeBackRefs := !isInForwardRefs
 		newDependedOnBy := referenced.DependedOnBy[:0]
 		for _, backRef := range referenced.DependedOnBy {
-			if removeBackRefs && backRef.ID == op.TableID {
+			if removeBackRefs && backRef.ID == op.TableID && backRef.TriggerID == op.TriggerID {
 				continue
 			}
 			newBackRefIsDupe = newBackRefIsDupe || backRef.Equal(newBackRef)
@@ -752,6 +884,17 @@ func (i *immediateVisitor) SetObjectParentID(ctx context.Context, op scop.SetObj
 			}
 		}
 		sc.AddFunction(obj.GetName(), ol)
+	case *tabledesc.Mutable:
+		t.UnexposedParentSchemaID = op.ObjParent.SchemaID
+	case *typedesc.Mutable:
+		sc, err := i.checkOutSchema(ctx, op.ObjParent.SchemaID)
+		if err != nil {
+			return err
+		}
+		t.ParentID = sc.GetParentID()
+		t.ParentSchemaID = sc.GetID()
+	default:
+		return errors.AssertionFailedf("unexpected descriptor type %T for SetObjectParentID", obj)
 	}
 	return nil
 }

@@ -32,6 +32,8 @@ func registerMultiTenantUpgrade(r registry.Registry) {
 		Cluster:          r.MakeClusterSpec(7),
 		CompatibleClouds: registry.CloudsWithServiceRegistration,
 		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
+		Monitor:          true,
+		Randomized:       true,
 		Owner:            registry.OwnerServer,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runMultitenantUpgrade(ctx, t, c)
@@ -92,6 +94,9 @@ func runMultitenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) 
 		mixedversion.EnabledDeploymentModes(mixedversion.SystemOnlyDeployment),
 		// Closer to a Serverless deployment.
 		mixedversion.AlwaysUseLatestPredecessors,
+		// Disable mutators for expiration-based leases. We have seen transient
+		// failures after toggling this setting in this test.
+		mixedversion.DisableMutators(mixedversion.ClusterSettingMutator("kv.expiration_leases_only.enabled")),
 	)
 
 	tenants := makeTenants(mvt.RNG(), minTenants, maxTenants, tenantNodes)
@@ -282,7 +287,7 @@ func runMultitenantUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) 
 					}
 					defer tenantDB.Close()
 
-					binaryVersion, err := clusterupgrade.BinaryVersion(ctx, tenantDB)
+					binaryVersion, err := clusterupgrade.BinaryVersion(ctx, l, tenantDB)
 					if err != nil {
 						return errors.Wrapf(err, "failed to query binary version for %s on n%d", tenant.name, n)
 					}

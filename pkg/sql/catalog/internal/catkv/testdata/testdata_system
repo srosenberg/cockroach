@@ -1,5 +1,7 @@
 setup
 SET use_declarative_schema_changer = off;
+SET create_table_with_schema_locked=false;
+
 ALTER DATABASE defaultdb CONFIGURE ZONE USING gc.ttlseconds = 7200;
 CREATE SCHEMA sc;
 CREATE TYPE sc.greeting AS ENUM('hi', 'hello');
@@ -222,7 +224,7 @@ catalog:
   "001":
     descriptor: database
     namespace: (0, 0, "system")
-    num_objects: 63
+    num_objects: 74
     zone: gc.ttlseconds=14400
   "016":
     zone: gc.ttlseconds=3600

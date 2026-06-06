@@ -17,7 +17,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/storage/disk"
 	"github.com/cockroachdb/cockroach/pkg/storage/fs"
-	"github.com/cockroachdb/cockroach/pkg/storage/storagepb"
+	"github.com/cockroachdb/cockroach/pkg/storage/storageconfig"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
@@ -53,13 +53,6 @@ var DisableAutomaticCompactions ConfigOption = func(cfg *engineConfig) error {
 	return nil
 }
 
-// ForceWriterParallelism configures an engine to be opened with disabled
-// automatic compactions. Used primarily for debugCompactCmd.
-var ForceWriterParallelism ConfigOption = func(cfg *engineConfig) error {
-	cfg.opts.Experimental.ForceWriterParallelism = true
-	return nil
-}
-
 // ForTesting configures the engine for use in testing. It may randomize some
 // config options to improve test coverage.
 var ForTesting ConfigOption = func(cfg *engineConfig) error {
@@ -81,6 +74,14 @@ var ForTesting ConfigOption = func(cfg *engineConfig) error {
 func Attributes(attrs roachpb.Attributes) ConfigOption {
 	return func(cfg *engineConfig) error {
 		cfg.attrs = attrs
+		return nil
+	}
+}
+
+// TestingLogger overrides the logger.
+func TestingLogger(logger pebble.LoggerAndTracer) ConfigOption {
+	return func(cfg *engineConfig) error {
+		cfg.opts.LoggerAndTracer = logger
 		return nil
 	}
 }
@@ -134,20 +135,9 @@ func BlockSize(size int) ConfigOption {
 // primarily for testing purposes.
 func TargetFileSize(size int64) ConfigOption {
 	return func(cfg *engineConfig) error {
-		for i := range cfg.opts.Levels {
-			cfg.opts.Levels[i].TargetFileSize = size
+		for i := range cfg.opts.TargetFileSizes {
+			cfg.opts.TargetFileSizes[i] = size
 		}
-		return nil
-	}
-}
-
-// MaxWriterConcurrency sets the concurrency of the sstable Writers. A concurrency
-// of 0 implies no parallelism in the Writer, and a concurrency of 1 or more implies
-// parallelism in the Writer. Currently, there's no difference between a concurrency
-// of 1 or more.
-func MaxWriterConcurrency(concurrency int) ConfigOption {
-	return func(cfg *engineConfig) error {
-		cfg.opts.Experimental.MaxWriterConcurrency = concurrency
 		return nil
 	}
 }
@@ -203,7 +193,7 @@ func SharedStorage(sharedStorage cloud.ExternalStorage) ConfigOption {
 // SecondaryCache enables use of a secondary cache to store shared objects.
 func SecondaryCache(size int64) ConfigOption {
 	return func(cfg *engineConfig) error {
-		cfg.opts.Experimental.SecondaryCacheSizeBytes = size
+		cfg.opts.SecondaryCacheSizeBytes = size
 		return nil
 	}
 }
@@ -220,7 +210,7 @@ func RemoteStorageFactory(accessor *cloud.EarlyBootExternalStorageAccessor) Conf
 // compactions an Engine will execute.
 func MaxConcurrentCompactions(n int) ConfigOption {
 	return func(cfg *engineConfig) error {
-		cfg.opts.MaxConcurrentCompactions = func() int { return n }
+		cfg.opts.CompactionConcurrencyRange = func() (lower, upper int) { return 1, n }
 		return nil
 	}
 }
@@ -229,6 +219,16 @@ func MaxConcurrentCompactions(n int) ConfigOption {
 func MemtableSize(bytes uint64) ConfigOption {
 	return func(cfg *engineConfig) error {
 		cfg.opts.MemTableSize = bytes
+		return nil
+	}
+}
+
+// MemTableStopWritesThreshold configures the number of memtables that can be
+// queued before Pebble will induce a write stall, preventing all batch commits
+// from proceeding until a flush completes.
+func MemTableStopWritesThreshold(n int) ConfigOption {
+	return func(cfg *engineConfig) error {
+		cfg.opts.MemTableStopWritesThreshold = n
 		return nil
 	}
 }
@@ -286,7 +286,7 @@ func errConfigOption(err error) func(*engineConfig) error {
 
 func makeExternalWALDir(
 	engineCfg *engineConfig,
-	externalDir storagepb.ExternalPath,
+	externalDir storageconfig.ExternalPath,
 	defaultFS vfs.FS,
 	diskWriteStats disk.WriteStatsManager,
 ) (wal.Dir, error) {
@@ -304,12 +304,14 @@ func makeExternalWALDir(
 	env, err := fs.InitEnv(context.Background(), defaultFS, externalDir.Path, fs.EnvConfig{
 		RW:                engineCfg.env.RWMode(),
 		EncryptionOptions: externalDir.Encryption,
+		Version:           engineCfg.settings.Version,
 	}, diskWriteStats)
 	if err != nil {
 		return wal.Dir{}, err
 	}
 	engineCfg.afterClose = append(engineCfg.afterClose, env.Close)
 	return wal.Dir{
+		Lock:    env.DirectoryLock,
 		FS:      env,
 		Dirname: externalDir.Path,
 	}, nil
@@ -319,7 +321,7 @@ func makeExternalWALDir(
 // another volume in the event the WAL becomes blocked on a write that does not
 // complete within a reasonable duration.
 func WALFailover(
-	walCfg storagepb.WALFailover,
+	walCfg storageconfig.WALFailover,
 	storeEnvs fs.Envs,
 	defaultFS vfs.FS,
 	diskWriteStats disk.WriteStatsManager,
@@ -331,9 +333,9 @@ func WALFailover(
 	// stores. Note that the store ID is not known when a store is first opened.
 	if len(storeEnvs) == 1 {
 		switch walCfg.Mode {
-		case storagepb.WALFailoverMode_DEFAULT, storagepb.WALFailoverMode_AMONG_STORES:
+		case storageconfig.WALFailoverDefaultMode, storageconfig.WALFailoverAmongStores:
 			return noopConfigOption
-		case storagepb.WALFailoverMode_DISABLED:
+		case storageconfig.WALFailoverDisabled:
 			// Check if the user provided an explicit previous path. If they did, they
 			// were previously using WALFailoverExplicitPath and are now disabling it.
 			// We need to add the explicilt path to WALRecoveryDirs.
@@ -353,7 +355,7 @@ func WALFailover(
 			// notices the OPTIONS file encodes a WAL failover secondary that was not
 			// provided to Options.WALRecoveryDirs.
 			return noopConfigOption
-		case storagepb.WALFailoverMode_EXPLICIT_PATH:
+		case storageconfig.WALFailoverToExplicitPath:
 			// The user has provided an explicit path to which we should fail over WALs.
 			return func(cfg *engineConfig) error {
 				walDir, err := makeExternalWALDir(cfg, walCfg.Path, defaultFS, diskWriteStats)
@@ -371,19 +373,19 @@ func WALFailover(
 				return nil
 			}
 		default:
-			panic("unreachable")
+			panic(errors.AssertionFailedf("unreachable"))
 		}
 	}
 
 	switch walCfg.Mode {
-	case storagepb.WALFailoverMode_DEFAULT:
+	case storageconfig.WALFailoverDefaultMode:
 		// If the user specified no WAL failover setting, we default to disabling WAL
 		// failover and assume that the previous process did not have WAL failover
 		// enabled (so there's no need to populate Options.WALRecoveryDirs). If an
 		// operator had WAL failover enabled and now wants to disable it, they must
 		// explicitly set --wal-failover=disabled for the next process.
 		return noopConfigOption
-	case storagepb.WALFailoverMode_DISABLED:
+	case storageconfig.WALFailoverDisabled:
 		// Check if the user provided an explicit previous path; that's unsupported
 		// in multi-store configurations.
 		if walCfg.PrevPath.IsSet() {
@@ -393,13 +395,13 @@ func WALFailover(
 		// WALFailoverAmongStores.
 
 		// Fallthrough
-	case storagepb.WALFailoverMode_EXPLICIT_PATH:
+	case storageconfig.WALFailoverToExplicitPath:
 		// Not supported for multi-store configurations.
 		return errConfigOption(errors.Newf("storage: cannot use explicit path --wal-failover option with multiple stores"))
-	case storagepb.WALFailoverMode_AMONG_STORES:
+	case storageconfig.WALFailoverAmongStores:
 		// Fallthrough
 	default:
-		panic("unreachable")
+		panic(errors.AssertionFailedf("unreachable"))
 	}
 
 	// Either
@@ -464,7 +466,7 @@ func WALFailover(
 			// Use auxiliary/wals-among-stores within the other stores directory.
 			Dirname: secondaryEnv.PathJoin(secondaryEnv.Dir, base.AuxiliaryDir, "wals-among-stores"),
 		}
-		if walCfg.Mode == storagepb.WALFailoverMode_AMONG_STORES {
+		if walCfg.Mode == storageconfig.WALFailoverAmongStores {
 			cfg.opts.WALFailover = makePebbleWALFailoverOptsForDir(cfg.settings, secondary)
 			return nil
 		}
@@ -558,7 +560,7 @@ func Open(
 	var cfg engineConfig
 	cfg.env = env
 	cfg.settings = settings
-	cfg.opts = DefaultPebbleOptions()
+	cfg.opts = initPebbleOptions()
 	cfg.opts.FS = env
 	cfg.opts.ReadOnly = env.IsReadOnly()
 	for _, opt := range opts {

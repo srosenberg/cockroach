@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/roachprod"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/errors"
@@ -40,8 +39,11 @@ type ArtificialLatency struct {
 	Delay       time.Duration
 }
 
-func (l *ArtificialLatency) String() string {
-	return fmt.Sprintf("%d-%d-%s", l.Source, l.Destination, l.Delay)
+// FilterName returns the unique name for each filter. Note that the filter name maps
+// many source nodes to single destination node. Each node to node latency needs its
+// own filter, but we can inject the same rule on multiple source nodes in one shot.
+func (l *ArtificialLatency) FilterName(destNode install.Node) string {
+	return fmt.Sprintf("%d-%d-%s", l.Source, destNode, l.Delay)
 }
 
 type NetworkLatencyArgs struct {
@@ -53,16 +55,14 @@ func registerNetworkLatencyFailure(r *FailureRegistry) {
 }
 
 func MakeNetworkLatencyFailure(
-	clusterName string, l *logger.Logger, secure bool,
+	clusterName string, l *logger.Logger, clusterOpts ClusterOptions,
 ) (FailureMode, error) {
-	c, err := roachprod.GetClusterFromCache(l, clusterName, install.SecureOption(secure))
+	genericFailure, err := makeGenericFailure(clusterName, l, clusterOpts, NetworkLatencyName)
 	if err != nil {
 		return nil, err
 	}
-
-	genericFailure := GenericFailure{c: c, runTitle: "latency"}
 	return &NetworkLatency{
-		GenericFailure:       genericFailure,
+		GenericFailure:       *genericFailure,
 		classesInUse:         make(map[int]struct{}),
 		nextAvailableClass:   1,
 		filterNameToClassMap: make(map[string]int),
@@ -80,6 +80,7 @@ func (f *NetworkLatency) Setup(ctx context.Context, l *logger.Logger, args Failu
 	if err != nil {
 		return err
 	}
+	l.Printf("Setting up root htb qdisc on interfaces: %s", interfaces)
 	cmd := failScriptEarlyCmd
 	for _, iface := range interfaces {
 		// Ignore the loopback interface since no CRDB traffic should go through it
@@ -89,7 +90,6 @@ func (f *NetworkLatency) Setup(ctx context.Context, l *logger.Logger, args Failu
 		}
 		cmd += fmt.Sprintf(setupQdiscsCmd, iface)
 	}
-	l.Printf("Setting up root htb qdisc with cmd: %s", cmd)
 	if err := f.Run(ctx, l, f.c.Nodes, cmd); err != nil {
 		return err
 	}
@@ -182,10 +182,10 @@ func (f *NetworkLatency) Inject(ctx context.Context, l *logger.Logger, args Fail
 			// Enforce we don't have duplicate rules, as it complicates the removal process of filters
 			// and is something the user likely didn't intend.
 			class := f.findNextOpenClass()
-			if _, ok := f.filterNameToClassMap[latency.String()]; ok {
+			if _, ok := f.filterNameToClassMap[latency.FilterName(dest)]; ok {
 				return errors.Newf("failed trying to inject ArtificialLatency, rule already exists: %+v", latency)
 			}
-			f.filterNameToClassMap[latency.String()] = class
+			f.filterNameToClassMap[latency.FilterName(dest)] = class
 			handle := 10 * class
 
 			cmd := failScriptEarlyCmd
@@ -195,7 +195,7 @@ func (f *NetworkLatency) Inject(ctx context.Context, l *logger.Logger, args Fail
 				}
 				cmd += fmt.Sprintf(addFilterCmd, iface, class, handle, latency.Delay, dest)
 			}
-			l.Printf("Adding artificial latency from nodes %d to node %d with cmd: %s", latency.Source, dest, cmd)
+			l.Printf("Adding artificial latency from nodes %d to node %d", latency.Source, dest)
 			if err := f.Run(ctx, l, latency.Source, cmd); err != nil {
 				return err
 			}
@@ -204,7 +204,7 @@ func (f *NetworkLatency) Inject(ctx context.Context, l *logger.Logger, args Fail
 	return nil
 }
 
-func (f *NetworkLatency) Restore(ctx context.Context, l *logger.Logger, args FailureArgs) error {
+func (f *NetworkLatency) Recover(ctx context.Context, l *logger.Logger, args FailureArgs) error {
 	latencies := args.(NetworkLatencyArgs).ArtificialLatencies
 	for _, latency := range latencies {
 		for _, dest := range latency.Destination {
@@ -213,9 +213,9 @@ func (f *NetworkLatency) Restore(ctx context.Context, l *logger.Logger, args Fai
 				return err
 			}
 
-			class, ok := f.filterNameToClassMap[latency.String()]
+			class, ok := f.filterNameToClassMap[latency.FilterName(dest)]
 			if !ok {
-				return errors.New("failed trying to restore latency failure, ArtificialLatency rule was not found: %+v")
+				return errors.New("failed trying to recover latency failure, ArtificialLatency rule was not found: %+v")
 			}
 
 			cmd := failScriptEarlyCmd
@@ -232,7 +232,7 @@ func (f *NetworkLatency) Restore(ctx context.Context, l *logger.Logger, args Fai
 			if class < f.nextAvailableClass {
 				f.nextAvailableClass = class
 			}
-			delete(f.filterNameToClassMap, latency.String())
+			delete(f.filterNameToClassMap, latency.FilterName(dest))
 		}
 	}
 	return nil
@@ -266,7 +266,7 @@ func (f *NetworkLatency) WaitForFailureToPropagate(
 	return nil
 }
 
-func (f *NetworkLatency) WaitForFailureToRestore(
+func (f *NetworkLatency) WaitForFailureToRecover(
 	ctx context.Context, l *logger.Logger, args FailureArgs,
 ) error {
 	// TODO(Darryl): Monitor cluster (e.g. for replica convergence) and block until it's stable.

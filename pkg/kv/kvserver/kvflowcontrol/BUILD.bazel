@@ -3,7 +3,6 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "kvflowcontrol",
     srcs = [
-        "doc.go",
         "kvflowcontrol.go",
         "testing_knobs.go",
     ],
@@ -11,13 +10,11 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/base",
-        "//pkg/kv/kvserver/kvflowcontrol/kvflowcontrolpb",
         "//pkg/kv/kvserver/kvflowcontrol/kvflowinspectpb",
+        "//pkg/obs/ash",
         "//pkg/roachpb",
         "//pkg/settings",
-        "//pkg/settings/cluster",
         "//pkg/util/admission/admissionpb",
-        "//pkg/util/ctxutil",
         "//pkg/util/humanizeutil",
         "//pkg/util/metamorphic",
         "@com_github_cockroachdb_redact//:redact",

@@ -96,9 +96,9 @@ type JSON interface {
 	// specified, using `dir`, and is appended to `buf` and returned.
 	EncodeForwardIndex(buf []byte, dir encoding.Direction) ([]byte, error)
 
-	// encodeInvertedIndexKeys takes in a key prefix and returns a slice of
+	// EncodeInvertedIndexKeys takes in a key prefix and returns a slice of
 	// inverted index keys, one per path through the receiver.
-	encodeInvertedIndexKeys(b []byte) ([][]byte, error)
+	EncodeInvertedIndexKeys(b []byte) ([][]byte, error)
 
 	// encodeContainingInvertedIndexSpans takes in a key prefix and returns the
 	// spans that must be scanned in the inverted index to evaluate a contains (@>)
@@ -138,12 +138,10 @@ type JSON interface {
 	// produced if this JSON gets included in an inverted index.
 	numInvertedIndexEntries() (int, error)
 
-	// allPathsWithDepth returns a slice of new JSON documents, each a path
-	// through the receiver. The depth parameter specifies the maximum depth of
-	// the paths to return. If the depth is negative, all paths of any depth are
-	// returned. If the depth is 0, the receiver itself is returned. Note that
-	// leaves include the empty object and array in addition to scalars.
-	allPathsWithDepth(depth int) ([]JSON, error)
+	// allPaths returns a slice of new JSON documents, each a path to a leaf
+	// through the receiver. Note that leaves include the empty object and array
+	// in addition to scalars.
+	allPaths() ([]JSON, error)
 
 	// FetchValKey implements the `->` operator for strings, returning nil if the
 	// key is not found.
@@ -218,14 +216,14 @@ type JSON interface {
 	// JEntry.
 	encode(appendTo []byte) (jEntry jEntry, b []byte, err error)
 
-	// MaybeDecode returns an equivalent JSON which is not a jsonEncoded.
+	// MaybeDecode returns an equivalent JSON which is not a JSONEncoded.
 	MaybeDecode() JSON
 
 	// toGoRepr returns the Go-style representation of this JSON value
 	// (map[string]interface{} for objects, etc.).
 	toGoRepr() (interface{}, error)
 
-	// tryDecode returns an equivalent JSON which is not a jsonEncoded, returning
+	// tryDecode returns an equivalent JSON which is not a JSONEncoded, returning
 	// an error if the encoded data was corrupt.
 	tryDecode() (JSON, error)
 
@@ -670,7 +668,7 @@ func (j jsonTrue) Compare(other JSON) (int, error) {
 }
 
 func decodeIfNeeded(j JSON) (JSON, error) {
-	if enc, ok := j.(*jsonEncoded); ok {
+	if enc, ok := j.(*JSONEncoded); ok {
 		var err error
 		j, err = enc.decode()
 		if err != nil {
@@ -1061,7 +1059,7 @@ func init() {
 // EncodeInvertedIndexKeys takes in a key prefix and returns a slice of inverted index keys,
 // one per unique path through the receiver.
 func EncodeInvertedIndexKeys(b []byte, json JSON) ([][]byte, error) {
-	return json.encodeInvertedIndexKeys(encoding.EncodeJSONAscending(b))
+	return json.EncodeInvertedIndexKeys(encoding.EncodeJSONAscending(b))
 }
 
 // EncodeContainingInvertedIndexSpans takes in a key prefix and returns the
@@ -1132,11 +1130,11 @@ func EncodeExistsInvertedIndexSpans(
 	// string and objects with keys that are the input string.
 	builder := NewArrayBuilder(1)
 	builder.Add(js)
-	arrayKeys, err := builder.Build().encodeInvertedIndexKeys(b)
+	arrayKeys, err := builder.Build().EncodeInvertedIndexKeys(b)
 	if err != nil {
 		return nil, err
 	}
-	scalarKeys, err := js.encodeInvertedIndexKeys(b[:len(b):len(b)])
+	scalarKeys, err := js.EncodeInvertedIndexKeys(b[:len(b):len(b)])
 	if err != nil {
 		return nil, err
 	}
@@ -1166,7 +1164,7 @@ func EncodeExistsInvertedIndexSpans(
 	), nil
 }
 
-func (j jsonNull) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (j jsonNull) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	b = encoding.AddJSONPathTerminator(b)
 	return [][]byte{encoding.EncodeNullAscending(b)}, nil
 }
@@ -1184,7 +1182,7 @@ func (j jsonNull) encodeContainedInvertedIndexSpans(
 	return invertedExpr, err
 }
 
-func (jsonTrue) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (jsonTrue) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	b = encoding.AddJSONPathTerminator(b)
 	return [][]byte{encoding.EncodeTrueAscending(b)}, nil
 }
@@ -1202,7 +1200,7 @@ func (j jsonTrue) encodeContainedInvertedIndexSpans(
 	return invertedExpr, err
 }
 
-func (jsonFalse) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (jsonFalse) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	b = encoding.AddJSONPathTerminator(b)
 	return [][]byte{encoding.EncodeFalseAscending(b)}, nil
 }
@@ -1220,9 +1218,10 @@ func (j jsonFalse) encodeContainedInvertedIndexSpans(
 	return invertedExpr, err
 }
 
-func (j jsonString) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (j jsonString) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	b = encoding.AddJSONPathTerminator(b)
-	return [][]byte{encoding.EncodeStringAscending(b, string(j))}, nil
+	res := [][]byte{encoding.EncodeStringAscending(b, string(j))}
+	return res, nil
 }
 
 func (j jsonString) encodeContainingInvertedIndexSpans(
@@ -1238,7 +1237,7 @@ func (j jsonString) encodeContainedInvertedIndexSpans(
 	return invertedExpr, err
 }
 
-func (j jsonNumber) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (j jsonNumber) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	b = encoding.AddJSONPathTerminator(b)
 	var dec = apd.Decimal(j)
 	return [][]byte{encoding.EncodeDecimalAscending(b, &dec)}, nil
@@ -1257,7 +1256,7 @@ func (j jsonNumber) encodeContainedInvertedIndexSpans(
 	return invertedExpr, err
 }
 
-func (j jsonArray) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (j jsonArray) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	// Checking for an empty array.
 	if len(j) == 0 {
 		return [][]byte{encoding.EncodeJSONEmptyArray(b)}, nil
@@ -1266,7 +1265,7 @@ func (j jsonArray) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	prefix := encoding.EncodeArrayAscending(b)
 	var outKeys [][]byte
 	for i := range j {
-		children, err := j[i].encodeInvertedIndexKeys(prefix[:len(prefix):len(prefix)])
+		children, err := j[i].EncodeInvertedIndexKeys(prefix[:len(prefix):len(prefix)])
 		if err != nil {
 			return nil, err
 		}
@@ -1383,7 +1382,7 @@ func (j jsonArray) encodeContainedInvertedIndexSpans(
 	return invertedExpr, nil
 }
 
-func (j jsonObject) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
+func (j jsonObject) EncodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 	// Checking for an empty object.
 	if len(j) == 0 {
 		return [][]byte{encoding.EncodeJSONEmptyObject(b)}, nil
@@ -1391,7 +1390,7 @@ func (j jsonObject) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 
 	var outKeys [][]byte
 	for i := range j {
-		children, err := j[i].v.encodeInvertedIndexKeys(nil)
+		children, err := j[i].v.EncodeInvertedIndexKeys(nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1401,8 +1400,9 @@ func (j jsonObject) encodeInvertedIndexKeys(b []byte) ([][]byte, error) {
 		end := isEnd(j[i].v)
 
 		for _, childBytes := range children {
+			mid := encoding.EncodeJSONKeyStringAscending(nil, string(j[i].k), end)
 			encodedKey := bytes.Join([][]byte{b,
-				encoding.EncodeJSONKeyStringAscending(nil, string(j[i].k), end),
+				mid,
 				childBytes}, nil)
 
 			outKeys = append(outKeys, encodedKey)
@@ -1524,7 +1524,7 @@ func isEnd(json JSON) bool {
 			end = false
 		}
 
-	case *jsonEncoded:
+	case *JSONEncoded:
 		switch t.typ {
 		case ArrayJSONType, ObjectJSONType:
 			if t.containerLen != 0 {
@@ -1546,7 +1546,7 @@ func emptyJSONForType(json JSON) JSON {
 	case jsonObject:
 		return emptyJSONObject
 
-	case *jsonEncoded:
+	case *JSONEncoded:
 		switch t.typ {
 		case ArrayJSONType:
 			return emptyJSONArray
@@ -1570,7 +1570,7 @@ func emptyJSONForType(json JSON) JSON {
 func encodeContainingInvertedIndexSpansFromLeaf(
 	j JSON, b []byte, isRoot, isObjectValue bool,
 ) (invertedExpr inverted.Expression, err error) {
-	keys, err := j.encodeInvertedIndexKeys(b)
+	keys, err := j.EncodeInvertedIndexKeys(b)
 	if err != nil {
 		return nil, err
 	}
@@ -1659,7 +1659,7 @@ func encodeContainingInvertedIndexSpansFromLeaf(
 			arr := NewArrayBuilder(1)
 			arr.Add(j)
 			jArr := arr.Build()
-			arrKeys, err := jArr.encodeInvertedIndexKeys(prefix)
+			arrKeys, err := jArr.EncodeInvertedIndexKeys(prefix)
 			if err != nil {
 				return nil, err
 			}
@@ -1703,7 +1703,7 @@ func encodeContainingInvertedIndexSpansFromLeaf(
 func encodeContainedInvertedIndexSpansFromLeaf(
 	j JSON, b []byte, isRoot bool,
 ) (invertedExpr inverted.Expression, err error) {
-	keys, err := j.encodeInvertedIndexKeys(b)
+	keys, err := j.EncodeInvertedIndexKeys(b)
 	if err != nil {
 		return nil, err
 	}
@@ -1769,7 +1769,7 @@ func (j jsonArray) numInvertedIndexEntries() (int, error) {
 	if len(j) == 0 {
 		return 1, nil
 	}
-	keys, err := j.encodeInvertedIndexKeys(nil)
+	keys, err := j.EncodeInvertedIndexKeys(nil)
 	if err != nil {
 		return 0, err
 	}
@@ -1795,51 +1795,36 @@ func (j jsonObject) numInvertedIndexEntries() (int, error) {
 // through the input. Note that leaves include the empty object and array
 // in addition to scalars.
 func AllPaths(j JSON) ([]JSON, error) {
-	return j.allPathsWithDepth(-1)
+	return j.allPaths()
 }
 
-// AllPathsWithDepth returns a slice of new JSON documents, each a path
-// through the receiver. The depth parameter specifies the maximum depth of
-// the paths to return. If the depth is negative, all paths of any depth are
-// returned. If the depth is 0, the receiver itself is returned. Note that
-// leaves include the empty object and array in addition to scalars.
-func AllPathsWithDepth(j JSON, depth int) ([]JSON, error) {
-	return j.allPathsWithDepth(depth)
-}
-
-func (j jsonNull) allPathsWithDepth(depth int) ([]JSON, error) {
+func (j jsonNull) allPaths() ([]JSON, error) {
 	return []JSON{j}, nil
 }
 
-func (j jsonTrue) allPathsWithDepth(depth int) ([]JSON, error) {
+func (j jsonTrue) allPaths() ([]JSON, error) {
 	return []JSON{j}, nil
 }
 
-func (j jsonFalse) allPathsWithDepth(depth int) ([]JSON, error) {
+func (j jsonFalse) allPaths() ([]JSON, error) {
 	return []JSON{j}, nil
 }
 
-func (j jsonString) allPathsWithDepth(depth int) ([]JSON, error) {
+func (j jsonString) allPaths() ([]JSON, error) {
 	return []JSON{j}, nil
 }
 
-func (j jsonNumber) allPathsWithDepth(depth int) ([]JSON, error) {
+func (j jsonNumber) allPaths() ([]JSON, error) {
 	return []JSON{j}, nil
 }
 
-func (j jsonArray) allPathsWithDepth(depth int) ([]JSON, error) {
-	if len(j) == 0 || depth == 0 {
+func (j jsonArray) allPaths() ([]JSON, error) {
+	if len(j) == 0 {
 		return []JSON{j}, nil
 	}
 	ret := make([]JSON, 0, len(j))
 	for i := range j {
-		var paths []JSON
-		var err error
-		if depth > 0 {
-			paths, err = j[i].allPathsWithDepth(depth - 1)
-		} else {
-			paths, err = j[i].allPathsWithDepth(depth)
-		}
+		paths, err := j[i].allPaths()
 		if err != nil {
 			return nil, err
 		}
@@ -1850,19 +1835,13 @@ func (j jsonArray) allPathsWithDepth(depth int) ([]JSON, error) {
 	return ret, nil
 }
 
-func (j jsonObject) allPathsWithDepth(depth int) ([]JSON, error) {
-	if len(j) == 0 || depth == 0 {
+func (j jsonObject) allPaths() ([]JSON, error) {
+	if len(j) == 0 {
 		return []JSON{j}, nil
 	}
 	ret := make([]JSON, 0, len(j))
 	for i := range j {
-		var paths []JSON
-		var err error
-		if depth > 0 {
-			paths, err = j[i].v.allPathsWithDepth(depth - 1)
-		} else {
-			paths, err = j[i].v.allPathsWithDepth(depth)
-		}
+		paths, err := j[i].v.allPaths()
 		if err != nil {
 			return nil, err
 		}
@@ -2182,7 +2161,7 @@ var errCannotSetPathInScalar = pgerror.WithCandidateCode(errors.New("cannot set 
 // * if the provided index points to after the end of the array, `to` is appended to the array.
 func setValKeyOrIdx(j JSON, key string, to JSON, createMissing bool) (JSON, error) {
 	switch v := j.(type) {
-	case *jsonEncoded:
+	case *JSONEncoded:
 		n, err := v.shallowDecode()
 		if err != nil {
 			return nil, err
@@ -2238,7 +2217,7 @@ func deepSet(j JSON, path []string, to JSON, createMissing bool) (JSON, error) {
 		return setValKeyOrIdx(j, path[0], to, createMissing)
 	default:
 		switch v := j.(type) {
-		case *jsonEncoded:
+		case *JSONEncoded:
 			n, err := v.shallowDecode()
 			if err != nil {
 				return nil, err
@@ -2265,7 +2244,7 @@ var errCannotReplaceExistingKey = pgerror.WithCandidateCode(errors.New("cannot r
 
 func insertValKeyOrIdx(j JSON, key string, newVal JSON, insertAfter bool) (JSON, error) {
 	switch v := j.(type) {
-	case *jsonEncoded:
+	case *JSONEncoded:
 		n, err := v.shallowDecode()
 		if err != nil {
 			return nil, err
@@ -2326,7 +2305,7 @@ func deepInsert(j JSON, path []string, to JSON, insertAfter bool) (JSON, error) 
 		return insertValKeyOrIdx(j, path[0], to, insertAfter)
 	default:
 		switch v := j.(type) {
-		case *jsonEncoded:
+		case *JSONEncoded:
 			n, err := v.shallowDecode()
 			if err != nil {
 				return nil, err
@@ -2612,7 +2591,7 @@ func (j jsonArray) Exists(s string) (bool, error) {
 			if string(elem) == s {
 				return true, nil
 			}
-		case *jsonEncoded:
+		case *JSONEncoded:
 			if elem.typ == StringJSONType && string(elem.value) == s {
 				return true, nil
 			}

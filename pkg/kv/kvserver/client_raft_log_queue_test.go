@@ -22,11 +22,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/rafttrace"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
-	"github.com/cockroachdb/cockroach/pkg/rpc"
-	"github.com/cockroachdb/cockroach/pkg/rpc/nodedialer"
 	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
-	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/listenerutil"
@@ -37,7 +34,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb"
 	"github.com/cockroachdb/errors"
-	"github.com/cockroachdb/pebble/vfs"
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 )
@@ -115,7 +111,7 @@ func TestRaftLogQueue(t *testing.T) {
 				tc.GetFirstStoreFromServer(t, i).MustForceRaftLogScanAndProcess()
 			}
 			// Flush the engine to advance durability, which triggers truncation.
-			require.NoError(t, raftLeaderRepl.Store().TODOEngine().Flush())
+			require.NoError(t, raftLeaderRepl.Store().StateEngine().Flush())
 			// Ensure that compacted index has increased indicating that the log
 			// truncation has occurred.
 			afterTruncationIndex = raftLeaderRepl.GetCompactedIndex()
@@ -182,6 +178,12 @@ func TestRaftTracing(t *testing.T) {
 		tc.AddVotersOrFatal(t, key, tc.Targets(1, 2)...)
 		tc.WaitForVotersOrFatal(t, key, tc.Targets(1, 2)...)
 
+		// Exclude the possibility that the lease upgrade races with the writes
+		// below. A lease request can combine with a write request in one committed
+		// batch and prevent the early ack of the write at apply time, which we
+		// expect to find in the trace. See #165793 for the flake this fixes.
+		tc.MaybeWaitForLeaseUpgrade(context.Background(), t, tc.LookupRangeOrFatal(t, key))
+
 		for i := 0; i < 100; i++ {
 			var finish func() tracingpb.Recording
 			ctx := context.Background()
@@ -205,7 +207,9 @@ func TestRaftTracing(t *testing.T) {
 					// the ordering may change between 1->2 and 1->3. It should be
 					// sufficient to just check one of them for tracing.
 					`replica_raft.* 1->2 MsgApp`,
-					`replica_raft.* AppendThread->1 MsgStorageAppendResp`,
+					`replica_raft.* appended entries`,
+					`replica_raft.* synced log storage write at mark`,
+					`replica_raft.* applying entries`,
 					`ack-ing replication success to the client`,
 				}
 				require.NoError(t, testutils.MatchInOrder(output, expectedMessages...))
@@ -261,7 +265,7 @@ func TestCrashWhileTruncatingSideloadedEntries(t *testing.T) {
 		propFilter := newAtomicFunc(func(kvserverbase.ProposalFilterArgs) *kvpb.Error {
 			return nil
 		})
-		applyThrottle := newAtomicFunc(func(storage.FullReplicaID) {})
+		applyThrottle := newAtomicFunc(func(roachpb.FullReplicaID) {})
 		postSideEffects := newAtomicFunc(func(args kvserverbase.ApplyFilterArgs) (int, *kvpb.Error) {
 			return 0, nil
 		})
@@ -283,6 +287,7 @@ func TestCrashWhileTruncatingSideloadedEntries(t *testing.T) {
 
 		tc := testcluster.StartTestCluster(t, 3, base.TestClusterArgs{
 			ReplicationMode:     base.ReplicationManual,
+			EnablePartitioner:   true,
 			ReusableListenerReg: netReg,
 			ServerArgs: base.TestServerArgs{
 				Settings:   settings,
@@ -291,7 +296,7 @@ func TestCrashWhileTruncatingSideloadedEntries(t *testing.T) {
 					Store: &kvserver.StoreTestingKnobs{
 						DisableRaftLogQueue:     true, // we send a log truncation manually
 						DisableSyncLogWriteToss: true, // always use async log writes
-						TestingAfterRaftLogSync: func(id storage.FullReplicaID) { applyThrottle.get()(id) },
+						TestingAfterRaftLogSync: func(id roachpb.FullReplicaID) { applyThrottle.get()(id) },
 						TestingProposalFilter: func(args kvserverbase.ProposalFilterArgs) *kvpb.Error {
 							return propFilter.get()(args)
 						},
@@ -339,13 +344,10 @@ func TestCrashWhileTruncatingSideloadedEntries(t *testing.T) {
 		info(leader, "leader")
 		info(follower, "follower")
 
-		// Get the follower's file system.
-		memFS := vfsReg.Get("auto-node2-store1")
-
 		// Before writing more commands, block the raft commands application flow on
 		// the follower replica.
 		unblockApply := make(chan struct{})
-		applyThrottle.set(func(id storage.FullReplicaID) {
+		applyThrottle.set(func(id roachpb.FullReplicaID) {
 			if id == follower.ID() {
 				applyThrottle.reset()
 				<-unblockApply
@@ -409,37 +411,14 @@ func TestCrashWhileTruncatingSideloadedEntries(t *testing.T) {
 		<-truncateApplied
 		t.Log("follower applied the truncation")
 
-		// Emulate process crash at this point.
-		//
-		//	1. First, block the outgoing RPC traffic.
-		//	2. Then capture the storage state and start ignoring all the syncs.
-		//	3. Turn down the follower node.
-		//
-		// Without step 1, a flake is possible and has been observed while writing
-		// this test. Between steps 2 and 3, the follower may persist a log entry and
-		// send an ack to leader thinking that it's durable. The leader now, too,
-		// thinks that it's durable, and may a) commit this entry, and b) send a
-		// commit index advancement to the follower. If (b) happens after the follower
-		// restarted and lost the last entry, it will panic because commit index the
-		// leader sent is now above the last index in the log.
-		for _, peer := range []int{0, 2} { // the leader and the other follower
-			dialer := tc.Servers[1].NodeDialer().(*nodedialer.Dialer)
-			for c := 0; c < rpc.NumConnectionClasses; c++ {
-				brk, found := dialer.GetCircuitBreaker(tc.Servers[peer].NodeID(), rpc.ConnectionClass(c))
-				if found {
-					brk.Report(errors.New("connection is terminated by the test"))
-				}
-			}
-		}
-		crashFS := memFS.CrashClone(vfs.CrashCloneCfg{})
+		// Emulate process crash at this point. CrashNode partitions the node
+		// from all peers (blocking both incoming and outgoing traffic), takes a
+		// CrashClone of the VFS, and stops the server.
 		info(follower, "follower")
 		t.Log("CRASH!")
-		// TODO(pavelkalinnikov): add "crash" helpers to the TestCluster.
-		tc.StopServer(1)
+		tc.CrashNode(1)
 
 		t.Log("restarting follower")
-		vfsReg.Set("auto-node2-store1", crashFS)
-		t.Logf("FS after restart:\n%s", crashFS.String())
 		require.NoError(t, tc.RestartServer(1))
 
 		// Update the follower variable to point at a newly restarted replica.

@@ -94,21 +94,21 @@ func compareRowToEncRow(
 
 func getMemoryMonitor(st *cluster.Settings) *mon.BytesMonitor {
 	return mon.NewMonitor(mon.Options{
-		Name:     mon.MakeMonitorName("test-mem"),
+		Name:     mon.MakeName("test-mem"),
 		Settings: st,
 	})
 }
 
 func getUnlimitedMemoryMonitor(st *cluster.Settings) *mon.BytesMonitor {
 	return mon.NewUnlimitedMonitor(context.Background(), mon.Options{
-		Name:     mon.MakeMonitorName("test-mem"),
+		Name:     mon.MakeName("test-mem"),
 		Settings: st,
 	})
 }
 
 func getDiskMonitor(st *cluster.Settings) *mon.BytesMonitor {
 	return mon.NewMonitor(mon.Options{
-		Name:     mon.MakeMonitorName("test-disk"),
+		Name:     mon.MakeName("test-disk"),
 		Res:      mon.DiskResource,
 		Settings: st,
 	})
@@ -120,7 +120,7 @@ func TestDiskRowContainer(t *testing.T) {
 
 	ctx := context.Background()
 	st := cluster.MakeTestingClusterSettings()
-	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), base.DefaultTestStoreSpec, nil /* statsCollector */)
+	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), nil /* statsCollector */)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,17 +281,21 @@ func TestDiskRowContainer(t *testing.T) {
 					}
 
 					// Check sorted order.
-					sortedRows.getEncRow(sortedRows.scratchEncRow, numKeysRead)
+					err = sortedRows.getEncRow(sortedRows.scratchEncRow, numKeysRead)
+					if err != nil {
+						t.Fatal(err)
+					}
 					if cmp, err := compareEncRows(
 						ctx, types, sortedRows.scratchEncRow, row, &evalCtx, d.datumAlloc, ordering,
 					); err != nil {
 						t.Fatal(err)
 					} else if cmp != 0 {
-						sortedRows.getEncRow(sortedRows.scratchEncRow, numKeysRead)
+						err = sortedRows.getEncRow(sortedRows.scratchEncRow, numKeysRead)
 						t.Fatalf(
-							"expected %s to be equal to %s",
+							"expected %s to be equal to %s (err=%v)",
 							row.String(types),
 							sortedRows.scratchEncRow.String(types),
+							err,
 						)
 					}
 					numKeysRead++
@@ -330,7 +334,7 @@ func TestDiskRowContainer(t *testing.T) {
 			addRowCalls := rng.Intn(numRows)
 			for i := 0; i < addRowCalls; i++ {
 				require.NoError(t, d.AddRow(ctx, rows[i]))
-				require.Equal(t, d.bufferedRows.NumPutsSinceFlush(), len(d.deDupCache))
+				require.Equal(t, d.bufferedRows.NumMutationsSinceFlush(), len(d.deDupCache))
 			}
 			// Repeatedly add the same set of rows.
 			for i := 0; i < 3; i++ {
@@ -434,7 +438,7 @@ func TestDiskRowContainerDiskFull(t *testing.T) {
 	ctx := context.Background()
 	st := cluster.MakeTestingClusterSettings()
 	evalCtx := eval.MakeTestingEvalContext(st)
-	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), base.DefaultTestStoreSpec, nil /* statsCollector */)
+	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), nil /* statsCollector */)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +459,7 @@ func TestDiskRowContainerDiskFull(t *testing.T) {
 	)
 	defer d.Close(ctx)
 
-	row := rowenc.EncDatumRow{rowenc.DatumToEncDatum(types.Int, tree.NewDInt(tree.DInt(1)))}
+	row := rowenc.EncDatumRow{rowenc.DatumToEncDatumUnsafe(types.Int, tree.NewDInt(tree.DInt(1)))}
 	err = d.AddRow(ctx, row)
 	if code := pgerror.GetPGCode(err); code != pgcode.DiskFull {
 		t.Fatalf("unexpected error: %v", err)
@@ -470,7 +474,7 @@ func TestDiskRowContainerFinalIterator(t *testing.T) {
 	st := cluster.MakeTestingClusterSettings()
 	alloc := &tree.DatumAlloc{}
 	evalCtx := eval.MakeTestingEvalContext(st)
-	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), base.DefaultTestStoreSpec, nil /* statsCollector */)
+	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), nil /* statsCollector */)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -593,7 +597,7 @@ func TestDiskRowContainerUnsafeReset(t *testing.T) {
 	ctx := context.Background()
 	st := cluster.MakeTestingClusterSettings()
 	evalCtx := eval.MakeTestingEvalContext(st)
-	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), base.DefaultTestStoreSpec, nil /* statsCollector */)
+	tempEngine, _, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), nil /* statsCollector */)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,15 +8,14 @@ package backupinfo
 import (
 	"bytes"
 	"context"
-	"io"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backupencryption"
-	"github.com/cockroachdb/cockroach/pkg/ccl/storageccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/storage"
+	"github.com/cockroachdb/pebble/objstorage"
 )
 
 func makeWriter(
@@ -25,8 +24,9 @@ func makeWriter(
 	filename string,
 	enc *jobspb.BackupEncryptionOptions,
 	kmsEnv cloud.KMSEnv,
-) (io.WriteCloser, error) {
-	w, err := dest.Writer(ctx, filename)
+) (objstorage.Writable, error) {
+	var w objstorage.Writable
+	w, err := cloud.OpenAbortableWriter(ctx, dest, filename)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func makeWriter(
 		if err != nil {
 			return nil, err
 		}
-		encW, err := storageccl.EncryptingWriter(w, key)
+		encW, err := storage.EncryptingWriter(w, key)
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func makeBytesIter(
 		encOpts = &kvpb.FileEncryptionOptions{Key: key}
 	}
 
-	iter, err := storageccl.ExternalSSTReader(ctx, []storageccl.StoreFile{{Store: store,
+	iter, err := storage.ExternalSSTReader(ctx, []storage.StoreFile{{Store: store,
 		FilePath: path}}, encOpts, iterOpts)
 	if err != nil {
 		return bytesIter{iterError: err}

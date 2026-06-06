@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
@@ -26,7 +27,7 @@ func TestCommentOnColumn(t *testing.T) {
 		if _, err := db.Exec(`
 		CREATE DATABASE d;
 		SET DATABASE = d;
-		CREATE TABLE t (c1 INT, c2 INT, c3 INT);
+		CREATE TABLE t (c1 INT, c2 INT, c3 INT) WITH (schema_locked=false);
 	`); err != nil {
 			t.Fatal(err)
 		}
@@ -213,7 +214,8 @@ func TestCommentOnAlteredColumn(t *testing.T) {
 func runCommentOnTests(t *testing.T, testFunc func(db *gosql.DB)) {
 	for _, setupQuery := range []string{
 		`SET use_declarative_schema_changer = 'on'`,
-		`SET use_declarative_schema_changer = 'off'`,
+		`SET create_table_with_schema_locked=false;
+		 SET use_declarative_schema_changer = 'off';`,
 	} {
 		runOneCommentOnTest(t, setupQuery, testFunc)
 	}
@@ -224,8 +226,7 @@ func runCommentOnTestsDeclarativeOnly(t *testing.T, testFunc func(db *gosql.DB))
 }
 
 func runOneCommentOnTest(t *testing.T, setupQuery string, testFunc func(db *gosql.DB)) {
-	params, _ := createTestServerParamsAllowTenants()
-	s, db, _ := serverutils.StartServer(t, params)
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
 	defer s.Stopper().Stop(context.Background())
 	_, err := db.Exec(setupQuery)
 	require.NoError(t, err)

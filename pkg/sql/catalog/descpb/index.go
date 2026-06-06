@@ -7,8 +7,11 @@ package descpb
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catenumpb"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/idxtype"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -47,6 +50,11 @@ func (desc *IndexDescriptor) FillColumns(elems tree.IndexElemList) error {
 		if c.Expr != nil {
 			return errors.AssertionFailedf("index elem expression should have been replaced with a column")
 		}
+		// Vector index prefix columns don't have a direction, nor do the vector columns themselves.
+		if !desc.Type.HasScannablePrefix() && c.Direction != tree.DefaultDirection {
+			return pgerror.Newf(pgcode.FeatureNotSupported,
+				"%s does not support the %s option", idxtype.ErrorText(desc.Type), c.Direction)
+		}
 		desc.KeyColumnNames = append(desc.KeyColumnNames, string(c.Column))
 		switch c.Direction {
 		case tree.Ascending, tree.DefaultDirection:
@@ -82,13 +90,24 @@ func (desc *IndexDescriptor) implicitColumnIDs() ColumnIDs {
 // IsValidReferencedUniqueConstraint returns whether the index can serve
 // as a referenced index for a foreign key constraint with the provided set
 // of referencedColumnIDs.
-func (desc *IndexDescriptor) IsValidReferencedUniqueConstraint(referencedColIDs ColumnIDs) bool {
+//
+// When asSubset is false, the index must cover referencedColIDs exactly
+// (a permutation match). When true, the index validates as a subset match:
+// the index's key columns may be a non-empty subset of referencedColIDs.
+func (desc *IndexDescriptor) IsValidReferencedUniqueConstraint(
+	referencedColIDs ColumnIDs, asSubset bool,
+) bool {
+	if !desc.Unique || desc.IsPartial() {
+		return false
+	}
 	explicitColumnIDs := desc.explicitColumnIDsWithoutShardColumn()
-	allColumnIDs := append(explicitColumnIDs, desc.implicitColumnIDs()...)
-	return desc.Unique &&
-		!desc.IsPartial() &&
-		(explicitColumnIDs.PermutationOf(referencedColIDs) ||
-			allColumnIDs.PermutationOf(referencedColIDs))
+	allColumnIDs := slices.Concat(explicitColumnIDs, desc.implicitColumnIDs())
+	if asSubset {
+		return explicitColumnIDs.IsNonEmptySubsetOf(referencedColIDs) ||
+			allColumnIDs.IsNonEmptySubsetOf(referencedColIDs)
+	}
+	return explicitColumnIDs.PermutationOf(referencedColIDs) ||
+		allColumnIDs.PermutationOf(referencedColIDs)
 }
 
 // GetName is part of the UniqueConstraint interface.

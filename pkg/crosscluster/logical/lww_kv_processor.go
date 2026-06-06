@@ -10,12 +10,15 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdcevent"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
+	"github.com/cockroachdb/cockroach/pkg/crosscluster/logical/sqlwriter"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv"
+	"github.com/cockroachdb/cockroach/pkg/kv/bulk"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/lease"
@@ -27,8 +30,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/row"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
-	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/sql/stats"
+	"github.com/cockroachdb/cockroach/pkg/util/admission"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
@@ -40,14 +43,14 @@ import (
 type kvRowProcessor struct {
 	decoder cdcevent.Decoder
 	lastRow cdcevent.Row
-	alloc   *tree.DatumAlloc
 	cfg     *execinfra.ServerConfig
 	spec    execinfrapb.LogicalReplicationWriterSpec
 	evalCtx *eval.Context
-	sd      *sessiondata.SessionData
 
 	dstBySrc map[descpb.ID]descpb.ID
 	writers  map[descpb.ID]*kvTableWriter
+
+	pacer *admission.Pacer
 
 	failureInjector
 }
@@ -60,28 +63,16 @@ func newKVRowProcessor(
 	ctx context.Context,
 	cfg *execinfra.ServerConfig,
 	evalCtx *eval.Context,
-	sd *sessiondata.SessionData,
 	spec execinfrapb.LogicalReplicationWriterSpec,
 	procConfigByDestID map[descpb.ID]sqlProcessorTableConfig,
 ) (*kvRowProcessor, error) {
-	cdcEventTargets := changefeedbase.Targets{}
-	srcTablesBySrcID := make(map[descpb.ID]catalog.TableDescriptor, len(procConfigByDestID))
 	dstBySrc := make(map[descpb.ID]descpb.ID, len(procConfigByDestID))
 
 	for dstID, s := range procConfigByDestID {
 		dstBySrc[s.srcDesc.GetID()] = dstID
-		srcTablesBySrcID[s.srcDesc.GetID()] = s.srcDesc
-		cdcEventTargets.Add(changefeedbase.Target{
-			Type:              jobspb.ChangefeedTargetSpecification_EACH_FAMILY,
-			TableID:           s.srcDesc.GetID(),
-			StatementTimeName: changefeedbase.StatementTimeName(s.srcDesc.GetName()),
-		})
 	}
 
-	prefixlessCodec := keys.SystemSQLCodec
-	rfCache, err := cdcevent.NewFixedRowFetcherCache(
-		ctx, prefixlessCodec, evalCtx.Settings, cdcEventTargets, srcTablesBySrcID,
-	)
+	decoder, err := newCdcEventDecoder(ctx, procConfigByDestID, evalCtx.Settings)
 	if err != nil {
 		return nil, err
 	}
@@ -90,22 +81,51 @@ func newKVRowProcessor(
 		cfg:      cfg,
 		spec:     spec,
 		evalCtx:  evalCtx,
-		sd:       sd,
 		dstBySrc: dstBySrc,
 		writers:  make(map[descpb.ID]*kvTableWriter, len(procConfigByDestID)),
-		decoder:  cdcevent.NewEventDecoderWithCache(ctx, rfCache, false, false),
-		alloc:    &tree.DatumAlloc{},
+		decoder:  decoder,
+		pacer:    bulk.NewCPUPacer(ctx, cfg.DB.KV(), useLowPriority),
 	}
 	return p, nil
 }
 
-var originID1Options = &kvpb.WriteOptions{OriginID: 1}
+func newCdcEventDecoder(
+	ctx context.Context,
+	procConfigByDestID map[descpb.ID]sqlProcessorTableConfig,
+	settings *cluster.Settings,
+) (cdcevent.Decoder, error) {
+	cdcEventTargets := changefeedbase.Targets{}
+	srcTablesBySrcID := make(map[descpb.ID]catalog.TableDescriptor, len(procConfigByDestID))
+
+	for _, s := range procConfigByDestID {
+		srcTablesBySrcID[s.srcDesc.GetID()] = s.srcDesc
+		cdcEventTargets.Add(changefeedbase.Target{
+			Type:              jobspb.ChangefeedTargetSpecification_EACH_FAMILY,
+			DescID:            s.srcDesc.GetID(),
+			StatementTimeName: changefeedbase.StatementTimeName(s.srcDesc.GetName()),
+		})
+	}
+
+	prefixlessCodec := keys.SystemSQLCodec
+	rfCache, err := cdcevent.NewFixedRowFetcherCache(
+		ctx, prefixlessCodec, settings, cdcEventTargets, srcTablesBySrcID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return cdcevent.NewEventDecoderWithCache(ctx, rfCache, false, false, cdcevent.DecoderOptions{}), nil
+}
 
 func (p *kvRowProcessor) HandleBatch(
 	ctx context.Context, batch []streampb.StreamEvent_KV,
 ) (batchStats, error) {
 	ctx, sp := tracing.ChildSpan(ctx, "kvRowProcessor.HandleBatch")
 	defer sp.Finish()
+
+	if _, err := p.pacer.Pace(ctx); err != nil {
+		return batchStats{}, err
+	}
 
 	if len(batch) == 1 {
 		stats := batchStats{}
@@ -139,6 +159,10 @@ func (p *kvRowProcessor) HandleBatch(
 	return batchStats{}, errors.AssertionFailedf("TODO: multi-row transactions not supported by the kvRowProcessor")
 }
 
+func (p *kvRowProcessor) BatchSize() int {
+	return 1
+}
+
 func (p *kvRowProcessor) processRow(
 	ctx context.Context,
 	txn isql.Txn,
@@ -152,10 +176,14 @@ func (p *kvRowProcessor) processRow(
 		return batchStats{}, errors.Wrap(err, "stripping tenant prefix")
 	}
 
-	row, err := p.decoder.DecodeKV(ctx, keyValue, cdcevent.CurrentRow, keyValue.Value.Timestamp, false)
+	row, status, err := p.decoder.DecodeKV(ctx, keyValue, cdcevent.CurrentRow, keyValue.Value.Timestamp, false)
 	if err != nil {
 		p.lastRow = cdcevent.Row{}
 		return batchStats{}, errors.Wrap(err, "decoding KeyValue")
+	}
+	if status != cdcevent.DecodeOK {
+		p.lastRow = cdcevent.Row{}
+		return batchStats{}, errors.Newf("unexpected decode status: %v", status)
 	}
 	dstTableID, ok := p.dstBySrc[row.TableID]
 	if !ok {
@@ -179,11 +207,11 @@ func (p *kvRowProcessor) processRow(
 	return batchStats{}, p.addToBatch(ctx, txn.KV(), b, dstTableID, row, keyValue, prevValue)
 }
 
-func (p *kvRowProcessor) ReportMutations(refresher *stats.Refresher) {
+func (p *kvRowProcessor) ReportMutations(ctx context.Context, refresher *stats.Refresher) {
 	for _, w := range p.writers {
 		if w.unreportedMutations > 0 && w.leased != nil {
 			if desc := w.leased.Underlying(); desc != nil {
-				refresher.NotifyMutation(desc.(catalog.TableDescriptor), w.unreportedMutations)
+				refresher.NotifyMutation(ctx, desc.(catalog.TableDescriptor), w.unreportedMutations)
 				w.unreportedMutations = 0
 			}
 		}
@@ -206,7 +234,7 @@ const maxRefreshCount = 10
 
 func makeKVBatch(lowPri bool, txn *kv.Txn) *kv.Batch {
 	b := txn.NewBatch()
-	b.Header.WriteOptions = originID1Options
+	b.Header.WriteOptions = sqlwriter.OriginID1Options
 	if lowPri {
 		b.AdmissionHeader.Priority = int32(admissionpb.BulkLowPri)
 	} else {
@@ -226,6 +254,7 @@ func (p *kvRowProcessor) processOneRow(
 	refreshCount int,
 ) error {
 	if err := p.cfg.DB.KV().Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+		txn.SetBufferedWritesEnabled(false)
 		b := makeKVBatch(useLowPriority.Get(&p.cfg.Settings.SV), txn)
 
 		if err := p.addToBatch(ctx, txn, b, dstTableID, row, k, prevValue); err != nil {
@@ -307,12 +336,15 @@ func (p *kvRowProcessor) addToBatch(
 		return err
 	}
 
-	prevRow, err := p.decoder.DecodeKV(ctx, roachpb.KeyValue{
+	prevRow, prevStatus, err := p.decoder.DecodeKV(ctx, roachpb.KeyValue{
 		Key:   keyValue.Key,
 		Value: prevValue,
 	}, cdcevent.PrevRow, prevValue.Timestamp, false)
 	if err != nil {
 		return err
+	}
+	if prevStatus != cdcevent.DecodeOK {
+		return errors.Newf("unexpected decode status: %v", prevStatus)
 	}
 
 	if row.IsDeleted() {
@@ -367,7 +399,7 @@ func (p *kvRowProcessor) getWriter(
 		}
 	}
 
-	l, err := p.cfg.LeaseManager.(*lease.Manager).Acquire(ctx, ts, id)
+	l, err := p.cfg.LeaseManager.(*lease.Manager).Acquire(ctx, lease.TimestampToReadTimestamp(ts), id)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +412,7 @@ func (p *kvRowProcessor) getWriter(
 	}
 
 	// New lease and desc version; make a new writer.
-	w, err = newKVTableWriter(ctx, l, p.alloc, p.evalCtx)
+	w, err = newKVTableWriter(ctx, l, p.evalCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -407,12 +439,10 @@ type kvTableWriter struct {
 }
 
 func newKVTableWriter(
-	ctx context.Context, leased lease.LeasedDescriptor, a *tree.DatumAlloc, evalCtx *eval.Context,
+	ctx context.Context, leased lease.LeasedDescriptor, evalCtx *eval.Context,
 ) (*kvTableWriter, error) {
 
 	tableDesc := leased.Underlying().(catalog.TableDescriptor)
-
-	const internal = true
 
 	// TODO(dt): figure out the right sets of columns here and in fillNew/fillOld.
 	writeCols, err := writeableColunms(ctx, tableDesc)
@@ -423,13 +453,13 @@ func newKVTableWriter(
 
 	// TODO(dt): pass these some sort fo flag to have them use versions of CPut
 	// or a new LWW KV API. For now they're not detecting/handling conflicts.
-	ri, err := row.MakeInserter(ctx, nil, evalCtx.Codec, tableDesc, nil /* uniqueWithTombstoneIndexes */, writeCols, a, &evalCtx.Settings.SV, internal, nil)
+	ri, err := row.MakeInserter(evalCtx.Codec, tableDesc, nil /* uniqueWithTombstoneIndexes */, writeCols, evalCtx.SessionData(), &evalCtx.Settings.SV, nil /* metrics */)
 	if err != nil {
 		return nil, err
 	}
-	rd := row.MakeDeleter(evalCtx.Codec, tableDesc, nil /* lockedIndexes */, readCols, &evalCtx.Settings.SV, internal, nil)
+	rd := row.MakeDeleter(evalCtx.Codec, tableDesc, nil /* lockedIndexes */, readCols, evalCtx.SessionData(), &evalCtx.Settings.SV, nil /* metrics */)
 	ru, err := row.MakeUpdater(
-		ctx, nil, evalCtx.Codec, tableDesc, nil /* uniqueWithTombstoneIndexes */, readCols, writeCols, row.UpdaterDefault, a, &evalCtx.Settings.SV, internal, nil,
+		evalCtx.Codec, tableDesc, nil /* uniqueWithTombstoneIndexes */, nil /* lockedIndexes */, readCols, writeCols, row.UpdaterDefault, evalCtx.SessionData(), &evalCtx.Settings.SV, nil, /* metrics */
 	)
 	if err != nil {
 		return nil, err
@@ -478,7 +508,7 @@ func (p *kvTableWriter) insertRow(ctx context.Context, b *kv.Batch, after cdceve
 	// TODO(dt): support partial indexes.
 	var vh row.VectorIndexUpdateHelper
 	// TODO(mw5h, drewk): support vector indexes.
-	oth := &row.OriginTimestampCPutHelper{
+	oth := row.OriginTimestampCPutHelper{
 		OriginTimestamp: after.MvccTimestamp,
 		// TODO(ssd): We should choose this based by comparing the cluster IDs of the source
 		// and destination clusters.
@@ -501,13 +531,16 @@ func (p *kvTableWriter) updateRow(
 	// TODO(dt): support partial indexes.
 	var vh row.VectorIndexUpdateHelper
 	// TODO(mw5h, drewk): support vector indexes.
-	oth := &row.OriginTimestampCPutHelper{
+	oth := row.OriginTimestampCPutHelper{
 		OriginTimestamp: after.MvccTimestamp,
 		// TODO(ssd): We should choose this based by comparing the cluster IDs of the source
 		// and destination clusters.
 		// ShouldWinTie: true,
 	}
-	_, err := p.ru.UpdateRow(ctx, b, p.oldVals, p.newVals, ph, vh, oth, false)
+	_, err := p.ru.UpdateRow(
+		ctx, b, p.oldVals, p.newVals, ph, vh, oth, false, /* mustValidateOldPKValues */
+		false, /* traceKV */
+	)
 	return err
 }
 
@@ -522,7 +555,7 @@ func (p *kvTableWriter) deleteRow(
 	// TODO(dt): support partial indexes.
 	var vh row.VectorIndexUpdateHelper
 	// TODO(mw5h, drewk): support vector indexes.
-	oth := &row.OriginTimestampCPutHelper{
+	oth := row.OriginTimestampCPutHelper{
 		PreviousWasDeleted: before.IsDeleted(),
 		OriginTimestamp:    after.MvccTimestamp,
 		// TODO(ssd): We should choose this based by comparing the cluster IDs of the source
@@ -530,7 +563,9 @@ func (p *kvTableWriter) deleteRow(
 		// ShouldWinTie: true,
 	}
 
-	return p.rd.DeleteRow(ctx, b, p.oldVals, ph, vh, oth, false)
+	return p.rd.DeleteRow(
+		ctx, b, p.oldVals, ph, vh, oth, false /* mustValidateOldPKValues */, false, /* traceKV */
+	)
 }
 
 func (p *kvTableWriter) fillOld(vals cdcevent.Row) error {

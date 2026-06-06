@@ -13,6 +13,7 @@ import (
 	"time"
 
 	rperrors "github.com/cockroachdb/cockroach/pkg/roachprod/errors"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm/gce"
 	"github.com/cockroachdb/errors"
@@ -103,7 +104,7 @@ func TimeSinceUpdate(updateTime time.Time) (time.Duration, error) {
 // If the wrapped error tree of an error does not contain an instance of
 // rperrors.Error, the error will automatically be wrapped with
 // rperrors.Unclassified.
-func wrap(f func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) {
+func Wrap(f func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) {
 	return func(cmd *cobra.Command, args []string) {
 		var err error
 		isSecure, err = isSecureCluster(cmd)
@@ -127,26 +128,31 @@ func wrap(f func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Comma
 	}
 }
 
-func isSecureCluster(cmd *cobra.Command) (bool, error) {
+func isSecureCluster(cmd *cobra.Command) (install.ComplexSecureOption, error) {
 	hasSecureFlag := cmd.Flags().Changed("secure")
 	hasInsecureFlag := cmd.Flags().Changed("insecure")
 
 	switch {
 	case hasSecureFlag && hasInsecureFlag:
 		// Disallow passing both flags, even if they are consistent.
-		return false, fmt.Errorf("cannot pass both --secure and --insecure flags")
+		return install.ComplexSecureOption{}, fmt.Errorf("cannot pass both --secure and --insecure flags")
 
 	case hasSecureFlag:
-		desc := "Clusters are secure by default"
-		if !secure {
-			desc = "Use the --insecure flag to create insecure clusters"
-		}
+		return install.ComplexSecureOption{ForcedSecure: true}, nil
 
-		fmt.Printf("WARNING: --secure flag is deprecated. %s.\n", desc)
-		return secure, nil
+	case hasInsecureFlag:
+		return install.ComplexSecureOption{ForcedInsecure: true}, nil
+
+	case insecureEnvSet:
+		// If COCKROACH_ROACHPROD_INSECURE env var was explicitly set, treat it
+		// as a forced setting that takes precedence over ephemeral project defaults.
+		if insecure {
+			return install.ComplexSecureOption{ForcedInsecure: true}, nil
+		}
+		return install.ComplexSecureOption{ForcedSecure: true}, nil
 
 	default:
-		return !insecure, nil
+		return install.ComplexSecureOption{DefaultSecure: !insecure}, nil
 	}
 }
 
@@ -217,7 +223,7 @@ func ValidateAndConfigure(cmd *cobra.Command, args []string) {
 	if archOpt := cmd.Flags().Lookup("arch"); archOpt != nil && archOpt.Changed {
 		arch := vm.CPUArch(strings.ToLower(archOpt.Value.String()))
 
-		if arch != vm.ArchAMD64 && arch != vm.ArchARM64 && arch != vm.ArchFIPS {
+		if arch != vm.ArchAMD64 && arch != vm.ArchARM64 && arch != vm.ArchFIPS && arch != vm.ArchS390x {
 			printErrAndExit(fmt.Errorf("unsupported architecture %q", arch))
 		}
 		if string(arch) != archOpt.Value.String() {

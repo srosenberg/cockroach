@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backuppb"
-	"github.com/cockroachdb/cockroach/pkg/ccl/storageccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -55,7 +54,6 @@ func writeFilesSST(
 	if err != nil {
 		return err
 	}
-	defer w.Close()
 	fileSST := storage.MakeTransportSSTWriter(ctx, dest.Settings(), w)
 	defer fileSST.Close()
 
@@ -75,11 +73,7 @@ func writeFilesSST(
 		}
 	}
 
-	err = fileSST.Finish()
-	if err != nil {
-		return err
-	}
-	return w.Close()
+	return fileSST.Finish()
 }
 
 func encodeFileSSTKey(spanStart roachpb.Key, filename string) roachpb.Key {
@@ -100,9 +94,9 @@ func FileCmp(left backuppb.BackupManifest_File, right backuppb.BackupManifest_Fi
 // NewFileSSTIter creates a new FileIterator to iterate over the storeFile.
 // It is the caller's responsibility to Close() the returned iterator.
 func NewFileSSTIter(
-	ctx context.Context, storeFile storageccl.StoreFile, encOpts *kvpb.FileEncryptionOptions,
+	ctx context.Context, storeFile storage.StoreFile, encOpts *kvpb.FileEncryptionOptions,
 ) (*FileIterator, error) {
-	return newFileSSTIter(ctx, []storageccl.StoreFile{storeFile}, encOpts)
+	return newFileSSTIter(ctx, []storage.StoreFile{storeFile}, encOpts)
 }
 
 // FileIterator is a simple iterator to iterate over backuppb.BackupManifest_File.
@@ -113,9 +107,9 @@ type FileIterator struct {
 }
 
 func newFileSSTIter(
-	ctx context.Context, storeFiles []storageccl.StoreFile, encOpts *kvpb.FileEncryptionOptions,
+	ctx context.Context, storeFiles []storage.StoreFile, encOpts *kvpb.FileEncryptionOptions,
 ) (*FileIterator, error) {
-	iter, err := storageccl.ExternalSSTReader(ctx, storeFiles, encOpts, iterOpts)
+	iter, err := storage.ExternalSSTReader(ctx, storeFiles, encOpts, iterOpts)
 	if err != nil {
 		return nil, err
 	}

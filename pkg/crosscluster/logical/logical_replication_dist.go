@@ -15,7 +15,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/sql"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlclustersettings"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 )
@@ -29,11 +31,13 @@ func constructLogicalReplicationWriterSpecs(
 	previousReplicatedTimestamp hlc.Timestamp,
 	checkpoint jobspb.StreamIngestionCheckpoint,
 	tableMetadataByDestID map[int32]execinfrapb.TableReplicationMetadata,
+	srcTypes []*descpb.TypeDescriptor,
 	jobID jobspb.JobID,
 	streamID streampb.StreamID,
 	discard jobspb.LogicalReplicationDetails_Discard,
 	mode jobspb.LogicalReplicationDetails_ApplyMode,
 	metricsLabel string,
+	writer sqlclustersettings.LDRWriterType,
 ) (map[base.SQLInstanceID][]execinfrapb.LogicalReplicationWriterSpec, error) {
 	spanGroup := roachpb.SpanGroup{}
 	baseSpec := execinfrapb.LogicalReplicationWriterSpec{
@@ -47,6 +51,8 @@ func constructLogicalReplicationWriterSpecs(
 		Discard:                     discard,
 		Mode:                        mode,
 		MetricsLabel:                metricsLabel,
+		TypeDescriptors:             srcTypes,
+		WriterType:                  string(writer),
 	}
 
 	writerSpecs := make(map[base.SQLInstanceID][]execinfrapb.LogicalReplicationWriterSpec, len(destSQLInstances))
@@ -57,7 +63,7 @@ func constructLogicalReplicationWriterSpecs(
 		destID := matcher.FindMatch(candidate.ClosestDestIDs)
 		partition := candidate.Partition
 
-		log.VInfof(ctx, 2, "logical replication src-dst pair candidate: %s (locality %s) - %d ("+
+		log.Dev.VInfof(ctx, 2, "logical replication src-dst pair candidate: %s (locality %s) - %d ("+
 			"locality %s)",
 			partition.ID,
 			partition.SrcLocality,
@@ -115,7 +121,7 @@ func constructOfflineInitialScanSpecs(
 		destID := matcher.FindMatch(candidate.ClosestDestIDs)
 		partition := candidate.Partition
 
-		log.VInfof(ctx, 2, "logical replication src-dst pair candidate: %s (locality %s) - %d ("+
+		log.Dev.VInfof(ctx, 2, "logical replication src-dst pair candidate: %s (locality %s) - %d ("+
 			"locality %s)",
 			partition.ID,
 			partition.SrcLocality,

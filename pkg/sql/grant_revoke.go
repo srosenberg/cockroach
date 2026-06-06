@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
@@ -46,6 +47,12 @@ func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 	}
 	if err := privilege.ValidatePrivileges(n.Privileges, grantOn); err != nil {
 		return nil, err
+	}
+
+	if n.Privileges.Contains(privilege.REFERENCES) &&
+		!p.ExecCfg().Settings.Version.IsActive(ctx, clusterversion.V26_3_GrantReferencesToUsersWithCreate) {
+		return nil, pgerror.Newf(pgcode.InvalidGrantOperation,
+			"REFERENCES privilege is not available until upgrade to 26.3 is finalized")
 	}
 
 	grantees, err := decodeusername.FromRoleSpecList(
@@ -498,6 +505,10 @@ func (p *planner) getGrantOnObject(
 	case targets.AllTablesInSchema:
 		incIAMFunc(sqltelemetry.OnAllTablesInSchema)
 		return privilege.Table, nil
+	case targets.AllFunctionsInSchema && targets.AllProceduresInSchema:
+		incIAMFunc(sqltelemetry.OnAllFunctionsInSchema)
+		incIAMFunc(sqltelemetry.OnAllProceduresInSchema)
+		return privilege.Routine, nil
 	case targets.AllFunctionsInSchema:
 		incIAMFunc(sqltelemetry.OnAllFunctionsInSchema)
 		return privilege.Routine, nil

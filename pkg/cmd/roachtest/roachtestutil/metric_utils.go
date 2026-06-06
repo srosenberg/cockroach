@@ -9,7 +9,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -29,7 +31,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-var openmetricsLineRegex = regexp.MustCompile(`^(\w+){([^}]*)} ([\d.e+-]+) ([\d.e+-]+)$`)
+var openmetricsLineRegex = regexp.MustCompile(`^([\w:]+){([^}]*)} ([\d.e+-]+) ([\d.e+-]+)$`)
 
 // AggregatedPerfMetrics is the output of PostProcessPerfMetrics function in individual test
 type AggregatedPerfMetrics []*AggregatedMetric
@@ -102,9 +104,11 @@ type HistogramMetric struct {
 	Elapsed MetricPoint
 }
 
-// GetWorkloadHistogramArgs creates a histogram flag string based on the roachtest to pass to workload binary
+// GetWorkloadHistogramString creates a histogram flag string based on the roachtest to pass to workload binary
 // This is used to make use of t.ExportOpenmetrics() method and create appropriate exporter
-func GetWorkloadHistogramArgs(t test.Test, c cluster.Cluster, labels map[string]string) string {
+func GetWorkloadHistogramString(
+	t test.Test, c cluster.Cluster, labels map[string]string, disableTempFile bool,
+) string {
 	var histogramArgs string
 	if t.ExportOpenmetrics() {
 		// Add openmetrics related labels and arguments
@@ -115,7 +119,16 @@ func GetWorkloadHistogramArgs(t test.Test, c cluster.Cluster, labels map[string]
 		histogramArgs = fmt.Sprintf(" --histograms=%s/%s", t.PerfArtifactsDir(), GetBenchmarkMetricsFileName(t))
 	}
 
+	if disableTempFile {
+		histogramArgs += " --disable-temp-hist-file"
+	}
+
 	return histogramArgs
+}
+
+// GetWorkloadHistogramArgs makes disableTempFile false
+func GetWorkloadHistogramArgs(t test.Test, c cluster.Cluster, labels map[string]string) string {
+	return GetWorkloadHistogramString(t, c, labels, false)
 }
 
 // GetBenchmarkMetricsFileName returns the file name to store the benchmark output
@@ -433,7 +446,7 @@ func processMetricLine(line string, metric *HistogramSummaryMetricPoint) ([]*Lab
 		return nil, errors.New("error parsing metric line")
 	}
 
-	labels, err := getLabels(matches[2])
+	labels, err := GetLabels(matches[2])
 	if err != nil {
 		return nil, err
 	}
@@ -478,7 +491,7 @@ func processMetricLine(line string, metric *HistogramSummaryMetricPoint) ([]*Lab
 	return labels, nil
 }
 
-func getLabels(labels string) ([]*Label, error) {
+func GetLabels(labels string) ([]*Label, error) {
 	labelSlice := strings.Split(labels, ",")
 	var finalLabels []*Label
 
@@ -562,4 +575,78 @@ func GetOpenmetricsLabelsFromString(labelString string) (map[string]string, erro
 	}
 
 	return labels, nil
+}
+
+// WritePerfSummaryStats serializes the given metrics to both JSON
+// (for human readability) and openmetrics format, then writes both
+// files to a summary.perf directory under the test's local artifacts
+// directory.
+func WritePerfSummaryStats(t test.Test, c cluster.Cluster, stats AggregatedPerfMetrics) error {
+	if len(stats) == 0 {
+		return errors.New("no summary stats provided")
+	}
+
+	destDir := filepath.Join(t.ArtifactsDir(), "summary.perf")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
+
+	jsonBuf, err := summaryStatsToJSON(stats)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(
+		filepath.Join(destDir, "summary_stats.json"), jsonBuf.Bytes(), 0644,
+	); err != nil {
+		return err
+	}
+
+	omBuf, err := summaryStatsToOpenmetrics(t, c, stats)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(
+		filepath.Join(destDir, "summary_stats.om"), omBuf.Bytes(), 0644,
+	)
+}
+
+type summaryStatJSON struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+	Unit  string  `json:"unit"`
+}
+
+func summaryStatsToJSON(stats AggregatedPerfMetrics) (*bytes.Buffer, error) {
+	out := make([]summaryStatJSON, len(stats))
+	for i, s := range stats {
+		out[i] = summaryStatJSON{
+			Name:  s.Name,
+			Value: float64(s.Value),
+			Unit:  s.Unit,
+		}
+	}
+	buf := &bytes.Buffer{}
+	enc := json.NewEncoder(buf)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(out); err != nil {
+		return nil, errors.Wrap(err, "encoding summary stats to JSON")
+	}
+	return buf, nil
+}
+
+func summaryStatsToOpenmetrics(
+	t test.Test, c cluster.Cluster, stats AggregatedPerfMetrics,
+) (*bytes.Buffer, error) {
+	labelMap := GetOpenmetricsLabelMap(t, c, nil)
+	labels := make([]*Label, 0, len(labelMap))
+	for k, v := range labelMap {
+		labels = append(labels, &Label{Name: k, Value: v})
+	}
+	buf := &bytes.Buffer{}
+	if err := GetAggregatedMetricBytes(
+		stats, labels, timeutil.Now(), buf,
+	); err != nil {
+		return nil, errors.Wrap(err, "encoding summary stats to openmetrics")
+	}
+	return buf, nil
 }

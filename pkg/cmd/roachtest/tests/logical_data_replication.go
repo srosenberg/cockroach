@@ -14,19 +14,24 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/clusterupgrade"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationtestutils"
 	"github.com/cockroachdb/cockroach/pkg/roachprod"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/randutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
+	workloadrand "github.com/cockroachdb/cockroach/pkg/workload/rand"
 	"github.com/stretchr/testify/require"
 )
 
@@ -90,8 +95,11 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 					spec.VolumeSize(100),
 				},
 			},
-			ldrConfig: ldrConfig{mode: ModeValidated},
-			run:       TestLDRBasic,
+			ldrConfig: ldrConfig{},
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRBasic,
 		},
 		{
 			name: "ldr/kv0/workload=both/basic/validated",
@@ -106,7 +114,10 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 				},
 			},
 			ldrConfig: ldrConfig{mode: ModeValidated},
-			run:       TestLDRBasic,
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRBasic,
 		},
 		{
 			name: "ldr/kv0/workload=both/update_heavy/immediate",
@@ -121,7 +132,10 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 				},
 			},
 			ldrConfig: ldrConfig{mode: ModeValidated},
-			run:       TestLDRUpdateHeavy,
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRUpdateHeavy,
 		},
 		{
 			name: "ldr/kv0/workload=both/update_heavy/validated",
@@ -136,7 +150,10 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 				},
 			},
 			ldrConfig: ldrConfig{mode: ModeValidated},
-			run:       TestLDRUpdateHeavy,
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRUpdateHeavy,
 		},
 		{
 			name: "ldr/kv0/workload=both/shutdown_node",
@@ -150,7 +167,10 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 					spec.VolumeSize(100),
 				},
 			},
-			run: TestLDROnNodeShutdown,
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDROnNodeShutdown,
 		},
 		{
 			name: "ldr/kv0/workload=both/network_partition",
@@ -164,7 +184,10 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 					spec.VolumeSize(100),
 				},
 			},
-			run: TestLDROnNetworkPartition,
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDROnNetworkPartition,
 		},
 		{
 			name: "ldr/kv0/workload=both/schema_change",
@@ -178,7 +201,10 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 					spec.VolumeSize(100),
 				},
 			},
-			run: TestLDRSchemaChange,
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRSchemaChange,
 		},
 		{
 			name: "ldr/tpcc",
@@ -216,25 +242,92 @@ func registerLogicalDataReplicationTests(r registry.Registry) {
 			},
 			run: TestLDRCreateTablesTPCC,
 		},
+		{
+			name: "ldr/conflict",
+			clusterSpec: multiClusterSpec{
+				leftNodes:  3,
+				rightNodes: 3,
+				clusterOpts: []spec.Option{
+					spec.CPU(4),
+					spec.WorkloadNode(),
+					spec.WorkloadNodeCPU(4),
+					spec.VolumeSize(100),
+				},
+			},
+			ldrConfig: ldrConfig{
+				createTables: true,
+			},
+			requiresDeprecatedWorkload: true,
+			// The conflict workload generates tables with expression-based
+			// indexes that use virtual computed columns as index keys. Prior
+			// to 26.2, virtual computed columns in secondary indexes were
+			// unconditionally rejected during LDR stream creation.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRConflict,
+		},
+		{
+			name: "ldr/kv0/workload=source/single_key_update_benchmark",
+			clusterSpec: multiClusterSpec{
+				leftNodes:  3,
+				rightNodes: 3,
+				clusterOpts: []spec.Option{
+					spec.CPU(8),
+					spec.WorkloadNode(),
+					spec.WorkloadNodeCPU(8),
+					spec.VolumeSize(100),
+				},
+			},
+			ldrConfig: ldrConfig{
+				createTables: true,
+			},
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRHotKeyUpdate,
+			monitor:             true,
+		},
+		{
+			name: "ldr/unique_constraint/workload=source/update_benchmark",
+			clusterSpec: multiClusterSpec{
+				leftNodes:  3,
+				rightNodes: 3,
+				clusterOpts: []spec.Option{
+					spec.CPU(8),
+					spec.WorkloadNode(),
+					spec.WorkloadNodeCPU(8),
+					spec.VolumeSize(100),
+				},
+			},
+			ldrConfig: ldrConfig{
+				createTables: true,
+			},
+			// PR #158351 added --always-inc-key-seq to the kv workload
+			// in v26.2; predecessors can't parse this flag via IMPORT.
+			mixedVersionMinimum: clusterversion.V26_2,
+			run:                 TestLDRUniqueConstraintUpdate,
+			monitor:             true,
+		},
 	}
 
 	for _, sp := range specs {
-
 		r.Add(registry.TestSpec{
-			Name:             sp.name,
-			Owner:            registry.OwnerDisasterRecovery,
-			Timeout:          60 * time.Minute,
-			CompatibleClouds: registry.OnlyGCE,
-			Suites:           registry.Suites(registry.Nightly),
-			Cluster:          sp.clusterSpec.ToSpec(r),
-			Leases:           registry.MetamorphicLeases,
+			Name:                       sp.name,
+			Owner:                      registry.OwnerCDC,
+			Timeout:                    60 * time.Minute,
+			CompatibleClouds:           registry.OnlyGCE,
+			Suites:                     registry.Suites(registry.Nightly),
+			Cluster:                    sp.clusterSpec.ToSpec(r),
+			Leases:                     registry.MetamorphicLeases,
+			RequiresDeprecatedWorkload: sp.requiresDeprecatedWorkload,
+			Monitor:                    sp.monitor,
 			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 				rng, seed := randutil.NewPseudoRand()
 				t.L().Printf("random seed is %d", seed)
 				mc := multiCluster{
-					c:    c,
-					rng:  rng,
-					spec: sp.clusterSpec,
+					c:                   c,
+					rng:                 rng,
+					spec:                sp.clusterSpec,
+					mixedVersionMinimum: sp.mixedVersionMinimum,
 				}
 				setup, cleanup := mc.Start(ctx, t)
 				defer cleanup()
@@ -264,14 +357,16 @@ func TestLDRBasic(
 			maxBlockBytes:           maxBlockBytes,
 			initRows:                initRows,
 			tolerateErrors:          true,
-			initWithSplitAndScatter: !c.IsLocal()},
+			initWithSplitAndScatter: !c.IsLocal(),
+			uniform:                 true,
+		},
 		dbName:     "kv",
 		tableNames: []string{"kv"},
 	}
 
 	leftJobID, rightJobID := setupLDR(ctx, t, c, setup, ldrWorkload, ldrConfig)
 	workloadDoneCh := make(chan struct{})
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	validateLatency := setupLatencyVerifiers(ctx, t, c, monitor, leftJobID, rightJobID, setup, workloadDoneCh, 2*time.Minute)
 
 	monitor.Go(func(ctx context.Context) error {
@@ -300,6 +395,7 @@ func TestLDRSchemaChange(
 			initRows:                1000,
 			initWithSplitAndScatter: true,
 			tolerateErrors:          true,
+			uniform:                 true,
 		},
 		dbName:     "kv",
 		tableNames: []string{"kv"},
@@ -308,7 +404,7 @@ func TestLDRSchemaChange(
 	leftJobID, rightJobID := setupLDR(ctx, t, c, setup, ldrWorkload, ldrConfig)
 
 	workloadDoneCh := make(chan struct{})
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	validateLatency := setupLatencyVerifiers(ctx, t, c, monitor, leftJobID, rightJobID, setup, workloadDoneCh, 2*time.Minute)
 
 	monitor.Go(func(ctx context.Context) error {
@@ -374,7 +470,7 @@ func TestLDRTPCC(
 
 	workloadDoneCh := make(chan struct{})
 	maxExpectedLatency := 3 * time.Minute
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	validateLatency := setupLatencyVerifiers(ctx, t, c, monitor, leftJobID, rightJobID, setup, workloadDoneCh, maxExpectedLatency)
 
 	monitor.Go(func(ctx context.Context) error {
@@ -386,6 +482,128 @@ func TestLDRTPCC(
 	monitor.Wait()
 	validateLatency()
 	VerifyCorrectness(ctx, c, t, setup, leftJobID, rightJobID, 2*time.Minute, workload)
+}
+
+func TestLDRConflict(
+	ctx context.Context, t test.Test, c cluster.Cluster, setup multiClusterSetup, ldrConfig ldrConfig,
+) {
+	setup.left.sysSQL.Exec(t, "CREATE DATABASE conflict")
+	setup.right.sysSQL.Exec(t, "CREATE DATABASE conflict")
+
+	var leftJobID, rightJobID int
+	setup.right.sysSQL.Exec(t, fmt.Sprintf("CREATE EXTERNAL CONNECTION IF NOT EXISTS left AS '%s'", setup.left.PgURLForDatabase("conflict")))
+	setup.left.sysSQL.Exec(t, fmt.Sprintf("CREATE EXTERNAL CONNECTION IF NOT EXISTS right AS '%s'", setup.right.PgURLForDatabase("conflict")))
+
+	leftURLs, err := c.InternalPGUrl(ctx, t.L(), setup.left.gatewayNodes, roachprod.PGURLOptions{
+		Database: "conflict",
+	})
+	require.NoError(t, err)
+	rightURLs, err := c.InternalPGUrl(ctx, t.L(), setup.right.gatewayNodes, roachprod.PGURLOptions{
+		Database: "conflict",
+	})
+	require.NoError(t, err)
+
+	leftURL := fmt.Sprintf("\"%s\"", leftURLs[0])
+	rightURL := fmt.Sprintf("\"%s\"", rightURLs[0])
+
+	c.Run(ctx, option.WithNodes(setup.workloadNode), "./workload", "init", "conflict", leftURL)
+
+	t.Status("creating bidirectional replication job")
+	setup.right.sysSQL.QueryRow(t, `
+	CREATE LOGICALLY REPLICATED TABLE conflict.conflict FROM TABLE conflict.conflict
+		ON 'external://left'
+		WITH BIDIRECTIONAL ON 'external://right'
+	`).Scan(&rightJobID)
+
+	t.Status("waiting for right job to start up")
+	waitForReplicatedTime(t, rightJobID, setup.right.db, getLogicalDataReplicationJobInfo, 2*time.Minute)
+
+	t.Status("waiting for left job to be created")
+	testutils.SucceedsWithin(t, func() error {
+		return setup.left.db.QueryRow("SELECT job_id FROM [SHOW JOBS] WHERE job_type = 'LOGICAL REPLICATION'").Scan(&leftJobID)
+	}, 2*time.Minute)
+
+	t.Status("waiting for left job to start up")
+	waitForReplicatedTime(t, leftJobID, setup.left.db, getLogicalDataReplicationJobInfo, 2*time.Minute)
+
+	// TODO(jeffswenson): mix in random schema changes. The high level plan is:
+	// 1. Pause the workload.
+	// 2. Wait for LDR replication to catch up.
+	// 3. Stop the LDR jobs.
+	// 4. Make random schema changes.
+	// 5. Start the LDR jobs again using now() as the cursor.
+	// 6. Resume the workload.
+	t.Status("running workload")
+	c.Run(ctx, option.WithNodes(setup.workloadNode),
+		"./workload", "run", "conflict", "--duration=15m",
+		// Tolerate errors because there are some we can't easily avoid in random schemas that
+		// contain computed columns. For example, the computed column a+b may cause an insert error
+		// if a+b overflows the type.
+		"--tolerate-errors",
+		"--peer_url", rightURL,
+		leftURL)
+
+	t.Status("verifying results")
+	verifyConflictCorrectness(ctx, t, setup, leftJobID, rightJobID)
+}
+
+// verifyConflictCorrectness waits for replication to catch up, checks DLQs,
+// and compares table fingerprints. If fingerprints diverge, it runs a row-level
+// diff. There is a known bug where the conflict workload can produce two
+// conflict rows with the same origin timestamp, causing LDR to resolve them
+// nondeterministically. If all differing rows have identical origin timestamps
+// on both sides, the test passes. Otherwise, the test fails and prints the
+// diffs.
+func verifyConflictCorrectness(
+	ctx context.Context, t test.Test, setup multiClusterSetup, leftJobID, rightJobID int,
+) {
+	now := timeutil.Now()
+	t.Status("waiting for replicated times to catchup")
+	waitForReplicatedTimeToReachTimestamp(t, leftJobID, setup.left.db, getLogicalDataReplicationJobInfo, 2*time.Minute, now)
+	require.NoError(t, replicationtestutils.CheckEmptyDLQs(ctx, setup.left.db, "conflict"))
+	waitForReplicatedTimeToReachTimestamp(t, rightJobID, setup.right.db, getLogicalDataReplicationJobInfo, 2*time.Minute, now)
+	require.NoError(t, replicationtestutils.CheckEmptyDLQs(ctx, setup.right.db, "conflict"))
+
+	t.Status("comparing fingerprints")
+	fpQuery := "SHOW EXPERIMENTAL_FINGERPRINTS FROM TABLE conflict.conflict"
+	fpLeft := setup.left.sysSQL.QueryStr(t, fpQuery)
+	fpRight := setup.right.sysSQL.QueryStr(t, fpQuery)
+
+	if fmt.Sprint(fpLeft) == fmt.Sprint(fpRight) {
+		t.L().Printf("fingerprints match")
+		return
+	}
+
+	t.Status("running row-level diff")
+
+	// Limit to 100 diffs: without a limit, the worst case reports the entire
+	// database which is millions of rows. In practice we expect only 1-2 rows
+	// with matching origin timestamps, so if there are 100 or more something
+	// else is wrong.
+	const diffLimit = 100
+	conflictTable := workloadrand.QualifiedName{Table: "conflict", Schema: "public", Database: "conflict"}
+	diffs, err := workloadrand.Diff(setup.left.db, conflictTable, setup.right.db, conflictTable, diffLimit)
+	require.NoError(t, err)
+	require.NotEmpty(t, diffs, "fingerprints differ but no row diffs found")
+	require.Less(t, len(diffs), diffLimit, "too many diffs; likely a real divergence, not a timestamp tie")
+
+	// Check if all diffs are caused by the known bug: two conflict rows with
+	// the same origin timestamp cause nondeterministic resolution.
+	for _, diff := range diffs {
+		if diff.RowA == nil || diff.RowB == nil {
+			// TODO(jeffswenson): this case is a little sad because we don't
+			// currently have a way to get the origin timestamp for a tombstone, so
+			// we can't assert the only time we see this is on origin timestamp
+			// conflicts.
+			continue
+		}
+		if diff.OriginTimestampA == diff.OriginTimestampB {
+			// TODO(#168541): if the origin timestamps are the same, lww conflict
+			// resolution will tie and the clusters may diverge.
+			continue
+		}
+		t.Errorf("fingerprints differ with mismatched origin timestamps: %s", diff)
+	}
 }
 
 // TestLDRCreateTablesTPCC inits the left cluster with 1000 warehouse tpcc,
@@ -403,15 +621,15 @@ func TestLDRCreateTablesTPCC(
 	// - 15 mins of steady state. If the above scans take too long, the latency
 	// verifier may trip.
 	duration := 30 * time.Minute
-	warehouses := 1000
+	schemaWarehouses, workloadWarehouses := 1000, 500
 	if c.IsLocal() {
 		duration = 3 * time.Minute
-		warehouses = 10
+		schemaWarehouses, workloadWarehouses = 10, 10
 	}
 
 	workload := LDRWorkload{
 		workload: replicateTPCC{
-			warehouses:     warehouses,
+			warehouses:     workloadWarehouses,
 			duration:       duration,
 			repairOrderIDs: true,
 		},
@@ -424,10 +642,10 @@ func TestLDRCreateTablesTPCC(
 	setup.right.sysSQL.Exec(t, "SET CLUSTER SETTING logical_replication.consumer.low_admission_priority.enabled = false")
 	c.Run(ctx,
 		option.WithNodes(setup.workloadNode),
-		fmt.Sprintf("./cockroach workload init tpcc --warehouses=%d --fks=false {pgurl:%d:system}", warehouses, setup.left.nodes[0]))
+		fmt.Sprintf("./cockroach workload init tpcc --warehouses=%d --fks=false {pgurl:%d:system}", schemaWarehouses, setup.left.nodes[0]))
 
 	workloadDoneCh := make(chan struct{})
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	monitor.Go(func(ctx context.Context) error {
 		defer close(workloadDoneCh)
 		// Run workload on the left cluster. Unlike other ldr tests at the moment,
@@ -435,6 +653,11 @@ func TestLDRCreateTablesTPCC(
 		// on data ingested via the offline initial scan.
 		return c.RunE(ctx, option.WithNodes(setup.workloadNode), workload.workload.sourceRunCmd("system", setup.left.nodes))
 	})
+
+	// Setup LDR after the workload starts. This verifies we can catch up on
+	// backlog, ensures that writing to source table during the initial scan does
+	// not trigger any buts, and allows the test to run more quickly because the
+	// workload 30 minute timer overlaps with the ldr initial scan.
 	_, rightJobID := setupLDR(ctx, t, c, setup, workload, ldrConfig)
 
 	maxExpectedLatency := 3 * time.Minute
@@ -471,7 +694,7 @@ func TestLDRUpdateHeavy(
 
 	workloadDoneCh := make(chan struct{})
 	maxExpectedLatency := 3 * time.Minute
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	validateLatency := setupLatencyVerifiers(ctx, t, c, monitor, leftJobID, rightJobID, setup, workloadDoneCh, maxExpectedLatency)
 
 	monitor.Go(func(ctx context.Context) error {
@@ -500,7 +723,9 @@ func TestLDROnNodeShutdown(
 			maxBlockBytes:           1024,
 			initRows:                1000,
 			tolerateErrors:          true,
-			initWithSplitAndScatter: true},
+			initWithSplitAndScatter: true,
+			uniform:                 true,
+		},
 		dbName:     "kv",
 		tableNames: []string{"kv"},
 	}
@@ -575,7 +800,7 @@ func TestLDROnNodeShutdown(
 	// Setup latency verifiers, remembering to account for latency spike from killing a node
 	maxExpectedLatency := 5 * time.Minute
 	workloadDoneCh := make(chan struct{})
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	validateLatency := setupLatencyVerifiers(ctx, t, c, monitor, leftJobID, rightJobID, setup, workloadDoneCh, maxExpectedLatency)
 
 	monitor.Go(func(ctx context.Context) error {
@@ -618,14 +843,16 @@ func TestLDROnNetworkPartition(
 			maxBlockBytes:           1024,
 			initRows:                1000,
 			tolerateErrors:          true,
-			initWithSplitAndScatter: true},
+			initWithSplitAndScatter: true,
+			uniform:                 true,
+		},
 		dbName:     "kv",
 		tableNames: []string{"kv"},
 	}
 
 	leftJobID, rightJobID := setupLDR(ctx, t, c, setup, ldrWorkload, ldrConfig)
 
-	monitor := c.NewMonitor(ctx, setup.CRDBNodes())
+	monitor := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	monitor.Go(func(ctx context.Context) error {
 		return c.RunE(ctx, option.WithNodes(setup.workloadNode), ldrWorkload.workload.sourceRunCmd("system", setup.CRDBNodes()))
 	})
@@ -659,6 +886,94 @@ func TestLDROnNetworkPartition(
 	VerifyCorrectness(ctx, c, t, setup, leftJobID, rightJobID, 5*time.Minute, ldrWorkload)
 }
 
+// Unidirectional hot key update workload.
+func TestLDRHotKeyUpdate(
+	ctx context.Context, t test.Test, c cluster.Cluster, setup multiClusterSetup, ldrConfig ldrConfig,
+) {
+	duration := 10 * time.Minute
+	if c.IsLocal() {
+		duration = 3 * time.Minute
+	}
+
+	ldrWorkload := LDRWorkload{
+		workload: replicateKV{
+			readPercent:             0,
+			debugRunDuration:        duration,
+			maxBlockBytes:           1024,
+			initRows:                1,
+			tolerateErrors:          true,
+			initWithSplitAndScatter: false,
+			uniform:                 true,
+		},
+		manualSchemaSetup: true,
+		dbName:            "kv",
+		tableNames:        []string{"kv"},
+	}
+
+	setup.right.sysSQL.Exec(t, "CREATE DATABASE kv")
+	c.Run(ctx,
+		option.WithNodes(setup.workloadNode),
+		ldrWorkload.workload.sourceInitCmd("system", setup.left.nodes))
+
+	_, rightJobID := setupLDR(ctx, t, c, setup, ldrWorkload, ldrConfig)
+
+	workloadDoneCh := make(chan struct{})
+	maxExpectedLatency := 10 * time.Minute
+	group := t.NewGroup()
+	validateLatency := setupLatencyVerifiersWithGroup(t, c, group, 0 /* leftJobID */, rightJobID, setup, workloadDoneCh, maxExpectedLatency)
+
+	group.Go(func(ctx context.Context, _ *logger.Logger) error {
+		defer close(workloadDoneCh)
+		return c.RunE(ctx, option.WithNodes(setup.workloadNode), ldrWorkload.workload.sourceRunCmd("system", setup.left.nodes))
+	})
+
+	group.Wait()
+	validateLatency()
+}
+
+// Unidirectional unique constraint update workload.
+func TestLDRUniqueConstraintUpdate(
+	ctx context.Context, t test.Test, c cluster.Cluster, setup multiClusterSetup, ldrConfig ldrConfig,
+) {
+	duration := 10 * time.Minute
+	if c.IsLocal() {
+		duration = 3 * time.Minute
+	}
+
+	ldrWorkload := LDRWorkload{
+		workload: replicateUniqueIndex{
+			rows:       600,
+			dataSize:   1024,
+			splitEvery: 1000,
+			scatter:    true,
+			duration:   duration,
+		},
+		manualSchemaSetup: true,
+		dbName:            "uniqueindex",
+		tableNames:        []string{"uniqueindex"},
+	}
+
+	setup.right.sysSQL.Exec(t, "CREATE DATABASE uniqueindex")
+	c.Run(ctx,
+		option.WithNodes(setup.workloadNode),
+		ldrWorkload.workload.sourceInitCmd("system", setup.left.nodes))
+
+	_, rightJobID := setupLDR(ctx, t, c, setup, ldrWorkload, ldrConfig)
+
+	workloadDoneCh := make(chan struct{})
+	maxExpectedLatency := 10 * time.Minute
+	group := t.NewGroup()
+	validateLatency := setupLatencyVerifiersWithGroup(t, c, group, 0 /* leftJobID */, rightJobID, setup, workloadDoneCh, maxExpectedLatency)
+
+	group.Go(func(ctx context.Context, _ *logger.Logger) error {
+		defer close(workloadDoneCh)
+		return c.RunE(ctx, option.WithNodes(setup.workloadNode), ldrWorkload.workload.sourceRunCmd("system", setup.left.nodes))
+	})
+
+	group.Wait()
+	validateLatency()
+}
+
 type ldrJobInfo struct {
 	*jobRecord
 }
@@ -683,10 +998,17 @@ func getLogicalDataReplicationJobInfo(db *gosql.DB, jobID int) (jobInfo, error) 
 }
 
 type ldrTestSpec struct {
-	name        string
-	clusterSpec multiClusterSpec
-	run         func(context.Context, test.Test, cluster.Cluster, multiClusterSetup, ldrConfig)
-	ldrConfig   ldrConfig
+	name                       string
+	clusterSpec                multiClusterSpec
+	run                        func(context.Context, test.Test, cluster.Cluster, multiClusterSetup, ldrConfig)
+	ldrConfig                  ldrConfig
+	requiresDeprecatedWorkload bool
+
+	// mixedVersionMinimum, if set, is the minimum predecessor version
+	// required for mixed version testing. If no supported predecessor
+	// meets this minimum, mixed version testing is skipped.
+	mixedVersionMinimum clusterversion.Key
+	monitor             bool
 }
 
 type mode int
@@ -740,9 +1062,10 @@ func (mcs *multiClusterSpec) RightNodesList() option.NodeListOption {
 }
 
 type multiCluster struct {
-	spec multiClusterSpec
-	rng  *rand.Rand
-	c    cluster.Cluster
+	spec                multiClusterSpec
+	rng                 *rand.Rand
+	c                   cluster.Cluster
+	mixedVersionMinimum clusterversion.Key
 }
 
 type multiClusterSetup struct {
@@ -757,30 +1080,26 @@ func (mcs *multiClusterSetup) CRDBNodes() option.NodeListOption {
 }
 
 func (mc *multiCluster) StartCluster(
-	ctx context.Context, t test.Test, desc string, nodes option.NodeListOption, initTarget int,
+	ctx context.Context,
+	t test.Test,
+	desc string,
+	nodes option.NodeListOption,
+	initTarget int,
+	settings install.ClusterSettings,
 ) (*clusterInfo, func()) {
 	startOps := option.NewStartOpts(option.NoBackupSchedule)
 	startOps.RoachprodOpts.InitTarget = initTarget
 	roachtestutil.SetDefaultAdminUIPort(mc.c, &startOps.RoachprodOpts)
-	clusterSettings := install.MakeClusterSettings()
-	mc.c.Start(ctx, t.L(), startOps, clusterSettings, nodes)
+	mc.c.Start(ctx, t.L(), startOps, settings, nodes)
 
 	node := nodes.SeededRandNode(mc.rng)
-
-	addr, err := mc.c.ExternalPGUrl(ctx, t.L(), node, roachprod.PGURLOptions{})
-	require.NoError(t, err)
-
-	t.L().Printf("Randomly chosen %s node %d for gateway with address %s", desc, node, addr)
-
+	pgURL, err := makeInlineCertsURL(ctx, t, t.L(), mc.c, node)
 	require.NoError(t, err)
 
 	db := mc.c.Conn(ctx, t.L(), node[0])
 	sqlRunner := sqlutils.MakeSQLRunner(db)
 
 	sqlRunner.Exec(t, `SET CLUSTER SETTING kv.rangefeed.enabled = true`)
-
-	pgURL, err := copyPGCertsAndMakeURL(ctx, t, mc.c, node, clusterSettings.PGUrlCertsDir, addr[0])
-	require.NoError(t, err)
 
 	cleanup := func() {
 		if t.Failed() {
@@ -809,8 +1128,50 @@ func (mc *multiCluster) Start(ctx context.Context, t test.Test) (multiClusterSet
 	rightCluster := mc.c.Range(mc.spec.leftNodes+1, mc.spec.leftNodes+mc.spec.rightNodes)
 	workloadNode := mc.c.WorkloadNode()
 
-	left, cleanupLeft := mc.StartCluster(ctx, t, "left", leftCluster, mc.spec.LeftClusterStart())
-	right, cleanupRight := mc.StartCluster(ctx, t, "right", rightCluster, mc.spec.RightClusterStart())
+	leftSettings := install.MakeClusterSettings()
+	rightSettings := install.MakeClusterSettings()
+	leftVersion, rightVersion := "current", "current"
+
+	predecessorVersion, err := clusterupgrade.RandomReplicationPeerVersion(
+		mc.rng, mc.mixedVersionMinimum,
+	)
+	require.NoError(t, err)
+
+	if predecessorVersion != nil {
+		predecessorStr := predecessorVersion.String()
+		switch mc.rng.Intn(4) {
+		case 0:
+			t.L().Printf("using predecessor version %s for left cluster", predecessorStr)
+			binaryPath, err := clusterupgrade.UploadCockroach(
+				ctx, t, t.L(), mc.c, leftCluster, predecessorVersion,
+			)
+			require.NoError(t, err)
+			leftSettings.Binary = binaryPath
+			leftVersion = predecessorStr
+		case 1:
+			t.L().Printf("using predecessor version %s for right cluster", predecessorStr)
+			binaryPath, err := clusterupgrade.UploadCockroach(
+				ctx, t, t.L(), mc.c, rightCluster, predecessorVersion,
+			)
+			require.NoError(t, err)
+			rightSettings.Binary = binaryPath
+			rightVersion = predecessorStr
+		default:
+			// Both clusters run the current version.
+		}
+	}
+
+	t.L().Printf(
+		"left cluster version: %s, right cluster version: %s",
+		leftVersion, rightVersion,
+	)
+
+	left, cleanupLeft := mc.StartCluster(
+		ctx, t, "left", leftCluster, mc.spec.LeftClusterStart(), leftSettings,
+	)
+	right, cleanupRight := mc.StartCluster(
+		ctx, t, "right", rightCluster, mc.spec.RightClusterStart(), rightSettings,
+	)
 
 	return multiClusterSetup{
 			workloadNode: workloadNode,
@@ -900,7 +1261,7 @@ func setupLDR(
 	if ldrConfig.initialScanTimeout != 0 {
 		initialScanTimeout = ldrConfig.initialScanTimeout
 	}
-	initScanMon := c.NewMonitor(ctx, setup.CRDBNodes())
+	initScanMon := c.NewDeprecatedMonitor(ctx, setup.CRDBNodes())
 	approxInitScanStart := timeutil.Now()
 	t.L().Printf("Waiting for initial scan(s) to complete")
 	initScanMon.Go(func(ctx context.Context) error {
@@ -975,6 +1336,58 @@ func setupLatencyVerifiers(
 	}
 }
 
+// setupLatencyVerifiersWithGroup is like setupLatencyVerifiers but uses a
+// task.Group for goroutine management instead of the deprecated cluster.Monitor.
+func setupLatencyVerifiersWithGroup(
+	t test.Test,
+	c cluster.Cluster,
+	group task.Group,
+	leftJobID, rightJobID int,
+	setup multiClusterSetup,
+	workloadDoneCh chan struct{},
+	maxExpectedLatency time.Duration,
+) func() {
+	var llv *latencyVerifier
+	if leftJobID != 0 {
+		llv = makeLatencyVerifier("ldr-left", 0, maxExpectedLatency, t.L(),
+			getLogicalDataReplicationJobInfo, t.Status, false /* tolerateErrors */)
+	}
+
+	rlv := makeLatencyVerifier("ldr-right", 0, maxExpectedLatency, t.L(),
+		getLogicalDataReplicationJobInfo, t.Status, false /* tolerateErrors */)
+
+	debugZipFetcher := &sync.Once{}
+
+	group.Go(func(ctx context.Context, _ *logger.Logger) error {
+		if leftJobID == 0 {
+			t.L().Printf("No left job created")
+			return nil
+		}
+		if err := llv.pollLatencyUntilJobSucceeds(ctx, setup.left.db, leftJobID, time.Second, workloadDoneCh); err != nil {
+			debugZipFetcher.Do(func() { getDebugZips(ctx, t, c, setup) })
+			return err
+		}
+		return nil
+	})
+	group.Go(func(ctx context.Context, _ *logger.Logger) error {
+		if err := rlv.pollLatencyUntilJobSucceeds(ctx, setup.right.db, rightJobID, time.Second, workloadDoneCh); err != nil {
+			debugZipFetcher.Do(func() { getDebugZips(ctx, t, c, setup) })
+			return err
+		}
+		return nil
+	})
+	return func() {
+		rlv.maybeLogLatencyHist()
+		if leftJobID != 0 {
+			llv.maybeLogLatencyHist()
+		}
+		rlv.assertValid(t)
+		if leftJobID != 0 {
+			llv.assertValid(t)
+		}
+	}
+}
+
 func VerifyCorrectness(
 	ctx context.Context,
 	c cluster.Cluster,
@@ -985,7 +1398,7 @@ func VerifyCorrectness(
 	ldrWorkload LDRWorkload,
 ) {
 	now := timeutil.Now()
-	t.L().Printf("Waiting for replicated times to catchup before verifying left and right clusters")
+	t.Status("waiting for replicated times to catchup before verifying left and right clusters")
 	if leftJobID != 0 {
 		waitForReplicatedTimeToReachTimestamp(t, leftJobID, setup.left.db, getLogicalDataReplicationJobInfo, waitTime, now)
 		require.NoError(t, replicationtestutils.CheckEmptyDLQs(ctx, setup.left.db, ldrWorkload.dbName))
@@ -993,21 +1406,34 @@ func VerifyCorrectness(
 	waitForReplicatedTimeToReachTimestamp(t, rightJobID, setup.right.db, getLogicalDataReplicationJobInfo, waitTime, now)
 	require.NoError(t, replicationtestutils.CheckEmptyDLQs(ctx, setup.right.db, ldrWorkload.dbName))
 
-	t.L().Printf("Verifying equality of left and right clusters")
-	for _, tableName := range ldrWorkload.tableNames {
-		m := c.NewMonitor(context.Background(), setup.CRDBNodes())
-		var leftFingerprint, rightFingerprint [][]string
+	t.Status("verifying equality of left and right clusters")
+
+	type fingerprint struct {
+		table string
+		left  [][]string
+		right [][]string
+	}
+	fingerprints := make([]fingerprint, len(ldrWorkload.tableNames))
+
+	m := c.NewDeprecatedMonitor(context.Background(), setup.CRDBNodes())
+	for i, tableName := range ldrWorkload.tableNames {
+		fingerprints[i] = fingerprint{
+			table: tableName,
+		}
 		queryStmt := fmt.Sprintf("SHOW EXPERIMENTAL_FINGERPRINTS FROM TABLE %s.%s", ldrWorkload.dbName, tableName)
 		m.Go(func(ctx context.Context) error {
-			leftFingerprint = setup.left.sysSQL.QueryStr(t, queryStmt)
+			fingerprints[i].left = setup.left.sysSQL.QueryStr(t, queryStmt)
 			return nil
 		})
 		m.Go(func(ctx context.Context) error {
-			rightFingerprint = setup.right.sysSQL.QueryStr(t, queryStmt)
+			fingerprints[i].right = setup.right.sysSQL.QueryStr(t, queryStmt)
 			return nil
 		})
-		m.Wait()
-		require.Equal(t, leftFingerprint, rightFingerprint, "fingerprint mismatch for table %s", tableName)
+	}
+	m.Wait()
+
+	for _, f := range fingerprints {
+		require.Equal(t, f.left, f.right, "fingerprint mismatch for table %s", f.table)
 	}
 }
 

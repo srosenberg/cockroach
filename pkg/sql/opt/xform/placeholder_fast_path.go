@@ -28,24 +28,10 @@ const maxRowCountForPlaceholderFastPath = 10
 // PlaceholderScan.
 //
 // If this function succeeds, the memo will be considered fully optimized.
-func (o *Optimizer) TryPlaceholderFastPath() (ok bool, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			// This code allows us to propagate internal errors without having to add
-			// error checks everywhere throughout the code. This is only possible
-			// because the code does not update shared state and does not manipulate
-			// locks.
-			if shouldCatch, e := errorutil.ShouldCatch(r); shouldCatch {
-				err = e
-			} else {
-				// Other panic objects can't be considered "safe" and thus are
-				// propagated as crashes that terminate the session.
-				panic(r)
-			}
-		}
-	}()
+func (o *Optimizer) TryPlaceholderFastPath() (ok bool, retErr error) {
+	defer errorutil.MaybeCatchPanic(&retErr, nil /* errCallback */)
 
-	root := o.mem.RootExpr().(memo.RelExpr)
+	root := o.mem.RootExpr()
 
 	rootRelProps := root.Relational()
 	// We are dealing with a memo that still contains placeholders. The statistics
@@ -88,6 +74,11 @@ func (o *Optimizer) TryPlaceholderFastPath() (ok bool, err error) {
 		return false, nil
 	}
 
+	if scan.Flags.ForceInvertedIndex || scan.Flags.ForceZigzag {
+		// We don't support inverted or zigzag indexes in the fast path.
+		return false, nil
+	}
+
 	var constrainedCols opt.ColSet
 	for i := range sel.Filters {
 		// Each condition must be an equality between a variable and a constant
@@ -124,6 +115,10 @@ func (o *Optimizer) TryPlaceholderFastPath() (ok bool, err error) {
 		index := tabMeta.Table.Index(ord)
 		if index.Type() != idxtype.FORWARD {
 			// Skip inverted and vector indexes.
+			continue
+		}
+		if scan.Flags.ForceIndex && scan.ScanPrivate.Flags.Index != ord {
+			// If an index is forced, skip all other indexes.
 			continue
 		}
 

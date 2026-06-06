@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 )
 
 // Table is an interface to a database table, exposing only the information
@@ -69,6 +70,9 @@ type Table interface {
 	// This method should be used when mutation columns can be ignored (the common
 	// case). The returned indexes include the primary index, so the count is
 	// always >= 1.
+	// This count excludes secondary indexes that are not ready for reads yet.
+	// Those are indexes that are created during a primary index swap and are not
+	// usable until the new primary index goes public.
 	IndexCount() int
 
 	// WritableIndexCount returns the number of public and write-only indexes
@@ -171,9 +175,20 @@ type Table interface {
 	// different name in a `REGIONAL BY ROW AS` DDL clause.
 	HomeRegionColName() (colName string, ok bool)
 
+	// RegionalByRowUsingConstraint returns the foreign-key constraint that is
+	// used to look up the region for each row in a REGIONAL BY ROW table.
+	// This is only set if the infer_rbr_region_col_using_constraint storage param
+	// is set. If the storage param is not set, or if the table is not
+	// REGIONAL BY ROW, RegionalByRowUsingConstraint returns nil.
+	RegionalByRowUsingConstraint() ForeignKeyConstraint
+
 	// GetDatabaseID returns the owning database id of the table, or zero, if the
 	// owning database could not be determined.
 	GetDatabaseID() descpb.ID
+
+	// GetSchemaID returns the owning schema id of the table, or zero, if the
+	// owning schema could not be determined.
+	GetSchemaID() descpb.ID
 
 	// IsHypothetical returns true if this is a hypothetical table (used when
 	// searching for index recommendations).
@@ -194,6 +209,22 @@ type Table interface {
 
 	// Policies returns all the policies defined for this table.
 	Policies() *Policies
+
+	// CanaryAndStableStatsDiffer returns true when the canary (newest) and
+	// stable (second-newest) statistics for this table genuinely differ
+	// within the canary window. This is used solely to gate canary/stable
+	// experiment metric recording.
+	CanaryAndStableStatsDiffer() bool
+
+	// StatsCanaryWindow returns the configured canary window duration for
+	// this table. A non-zero value means the table participates in canary
+	// statistics rollout.
+	StatsCanaryWindow() time.Duration
+
+	// CanaryExpiration returns the timestamp at which this table's canary
+	// window expires. Returns the empty timestamp if there is no active
+	// canary window or canary and stable stats are already identical.
+	CanaryExpiration() hlc.Timestamp
 }
 
 // CheckConstraint represents a check constraint on a table. Check constraints
@@ -260,10 +291,8 @@ type TableStatistic interface {
 	// inverted index histograms, this will always return types.Bytes.
 	HistogramType() *types.T
 
-	// IsPartial returns true if this statistic was collected with a where
-	// clause. (If the where clause was something like "WHERE 1 = 1" or "WHERE
-	// true" this could technically be a full statistic rather than a partial
-	// statistic, but this function does not check for this.)
+	// IsPartial returns true if this statistic was collected with USING EXTREMES
+	// or with a WHERE clause.
 	IsPartial() bool
 
 	// IsMerged returns true if this statistic was created by merging a partial
@@ -291,7 +320,7 @@ type HistogramBucket struct {
 
 	// DistinctRange is the estimated number of distinct values between the upper
 	// bound of the previous bucket and UpperBound (both boundaries are
-	// exclusive).
+	// exclusive). The first bucket should always have DistinctRange=0.
 	DistinctRange float64
 
 	// UpperBound is the upper bound of the bucket.
@@ -393,12 +422,14 @@ type UniqueConstraint interface {
 	// needs to be enforced on new mutations.
 	Validated() bool
 
-	// UniquenessGuaranteedByAnotherIndex returns true when WithoutIndex() returns
-	// true and the uniqueness of the constraint is guaranteed by another index.
-	// When true, the optimizer will always consider the constraint to be
-	// satisfied when building functional dependencies for the table. This enables
-	// additional optimizations, such as omission of uniqueness checks.
-	UniquenessGuaranteedByAnotherIndex() bool
+	// CanElideUniqueCheck returns true when WithoutIndex() returns
+	// true and the uniqueness check for the constraint can be elided. This can
+	// happen when the uniqueness is guaranteed by another index, or when the
+	// skip_unique_checks storage parameter is set on the index. When true, the
+	// optimizer will not plan uniqueness checks for mutations, and will assume
+	// the unique constraint is satisfied when calculating functional
+	// dependencies.
+	CanElideUniqueCheck() bool
 }
 
 // UniqueOrdinal identifies a unique constraint (in the context of a Table).

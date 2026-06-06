@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kvevent"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
+	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/settings"
@@ -109,6 +110,7 @@ type EventSink interface {
 		ctx context.Context,
 		topic TopicDescriptor,
 		key, value []byte,
+		csvColumnHeader []byte,
 		updated, mvcc hlc.Timestamp,
 		alloc kvevent.Alloc,
 		headers rowHeaders,
@@ -146,8 +148,9 @@ func getEventSink(
 	user username.SQLUsername,
 	jobID jobspb.JobID,
 	m metricsRecorder,
+	targets changefeedbase.Targets,
 ) (EventSink, error) {
-	return getAndDialSink(ctx, serverCfg, feedCfg, timestampOracle, user, jobID, m)
+	return getAndDialSink(ctx, serverCfg, feedCfg, timestampOracle, user, jobID, m, targets, false /* initialValidation */)
 }
 
 func getResolvedTimestampSink(
@@ -158,8 +161,9 @@ func getResolvedTimestampSink(
 	user username.SQLUsername,
 	jobID jobspb.JobID,
 	m metricsRecorder,
+	targets changefeedbase.Targets,
 ) (ResolvedTimestampSink, error) {
-	return getAndDialSink(ctx, serverCfg, feedCfg, timestampOracle, user, jobID, m)
+	return getAndDialSink(ctx, serverCfg, feedCfg, timestampOracle, user, jobID, m, targets, false /* initialValidation */)
 }
 
 func getAndDialSink(
@@ -170,8 +174,10 @@ func getAndDialSink(
 	user username.SQLUsername,
 	jobID jobspb.JobID,
 	m metricsRecorder,
+	targets changefeedbase.Targets,
+	initialValidation bool,
 ) (Sink, error) {
-	sink, err := getSink(ctx, serverCfg, feedCfg, timestampOracle, user, jobID, m)
+	sink, err := getSink(ctx, serverCfg, feedCfg, timestampOracle, user, jobID, m, targets, initialValidation)
 	if err != nil {
 		return nil, err
 	}
@@ -203,10 +209,17 @@ func getSink(
 	user username.SQLUsername,
 	jobID jobspb.JobID,
 	m metricsRecorder,
+	targets changefeedbase.Targets,
+	initialValidation bool,
 ) (Sink, error) {
 	u, err := url.Parse(feedCfg.SinkURI)
 	if err != nil {
 		return nil, err
+	}
+	if initialValidation {
+		if err := changefeedbase.ValidateSinkURIParams(u); err != nil {
+			return nil, err
+		}
 	}
 	if scheme, ok := changefeedbase.NoLongerExperimental[u.Scheme]; ok {
 		u.Scheme = scheme
@@ -249,12 +262,16 @@ func getSink(
 			return makeNullSink(&changefeedbase.SinkURL{URL: u}, metricsBuilder(nullIsAccounted))
 		case isKafkaSink(u):
 			return validateOptionsAndMakeSink(changefeedbase.KafkaValidOptions, func() (Sink, error) {
+				sinkOpts, err := opts.GetKafkaSinkOptions()
+				if err != nil {
+					return nil, err
+				}
 				if KafkaV2Enabled.Get(&serverCfg.Settings.SV) {
-					return makeKafkaSinkV2(ctx, &changefeedbase.SinkURL{URL: u}, AllTargets(feedCfg), opts.GetKafkaConfigJSON(),
+					return makeKafkaSinkV2(ctx, &changefeedbase.SinkURL{URL: u}, targets, sinkOpts,
 						numSinkIOWorkers(serverCfg), newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
 						serverCfg.Settings, metricsBuilder, kafkaSinkV2Knobs{})
 				} else {
-					return makeKafkaSink(ctx, &changefeedbase.SinkURL{URL: u}, AllTargets(feedCfg), opts.GetKafkaConfigJSON(), serverCfg.Settings, metricsBuilder)
+					return makeKafkaSink(ctx, &changefeedbase.SinkURL{URL: u}, targets, sinkOpts, serverCfg.Settings, metricsBuilder)
 				}
 			})
 		case isPulsarSink(u):
@@ -262,7 +279,11 @@ func getSink(
 			if knobs, ok := serverCfg.TestingKnobs.Changefeed.(*TestingKnobs); ok {
 				testingKnobs = knobs
 			}
-			return makePulsarSink(ctx, &changefeedbase.SinkURL{URL: u}, encodingOpts, AllTargets(feedCfg), opts.GetKafkaConfigJSON(),
+			sinkOpts, err := opts.GetKafkaSinkOptions()
+			if err != nil {
+				return nil, err
+			}
+			return makePulsarSink(ctx, &changefeedbase.SinkURL{URL: u}, encodingOpts, targets, sinkOpts.JSONConfig,
 				serverCfg.Settings, metricsBuilder, testingKnobs)
 		case isWebhookSink(u):
 			webhookOpts, err := opts.GetWebhookSinkOptions()
@@ -279,7 +300,7 @@ func getSink(
 			if knobs, ok := serverCfg.TestingKnobs.Changefeed.(*TestingKnobs); ok {
 				testingKnobs = knobs
 			}
-			return makePubsubSink(ctx, u, encodingOpts, opts.GetPubsubConfigJSON(), AllTargets(feedCfg),
+			return makePubsubSink(ctx, u, encodingOpts, opts.GetPubsubConfigJSON(), targets,
 				opts.IsSet(changefeedbase.OptUnordered), numSinkIOWorkers(serverCfg),
 				newCPUPacerFactory(ctx, serverCfg), timeutil.DefaultTimeSource{},
 				metricsBuilder, serverCfg.Settings, testingKnobs)
@@ -302,13 +323,13 @@ func getSink(
 			})
 		case u.Scheme == changefeedbase.SinkSchemeExperimentalSQL:
 			return validateOptionsAndMakeSink(changefeedbase.SQLValidOptions, func() (Sink, error) {
-				return makeSQLSink(&changefeedbase.SinkURL{URL: u}, sqlSinkTableName, AllTargets(feedCfg), metricsBuilder)
+				return makeSQLSink(&changefeedbase.SinkURL{URL: u}, sqlSinkTableName, targets, metricsBuilder)
 			})
 		case u.Scheme == changefeedbase.SinkSchemeExternalConnection:
 			return validateOptionsAndMakeSink(changefeedbase.ExternalConnectionValidOptions, func() (Sink, error) {
 				return makeExternalConnectionSink(
 					ctx, &changefeedbase.SinkURL{URL: u}, user, makeExternalConnectionProvider(ctx, serverCfg.DB),
-					serverCfg, feedCfg, timestampOracle, jobID, m,
+					serverCfg, feedCfg, timestampOracle, jobID, m, targets,
 				)
 			})
 		case u.Scheme == "":
@@ -368,11 +389,12 @@ func (s errorWrapperSink) EmitRow(
 	ctx context.Context,
 	topic TopicDescriptor,
 	key, value []byte,
+	csvColumnHeader []byte,
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
 	headers rowHeaders,
 ) error {
-	if err := s.wrapped.(EventSink).EmitRow(ctx, topic, key, value, updated, mvcc, alloc, headers); err != nil {
+	if err := s.wrapped.(EventSink).EmitRow(ctx, topic, key, value, csvColumnHeader, updated, mvcc, alloc, headers); err != nil {
 		return changefeedbase.MarkRetryableError(err)
 	}
 	return nil
@@ -460,6 +482,7 @@ func (s *bufferSink) EmitRow(
 	ctx context.Context,
 	topic TopicDescriptor,
 	key, value []byte,
+	csvColumnHeader []byte,
 	updated, mvcc hlc.Timestamp,
 	r kvevent.Alloc,
 	_headers rowHeaders,
@@ -494,7 +517,7 @@ func (s *bufferSink) EmitResolvedTimestamp(
 	if err != nil {
 		return err
 	}
-	s.scratch, payload = s.scratch.Copy(payload, 0 /* extraCap */)
+	s.scratch, payload = s.scratch.Copy(payload)
 	s.buf.Push(rowenc.EncDatumRow{
 		{Datum: tree.DNull}, // resolved span
 		{Datum: tree.DNull}, // topic
@@ -572,6 +595,7 @@ func (n *nullSink) EmitRow(
 	ctx context.Context,
 	topic TopicDescriptor,
 	key, value []byte,
+	csvColumnHeader []byte,
 	updated, mvcc hlc.Timestamp,
 	r kvevent.Alloc,
 	_headers rowHeaders,
@@ -582,7 +606,7 @@ func (n *nullSink) EmitRow(
 		return err
 	}
 	if log.V(2) {
-		log.Infof(ctx, "emitting row %s@%s", key, updated.String())
+		log.Changefeed.Infof(ctx, "emitting row %s@%s", key, updated.String())
 	}
 	return nil
 }
@@ -596,7 +620,7 @@ func (n *nullSink) EmitResolvedTimestamp(
 		return err
 	}
 	if log.V(2) {
-		log.Infof(ctx, "emitting resolved %s", resolved.String())
+		log.Changefeed.Infof(ctx, "emitting resolved %s", resolved.String())
 	}
 
 	return nil
@@ -606,7 +630,7 @@ func (n *nullSink) EmitResolvedTimestamp(
 func (n *nullSink) Flush(ctx context.Context) error {
 	defer n.metrics.recordFlushRequestCallback()()
 	if log.V(2) {
-		log.Info(ctx, "flushing")
+		log.Changefeed.Info(ctx, "flushing")
 	}
 
 	return nil
@@ -651,13 +675,14 @@ func (s *safeSink) EmitRow(
 	ctx context.Context,
 	topic TopicDescriptor,
 	key, value []byte,
+	csvColumnHeader []byte,
 	updated, mvcc hlc.Timestamp,
 	alloc kvevent.Alloc,
 	headers rowHeaders,
 ) error {
 	s.Lock()
 	defer s.Unlock()
-	return s.wrapped.EmitRow(ctx, topic, key, value, updated, mvcc, alloc, headers)
+	return s.wrapped.EmitRow(ctx, topic, key, value, csvColumnHeader, updated, mvcc, alloc, headers)
 }
 
 func (s *safeSink) Flush(ctx context.Context) error {
@@ -824,6 +849,7 @@ func newCPUPacerFactory(ctx context.Context, cfg *execinfra.ServerConfig) func()
 			if !ok {
 				tenantID = roachpb.SystemTenantID
 			}
+			wid, wtype := kv.WorkloadInfoFromContext(ctx)
 
 			pacer = cfg.AdmissionPacerFactory.NewPacer(
 				pacerRequestUnit,
@@ -832,6 +858,8 @@ func newCPUPacerFactory(ctx context.Context, cfg *execinfra.ServerConfig) func()
 					Priority:        admissionpb.BulkNormalPri,
 					CreateTime:      timeutil.Now().UnixNano(),
 					BypassAdmission: false,
+					WorkloadID:      wid,
+					WorkloadType:    wtype,
 				},
 			)
 		}

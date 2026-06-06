@@ -1,3 +1,5 @@
+# knob-opt: allow-unsafe
+
 statement ok
 CREATE SEQUENCE seq;
 
@@ -198,13 +200,12 @@ $$ LANGUAGE SQL
 query T
 SELECT get_body_str('p_rewrite');
 ----
-"SELECT public.nested_func();\nSELECT nested_func FROM ROWS FROM (public.nested_func());"
+"SELECT public.nested_func();\nSELECT nested_func.nested_func FROM ROWS FROM (public.nested_func());"
 
 subtest end
 
 subtest rewrite_udf_do_block
 
-skipif config local-mixed-24.3
 statement ok
 CREATE OR REPLACE FUNCTION f_rewrite() RETURNS INT AS $$
   DO $foo$
@@ -220,7 +221,6 @@ CREATE OR REPLACE FUNCTION f_rewrite() RETURNS INT AS $$
   SELECT 1;
 $$ LANGUAGE SQL
 
-skipif config local-mixed-24.3
 query T
 SELECT get_body_str('f_rewrite');
 ----

@@ -11,6 +11,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/docs"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
+	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -19,12 +20,39 @@ import (
 // The below methods are ordered in alphabetical order. They represent statements
 // which are UNIMPLEMENTED for the legacy schema changer.
 
+func (p *planner) AlterDomain(ctx context.Context, n *tree.AlterDomain) (planNode, error) {
+	return nil, makeUnimplementedLegacyError("ALTER DOMAIN")
+}
+
 func (p *planner) AlterPolicy(ctx context.Context, n *tree.AlterPolicy) (planNode, error) {
 	return nil, makeUnimplementedLegacyError("ALTER POLICY")
 }
 
+func (p *planner) CommentOnRoutine(
+	ctx context.Context, n *tree.CommentOnRoutine,
+) (planNode, error) {
+	switch n.RoutineType {
+	case tree.ProcedureRoutine:
+		return nil, makeUnimplementedLegacyError("COMMENT ON PROCEDURE")
+	case tree.UDFRoutine | tree.ProcedureRoutine:
+		return nil, makeUnimplementedLegacyError("COMMENT ON ROUTINE")
+	default:
+		return nil, makeUnimplementedLegacyError("COMMENT ON FUNCTION")
+	}
+}
+
+func (p *planner) CommentOnSequence(
+	ctx context.Context, n *tree.CommentOnSequence,
+) (planNode, error) {
+	return nil, makeUnimplementedLegacyError("COMMENT ON SEQUENCE")
+}
+
 func (p *planner) CommentOnType(ctx context.Context, n *tree.CommentOnType) (planNode, error) {
 	return nil, makeUnimplementedLegacyError("COMMENT ON TYPE")
+}
+
+func (p *planner) CommentOnView(ctx context.Context, n *tree.CommentOnView) (planNode, error) {
+	return nil, makeUnimplementedLegacyError("COMMENT ON VIEW")
 }
 
 func (p *planner) CreatePolicy(ctx context.Context, n *tree.CreatePolicy) (planNode, error) {
@@ -73,4 +101,22 @@ func makeUnimplementedLegacyError(stmtSyntax redact.SafeString) error {
 		),
 		dscDocDetail,
 	)
+}
+
+// AlterTableSetLogged set table as unlogged or logged.
+// No-op since unlogged tables are not supported.
+func (p *planner) AlterTableSetLogged(
+	ctx context.Context, n *tree.AlterTableSetLogged,
+) (planNode, error) {
+	operation := redact.SafeString("LOGGED")
+	if !n.IsLogged {
+		operation = redact.SafeString("UNLOGGED")
+	}
+	p.BufferClientNotice(
+		ctx, pgnotice.Newf(
+			"SET %s is not supported and has no effect",
+			operation,
+		),
+	)
+	return &zeroNode{}, nil
 }

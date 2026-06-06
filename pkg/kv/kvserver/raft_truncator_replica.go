@@ -10,7 +10,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
-	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/stateloader"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 )
 
@@ -24,28 +24,30 @@ func (r *raftTruncatorReplica) getRangeID() roachpb.RangeID {
 }
 
 func (r *raftTruncatorReplica) getTruncatedState() kvserverpb.RaftTruncatedState {
-	r.mu.Lock() // TODO(pav-kv): not needed if raftMu is held.
-	defer r.mu.Unlock()
-	return r.shMu.raftTruncState
+	r.mu.RLock() // TODO(pav-kv): not needed if raftMu is held.
+	defer r.mu.RUnlock()
+	return (*Replica)(r).asLogStorage().shMu.trunc
 }
 
-func (r *raftTruncatorReplica) handleTruncationResult(ctx context.Context, pt pendingTruncation) {
-	(*Replica)(r).handleTruncatedStateResultRaftMuLocked(ctx, pt.RaftTruncatedState,
-		pt.expectedFirstIndex, pt.logDeltaBytes, pt.isDeltaTrusted)
+func (r *raftTruncatorReplica) stagePendingTruncation(_ context.Context, pt pendingTruncation) {
+	(*Replica)(r).stagePendingTruncationRaftMuLocked(pt)
+}
+
+func (r *raftTruncatorReplica) finalizeTruncation(ctx context.Context) {
+	(*Replica)(r).finalizeTruncationRaftMuLocked(ctx)
 }
 
 func (r *raftTruncatorReplica) getPendingTruncs() *pendingLogTruncations {
 	return &r.pendingLogTruncations
 }
 
-func (r *raftTruncatorReplica) sideloadedBytesIfTruncatedFromTo(
+func (r *raftTruncatorReplica) sideloadedStats(
 	ctx context.Context, span kvpb.RaftSpan,
-) (freed int64, err error) {
-	_, freed, err = r.raftMu.sideloaded.Stats(ctx, span)
-	return freed, err
+) (entries uint64, freed int64, err error) {
+	return r.logStorage.ls.Sideload.Stats(ctx, span)
 }
 
-func (r *raftTruncatorReplica) getStateLoader() stateloader.StateLoader {
+func (r *raftTruncatorReplica) getStateLoader() kvstorage.StateLoader {
 	// NB: the replicaForTruncator contract says that Replica.raftMu is held for
 	// the duration of the existence of replicaForTruncator, so we return the
 	// r.raftMu.stateloader (and not r.mu.stateLoader).

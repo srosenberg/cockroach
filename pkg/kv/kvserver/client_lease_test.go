@@ -93,6 +93,21 @@ func TestStoreRangeLease(t *testing.T) {
 		tc.SplitRangeOrFatal(t, splitKey)
 	}
 
+	// Wait until everyone has a raft leader. We've seen test failures that result
+	// from the RHS of the final split not yet having a leader when we request a
+	// lease and getting an expiration based lease.
+	for _, key := range splitKeys {
+		repl := store.LookupReplica(roachpb.RKey(key))
+		testutils.SucceedsSoon(t, func() error {
+			status := repl.RaftStatus()
+			if status == nil || status.Lead == 0 {
+				return errors.Errorf("waiting for raft leadership on key %s (range %d): state=%v",
+					key, repl.RangeID, status.RaftState)
+			}
+			return nil
+		})
+	}
+
 	// Expire all leases and send a write request to trigger a lease acquisitions.
 	// At this point, we have a leader, so the lease acquisition should be for a
 	// leader lease.
@@ -231,7 +246,7 @@ func TestGossipNodeLivenessOnLeaseChange(t *testing.T) {
 		t.Fatalf("no store has gossiped %s; gossip contents: %+v",
 			nodeLivenessKey, tc.GetFirstStoreFromServer(t, 0).Gossip().GetInfoStatus())
 	}
-	log.Infof(context.Background(), "%s gossiped from s%d",
+	log.KvExec.Infof(context.Background(), "%s gossiped from s%d",
 		nodeLivenessKey, initialServerId)
 
 	newServerIdx := (initialServerId + 1) % numStores
@@ -1058,7 +1073,7 @@ func TestLeasePreferencesDuringOutage(t *testing.T) {
 	skip.UnderShort(t)
 	// The test has 5 nodes. Its possible in stress-race for nodes to be starved
 	// out heartbeating their liveness.
-	skip.UnderRace(t)
+	skip.UnderDuressWithIssue(t, 144457)
 
 	stickyRegistry := fs.NewStickyRegistry()
 	ctx := context.Background()
@@ -1294,11 +1309,12 @@ func TestLeasesDontThrashWhenNodeBecomesSuspect(t *testing.T) {
 	st := cluster.MakeTestingClusterSettings()
 	kvserver.ExpirationLeasesOnly.Override(ctx, &st.SV, false) // override metamorphism
 
-	// Speed up lease transfers.
+	const numNodes = 4
+	const suspectServer = 1
+
 	stickyRegistry := fs.NewStickyRegistry()
 	manualClock := hlc.NewHybridManualClock()
 	serverArgs := make(map[int]base.TestServerArgs)
-	numNodes := 4
 	for i := 0; i < numNodes; i++ {
 		serverArgs[i] = base.TestServerArgs{
 			Settings: st,
@@ -1324,11 +1340,6 @@ func TestLeasesDontThrashWhenNodeBecomesSuspect(t *testing.T) {
 			ServerArgsPerNode: serverArgs,
 		})
 	defer tc.Stopper().Stop(ctx)
-
-	// We are not going to have stats, so disable this so we just rely on
-	// the store means.
-	_, err := tc.ServerConn(0).Exec(`SET CLUSTER SETTING kv.allocator.load_based_lease_rebalancing.enabled = 'false'`)
-	require.NoError(t, err)
 
 	_, rhsDesc := tc.SplitRangeOrFatal(t, bootstrap.TestingUserTableDataMin(keys.SystemSQLCodec))
 	tc.AddVotersOrFatal(t, rhsDesc.StartKey.AsRawKey(), tc.Targets(1, 2, 3)...)
@@ -1456,18 +1467,24 @@ func TestLeasesDontThrashWhenNodeBecomesSuspect(t *testing.T) {
 		heartbeat(0, 1, 2, 3)
 	}
 
+	// Verify that the previously-suspect server is no longer suspect on any
+	// store pool. Whether the lease queue actually transfers leases back
+	// depends on MMA and other allocator heuristics, which are covered by
+	// unit tests like TestAllocatorShouldTransferSuspected.
 	testutils.SucceedsSoon(t, func() error {
-		// Server 1 should get some leases back as it's no longer suspect.
-		for _, key := range startKeys {
-			runThroughTheLeaseQueue(key)
-		}
-		for _, key := range startKeys {
-			repl := tc.GetFirstStoreFromServer(t, 1).LookupReplica(roachpb.RKey(key))
-			if repl.OwnsValidLease(ctx, tc.Servers[1].Clock().NowAsClockTimestamp()) {
-				return nil
+		for i := 0; i < numNodes; i++ {
+			if i == suspectServer {
+				continue
+			}
+			live, err := tc.GetFirstStoreFromServer(t, i).GetStoreConfig().StorePool.IsLive(tc.Target(suspectServer).StoreID)
+			if err != nil {
+				return err
+			}
+			if !live {
+				return errors.Errorf("expected server %d to be live on server %d", suspectServer, i)
 			}
 		}
-		return errors.Errorf("Expected server 1 to have at lease 1 lease.")
+		return nil
 	})
 }
 
@@ -1646,6 +1663,14 @@ func TestLeaseTransfersUseExpirationLeasesAndPromoteCorrectly(t *testing.T) {
 
 		kvserver.OverrideDefaultLeaseType(ctx, &st.SV, leaseType)
 		manualClock := hlc.NewHybridManualClock()
+		// Disable proactive renewal of expiration based leases. Lease
+		// upgrades happen immediately after applying without needing active
+		// renewal. However, with leader leases, lease promotion won't happen
+		// immediately after applying the lease transfer because the new leaseholder
+		// is unlikely to be the leader.
+		// TODO(ibrahim): add comments about leader lease promotion and how that
+		//  it's not immediate in the normal case of cooperative transfer.
+		disableAutomaticLeaseRenewal := leaseType != roachpb.LeaseLeader
 		tci := serverutils.StartCluster(t, 2, base.TestClusterArgs{
 			ReplicationMode: base.ReplicationManual,
 			ServerArgs: base.TestServerArgs{
@@ -1657,10 +1682,11 @@ func TestLeaseTransfersUseExpirationLeasesAndPromoteCorrectly(t *testing.T) {
 						WallClock: manualClock,
 					},
 					Store: &kvserver.StoreTestingKnobs{
-						// Disable proactive renewal of expiration based leases. Lease
-						// upgrades happen immediately after applying without needing active
-						// renewal.
-						DisableAutomaticLeaseRenewal: true,
+						DisableAutomaticLeaseRenewal: disableAutomaticLeaseRenewal,
+						// Make sure that the test doesn't implicitly rely on the
+						// consistency queue to upgrade the lease just before running the
+						// replica through the queue.
+						DisableConsistencyQueue: true,
 						LeaseUpgradeInterceptor: func(rangeID roachpb.RangeID, lease *roachpb.Lease) {
 							mu.Lock()
 							defer mu.Unlock()
@@ -1718,6 +1744,9 @@ func TestLeaseTransfersUseExpirationLeasesAndPromoteCorrectly(t *testing.T) {
 func TestLeaseRequestBumpsEpoch(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
+
+	// This is to help investigate failures like #157128.
+	testutils.SetVModule(t, "raft=4")
 
 	testutils.RunValues(t, "lease-type", roachpb.TestingAllLeaseTypes(), func(t *testing.T, leaseType roachpb.LeaseType) {
 		ctx := context.Background()

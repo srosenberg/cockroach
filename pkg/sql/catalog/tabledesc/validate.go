@@ -19,11 +19,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/multiregion"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemaexpr"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/typedesc"
-	"github.com/cockroachdb/cockroach/pkg/sql/parser"
+	"github.com/cockroachdb/cockroach/pkg/sql/parserutils"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
-	plpgsqlparser "github.com/cockroachdb/cockroach/pkg/sql/plpgsql/parser"
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/semenumpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -95,7 +94,7 @@ func (desc *wrapper) GetReferencedDescIDs(
 			// Skip trigger function bodies - they are handled below.
 			return nil
 		}
-		if parsedExpr, err := parser.ParseExpr(*expr); err == nil {
+		if parsedExpr, err := parserutils.ParseExpr(*expr); err == nil {
 			// ignore errors
 			tree.WalkExpr(visitor, parsedExpr)
 		}
@@ -231,11 +230,14 @@ func (desc *wrapper) ValidateForwardReferences(
 	// Check partitioning is correctly set.
 	// We only check these for active indexes, as inactive indexes may be in the
 	// process of being backfilled without PartitionAllBy.
+	// No need to check index partitioning if locality is changing to/from RBR.
+	// Recreated secondary indexes might have a different partitioning from the
+	// primary key during the schema change.
 	// This check cannot be performed in ValidateSelf due to a conflict with
 	// AllocateIDs.
 	if desc.PartitionAllBy {
 		for _, indexI := range desc.ActiveIndexes() {
-			if !desc.matchingPartitionbyAll(indexI) {
+			if !indexI.Adding() && !desc.matchingPartitionbyAll(indexI) {
 				vea.Report(errors.AssertionFailedf(
 					"table has PARTITION ALL BY defined, but index %s does not have matching PARTITION BY",
 					indexI.GetName(),
@@ -248,7 +250,7 @@ func (desc *wrapper) ValidateForwardReferences(
 	for i := range desc.Triggers {
 		trigger := &desc.Triggers[i]
 		for _, id := range trigger.DependsOn {
-			vea.Report(catalog.ValidateOutboundTableRef(id, vdg))
+			vea.Report(catalog.ValidateOutboundTableRef(desc.GetID(), id, vdg))
 		}
 		for _, id := range trigger.DependsOnTypes {
 			vea.Report(catalog.ValidateOutboundTypeRef(id, vdg))
@@ -264,7 +266,7 @@ func (desc *wrapper) ValidateForwardReferences(
 			vea.Report(catalog.ValidateOutboundTypeRef(id, vdg))
 		}
 		for _, id := range policy.DependsOnRelations {
-			vea.Report(catalog.ValidateOutboundTableRef(id, vdg))
+			vea.Report(catalog.ValidateOutboundTableRef(desc.GetID(), id, vdg))
 		}
 		for _, id := range policy.DependsOnFunctions {
 			vea.Report(catalog.ValidateOutboundFunctionRef(id, vdg))
@@ -282,11 +284,11 @@ func (desc *wrapper) ValidateBackReferences(
 	_ = ForEachExprStringInTableDesc(desc, func(expr *string, typ catalog.DescExprType) (err error) {
 		switch typ {
 		case catalog.SQLExpr:
-			_, err = parser.ParseExpr(*expr)
+			_, err = parserutils.ParseExpr(*expr)
 		case catalog.SQLStmt:
-			_, err = parser.Parse(*expr)
+			_, err = parserutils.Parse(*expr)
 		case catalog.PLpgSQLStmt:
-			_, err = plpgsqlparser.Parse(*expr)
+			_, err = parserutils.PLpgSQLParse(*expr)
 		}
 		vea.Report(err)
 		return nil
@@ -361,8 +363,6 @@ func (desc *wrapper) ValidateBackReferences(
 		}
 		switch depDesc.DescriptorType() {
 		case catalog.Table:
-			// If this is a table, it may be referenced by a view, otherwise if this
-			// is a sequence, then it may be also be referenced by a table.
 			vea.Report(desc.validateInboundTableRef(by, vdg))
 		case catalog.Function:
 			// This relation may be referenced by a function.
@@ -504,49 +504,76 @@ func (desc *wrapper) validateInboundTableRef(
 			backReferencedTable.GetName(), backReferencedTable.GetID())
 	}
 	if desc.IsSequence() {
-		// The ColumnIDs field takes a different meaning when the validated
-		// descriptor is for a sequence. In this case, they refer to the columns
-		// in the referenced descriptor instead.
-		for _, colID := range by.ColumnIDs {
-			// Skip this check if the column ID is zero. This can happen due to
-			// bugs in 20.2.
-			//
-			// TODO(ajwerner): Make sure that a migration in 22.2 fixes this issue.
-			if colID == 0 {
-				continue
-			}
-			col := catalog.FindColumnByID(backReferencedTable, colID)
-			if col == nil {
-				return errors.AssertionFailedf("depended-on-by relation %q (%d) does not have a column with ID %d",
-					backReferencedTable.GetName(), by.ID, colID)
-			}
-			var found bool
-			for i := 0; i < col.NumUsesSequences(); i++ {
-				if col.GetUsesSequenceID(i) == desc.GetID() {
-					found = true
-					break
-				}
-			}
-			if found {
-				continue
-			}
-			return errors.AssertionFailedf(
-				"depended-on-by relation %q (%d) has no reference to this sequence in column %q (%d)",
-				backReferencedTable.GetName(), by.ID, col.GetName(), col.GetID())
+		if err := validateSequenceColumnBackrefs(desc, backReferencedTable, by); err != nil {
+			return err
 		}
 	}
 
 	// View back-references need corresponding forward reference.
-	if !backReferencedTable.IsView() {
-		return nil
-	}
-	for _, id := range backReferencedTable.TableDesc().DependsOn {
-		if id == desc.GetID() {
-			return nil
+	if backReferencedTable.IsView() {
+		for _, id := range backReferencedTable.TableDesc().DependsOn {
+			if id == desc.GetID() {
+				return nil
+			}
 		}
+		return errors.AssertionFailedf("depended-on-by view %q (%d) has no corresponding depends-on forward reference",
+			backReferencedTable.GetName(), by.ID)
 	}
-	return errors.AssertionFailedf("depended-on-by view %q (%d) has no corresponding depends-on forward reference",
-		backReferencedTable.GetName(), by.ID)
+
+	// Table to table back-references must have a trigger reference.
+	if backReferencedTable.IsTable() && desc.IsTable() {
+		for _, trigger := range backReferencedTable.TableDesc().Triggers {
+			for _, id := range trigger.DependsOn {
+				if id == desc.GetID() {
+					return nil
+				}
+			}
+		}
+
+		// No valid forward reference found to justify the backref.
+		return errors.AssertionFailedf(
+			"table %q (%d) does not have a forward reference to descriptor %q (%d)",
+			backReferencedTable.GetName(), by.ID, desc.GetName(), desc.GetID())
+	}
+	return nil
+}
+
+func validateSequenceColumnBackrefs(
+	seq catalog.Descriptor,
+	backReferencedTable catalog.TableDescriptor,
+	by descpb.TableDescriptor_Reference,
+) error {
+	// The ColumnIDs field takes a different meaning when the validated
+	// descriptor is for a sequence. In this case, they refer to the columns
+	// in the referenced descriptor instead.
+	for _, colID := range by.ColumnIDs {
+		// Skip this check if the column ID is zero. This can happen due to
+		// bugs in 20.2.
+		//
+		// TODO(ajwerner): Make sure that a migration in 22.2 fixes this issue.
+		if colID == 0 {
+			continue
+		}
+		col := catalog.FindColumnByID(backReferencedTable, colID)
+		if col == nil {
+			return errors.AssertionFailedf("depended-on-by relation %q (%d) does not have a column with ID %d",
+				backReferencedTable.GetName(), by.ID, colID)
+		}
+		var found bool
+		for i := 0; i < col.NumUsesSequences(); i++ {
+			if col.GetUsesSequenceID(i) == seq.GetID() {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		return errors.AssertionFailedf(
+			"depended-on-by relation %q (%d) has no reference to this sequence in column %q (%d)",
+			backReferencedTable.GetName(), by.ID, col.GetName(), col.GetID())
+	}
+	return nil
 }
 
 // validateFK asserts that references to desc from inbound and outbound FKs are
@@ -1076,6 +1103,26 @@ func (desc *wrapper) ValidateSelf(vea catalog.ValidationErrorAccumulator) {
 	// ON UPDATE expression. This check is made to ensure that we know which ON
 	// UPDATE action to perform when a FK UPDATE happens.
 	ValidateOnUpdate(desc, vea.Report)
+
+	// Validate that the region-lookup constraint (if set) is valid.
+	if !desc.Dropped() {
+		if id := desc.GetRegionalByRowUsingConstraint(); id != descpb.ConstraintID(0) {
+			constraint, err := catalog.MustFindConstraintByID(desc, id)
+			if err != nil {
+				vea.Report(errors.HandleAsAssertionFailure(err))
+				return
+			}
+			regionColName, err := desc.GetRegionalByRowTableRegionColumnName()
+			if err != nil {
+				vea.Report(errors.HandleAsAssertionFailure(err))
+				return
+			}
+			if err = ValidateRBRTableUsingConstraint(desc, constraint, regionColName); err != nil {
+				vea.Report(errors.HandleAsAssertionFailure(err))
+				return
+			}
+		}
+	}
 }
 
 // ValidateNotVisibleIndex returns a notice when dropping the given index may
@@ -1218,7 +1265,7 @@ func (desc *wrapper) validateColumns() error {
 
 		if column.IsComputed() {
 			// Verify that the computed column expression is valid.
-			expr, err := parser.ParseExpr(column.GetComputeExpr())
+			expr, err := parserutils.ParseExpr(string(column.GetComputeExpr()))
 			if err != nil {
 				return err
 			}
@@ -1434,12 +1481,12 @@ func (desc *wrapper) validateTriggers() error {
 
 		// Verify that the WHEN expression and function body statements are valid.
 		if trigger.WhenExpr != "" {
-			_, err := parser.ParseExpr(trigger.WhenExpr)
+			_, err := parserutils.ParseExpr(string(trigger.WhenExpr))
 			if err != nil {
 				return err
 			}
 		}
-		_, err := plpgsqlparser.Parse(trigger.FuncBody)
+		_, err := parserutils.PLpgSQLParse(string(trigger.FuncBody))
 		if err != nil {
 			return err
 		}
@@ -1506,7 +1553,7 @@ func (desc *wrapper) validateCheckConstraints(
 		}
 
 		// Verify that the check's expression is valid.
-		expr, err := parser.ParseExpr(chk.GetExpr())
+		expr, err := parserutils.ParseExpr(string(chk.GetExpr()))
 		if err != nil {
 			return err
 		}
@@ -1560,7 +1607,7 @@ func (desc *wrapper) validateUniqueWithoutIndexConstraints(
 		}
 
 		if c.IsPartial() {
-			expr, err := parser.ParseExpr(c.GetPredicate())
+			expr, err := parserutils.ParseExpr(string(c.GetPredicate()))
 			if err != nil {
 				return err
 			}
@@ -1726,9 +1773,46 @@ func (desc *wrapper) validateTableIndexes(
 				return errors.Newf("index %q refers to non-existent shard column %q",
 					idx.GetName(), idx.GetSharded().Name)
 			}
+
+			// Validate that shard columns are a valid subset of index key columns.
+			shardedDesc := idx.GetSharded()
+			if len(shardedDesc.ColumnNames) == 0 {
+				return errors.Newf("index %q has empty shard column names",
+					idx.GetName())
+			}
+
+			// Get the index key column names, excluding implicit columns like the
+			// shard column itself or the crdb_region column used for partitioning.
+			var indexColNames []string
+			for i := idx.ExplicitColumnStartIdx(); i < idx.NumKeyColumns(); i++ {
+				colName := idx.GetKeyColumnName(i)
+				indexColNames = append(indexColNames, colName)
+			}
+
+			// We avoid running this validation if the number of shard columns is
+			// the same as the number of index column names. This is because this
+			// validation is only intended for indexes that have opted into the
+			// behavior of explicitly defining shard columns instead of using the
+			// implicit behavior of sharding based on all the index columns.
+			if len(shardedDesc.ColumnNames) < len(indexColNames) {
+				// Validate that each shard column appears in the index columns.
+				// Build a set of index column names for efficient lookup.
+				indexColSet := make(map[string]struct{}, len(indexColNames))
+				for _, colName := range indexColNames {
+					indexColSet[colName] = struct{}{}
+				}
+
+				// Check that each shard column exists in the index.
+				for _, shardColName := range shardedDesc.ColumnNames {
+					if _, ok := indexColSet[shardColName]; !ok {
+						return errors.Newf("index %q shard column %q is not in the index columns",
+							idx.GetName(), shardColName)
+					}
+				}
+			}
 		}
 		if idx.IsPartial() {
-			expr, err := parser.ParseExpr(idx.GetPredicate())
+			expr, err := parserutils.ParseExpr(string(idx.GetPredicate()))
 			if err != nil {
 				return err
 			}
@@ -1851,7 +1935,15 @@ func (desc *wrapper) validateTableIndexes(
 					idx.GetName(), idx.IndexDesc().EncodingType, catenumpb.SecondaryIndexEncoding)
 			}
 		}
-
+		// Validate that HideForPrimaryKeyRecreate is only true if a schema
+		// change is active. At the end of a schema change, all public indexes
+		// should be visible.
+		if idx.IndexDesc().HideForPrimaryKeyRecreate &&
+			desc.GetDeclarativeSchemaChangerState() == nil &&
+			len(desc.GetMutations()) == 0 {
+			return errors.AssertionFailedf("index %q (%d) is hidden for a primary key"+
+				" recreate without a schema change", idx.GetName(), idx.GetID())
+		}
 		// Ensure that an index column ID shows up at most once in `keyColumnIDs`,
 		// `keySuffixColumnIDs`, and `storeColumnIDs`.
 		if idx.GetVersion() < descpb.StrictIndexColumnIDGuaranteesVersion {
@@ -2190,13 +2282,13 @@ func (desc *wrapper) validatePolicyRoles(p *descpb.PolicyDescriptor) error {
 // validatePolicyExprs will validate the expressions within the policy.
 func (desc *wrapper) validatePolicyExprs(p *descpb.PolicyDescriptor) error {
 	if p.WithCheckExpr != "" {
-		_, err := parser.ParseExpr(p.WithCheckExpr)
+		_, err := parserutils.ParseExpr(string(p.WithCheckExpr))
 		if err != nil {
 			return errors.Wrapf(err, "WITH CHECK expression %q is invalid", p.WithCheckExpr)
 		}
 	}
 	if p.UsingExpr != "" {
-		_, err := parser.ParseExpr(p.UsingExpr)
+		_, err := parserutils.ParseExpr(string(p.UsingExpr))
 		if err != nil {
 			return errors.Wrapf(err, "USING expression %q is invalid", p.UsingExpr)
 		}
@@ -2283,4 +2375,83 @@ func (desc *wrapper) validateFractionStaleRows(
 			vea.Report(errors.Newf("invalid float value for %s: cannot set to a negative value: %f", settingName, *value))
 		}
 	}
+}
+
+// ValidateRBRTableUsingConstraint validates the constraint used to look up the
+// region column in a REGIONAL BY ROW table. It checks that the referenced
+// constraint is a foreign key and contains the required columns. In addition,
+// computed columns may not reference the region column, and the region column
+// may not be itself a computed column.
+func ValidateRBRTableUsingConstraint(
+	tableDesc catalog.TableDescriptor, constraint catalog.Constraint, regionColName tree.Name,
+) error {
+	fk := constraint.AsForeignKey()
+	if fk == nil {
+		return pgerror.Newf(
+			pgcode.InvalidTableDefinition,
+			"constraint %q is not a foreign key constraint",
+			constraint.GetName(),
+		)
+	}
+	if regionColName == tree.RegionalByRowRegionNotSpecifiedName {
+		regionColName = tree.RegionalByRowRegionDefaultColName
+	}
+	regionCol, err := catalog.MustFindColumnByName(tableDesc, string(regionColName))
+	if err != nil {
+		return err
+	}
+	if regionCol.IsComputed() {
+		return pgerror.Newf(
+			pgcode.InvalidTableDefinition,
+			"cannot use computed column %q as the region column in a REGIONAL BY ROW table with "+
+				"the %q storage parameter specified",
+			regionColName, catpb.RBRUsingConstraintTableSettingName,
+		)
+	}
+	regionColID := regionCol.GetID()
+	fkHasRegionCol := false
+	for i := 0; i < fk.NumOriginColumns(); i++ {
+		colID := fk.GetOriginColumnID(i)
+		if colID == regionColID {
+			fkHasRegionCol = true
+			break
+		}
+	}
+	if !fkHasRegionCol {
+		return pgerror.Newf(
+			pgcode.InvalidTableDefinition,
+			"cannot use constraint %q to determine the region column for REGIONAL BY ROW "+
+				"as it does not include the region column %q",
+			constraint.GetName(), regionColName,
+		)
+	}
+	if fk.NumOriginColumns() == 1 {
+		return pgerror.Newf(
+			pgcode.InvalidTableDefinition,
+			"cannot use constraint %q to determine the region column for REGIONAL BY ROW "+
+				"as it only includes the region column",
+			constraint.GetName(),
+		)
+	}
+	// Ensure that computed columns do not reference the region column. This is
+	// needed because the values of every (possibly computed) foreign-key column
+	// must be known in order to determine the value for the region column.
+	for _, col := range tableDesc.NonDropColumns() {
+		if !col.IsComputed() {
+			continue
+		}
+		expr, err := parserutils.ParseExpr(string(col.GetComputeExpr()))
+		if err != nil {
+			// At this point, we should be able to parse the computed expression.
+			return errors.WithAssertionFailure(err)
+		}
+		colIDs, err := schemaexpr.ExtractColumnIDs(tableDesc, expr)
+		if err != nil {
+			return errors.WithAssertionFailure(err)
+		}
+		if colIDs.Contains(regionColID) {
+			return sqlerrors.NewComputedColReferencesRegionColError(col.ColName(), regionColName)
+		}
+	}
+	return nil
 }

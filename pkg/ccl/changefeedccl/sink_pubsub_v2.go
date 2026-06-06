@@ -238,7 +238,9 @@ type pubsubBuffer struct {
 var _ BatchBuffer = (*pubsubBuffer)(nil)
 
 // Append implements the BatchBuffer interface
-func (psb *pubsubBuffer) Append(key []byte, value []byte, attributes attributes) {
+func (psb *pubsubBuffer) Append(
+	ctx context.Context, key []byte, value []byte, attributes attributes,
+) {
 	var content []byte
 	switch psb.sc.format {
 	case changefeedbase.OptFormatJSON:
@@ -336,7 +338,7 @@ func makePublisherClient(
 
 	// See https://pkg.go.dev/cloud.google.com/go/pubsub#hdr-Emulator for emulator information.
 	if addr, _ := envutil.ExternalEnvString("PUBSUB_EMULATOR_HOST", 1); addr != "" {
-		log.Infof(ctx, "Establishing connection to pubsub emulator at %s", addr)
+		log.Changefeed.Infof(ctx, "Establishing connection to pubsub emulator at %s", addr)
 		conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, errors.Newf("grpc.Dial: %w", err)
@@ -401,7 +403,7 @@ func getGCPCredentials(
 		if err != nil {
 			return nil, errors.Wrap(err, "decoding credentials json")
 		}
-		creds, err = google.CredentialsFromJSON(ctx, credsJSON, authScope)
+		creds, err = google.CredentialsFromJSON(ctx, credsJSON, authScope) //lint:ignore SA1019 grandfathered
 		if err != nil {
 			return nil, errors.Wrap(err, "creating credentials from json")
 		}

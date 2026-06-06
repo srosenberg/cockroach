@@ -10,14 +10,12 @@ import (
 	"math"
 	"time"
 
-	hllNew "github.com/axiomhq/hyperloglog"
-	hllOld "github.com/axiomhq/hyperloglog/000"
+	"github.com/axiomhq/hyperloglog"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
-	"github.com/cockroachdb/cockroach/pkg/sql/execversion"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
@@ -32,9 +30,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
-	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 )
 
@@ -43,10 +41,11 @@ import (
 type sampleAggregator struct {
 	execinfra.ProcessorBase
 
-	spec    *execinfrapb.SampleAggregatorSpec
-	input   execinfra.RowSource
-	inTypes []*types.T
-	sr      stats.SampleReservoir
+	spec         *execinfrapb.SampleAggregatorSpec
+	input        execinfra.RowSource
+	inTypes      []*types.T
+	sr           stats.SampleReservoir
+	collationEnv tree.CollationEnvironment
 
 	// memAcc accounts for memory accumulated throughout the life of the
 	// sampleAggregator.
@@ -103,7 +102,6 @@ func newSampleAggregator(
 			return nil, errors.Errorf("histograms require one column")
 		}
 	}
-	useNewHLL := execversion.FromContext(ctx) >= execversion.V25_1
 
 	// Limit the memory use by creating a child monitor with a hard limit.
 	// The processor will disable histogram collection if this limit is not
@@ -144,13 +142,9 @@ func newSampleAggregator(
 	for i := range spec.Sketches {
 		s.sketches[i] = sketchInfo{
 			spec:     spec.Sketches[i],
+			sketch:   hyperloglog.New14(),
 			numNulls: 0,
 			numRows:  0,
-		}
-		if useNewHLL {
-			s.sketches[i].sketchNew = hllNew.New14()
-		} else {
-			s.sketches[i].sketchOld = hllOld.New14()
 		}
 		if spec.Sketches[i].GenerateHistogram {
 			sampleCols.Add(int(spec.Sketches[i].Columns[0]))
@@ -173,13 +167,9 @@ func newSampleAggregator(
 		s.invSr[col] = &sr
 		s.invSketch[col] = &sketchInfo{
 			spec:     spec.InvertedSketches[i],
+			sketch:   hyperloglog.New14(),
 			numNulls: 0,
 			numRows:  0,
-		}
-		if useNewHLL {
-			s.invSketch[col].sketchNew = hllNew.New14()
-		} else {
-			s.invSketch[col].sketchOld = hllOld.New14()
 		}
 	}
 
@@ -202,15 +192,21 @@ func (s *sampleAggregator) Run(ctx context.Context, output execinfra.RowReceiver
 	ctx = s.StartInternal(ctx, sampleAggregatorProcName)
 	s.input.Start(ctx)
 
-	earlyExit, err := s.mainLoop(ctx, output)
-	if err != nil {
-		execinfra.DrainAndClose(ctx, s.FlowCtx, s.input, output, err)
-	} else if !earlyExit {
-		execinfra.SendTraceData(ctx, s.FlowCtx, output)
-		s.input.ConsumerClosed()
-		output.ProducerDone()
-	}
-	s.MoveToDraining(nil /* err */)
+	// Use defer to ensure cleanup happens even on panic (fix for issue #160337).
+	var earlyExit bool
+	var err error
+	defer func() {
+		if err != nil {
+			execinfra.DrainAndClose(ctx, s.FlowCtx, s.input, output, err)
+		} else if !earlyExit {
+			execinfra.SendTraceData(ctx, s.FlowCtx, output)
+			s.input.ConsumerClosed()
+			output.ProducerDone()
+		}
+		s.MoveToDraining(nil /* err */)
+	}()
+
+	earlyExit, err = s.mainLoop(ctx, output)
 }
 
 // Close is part of the execinfra.Processor interface.
@@ -249,21 +245,25 @@ func (s *sampleAggregator) mainLoop(
 		// If it changed by less than 1%, just check for cancellation (which is more
 		// efficient).
 		if fractionCompleted < 1.0 && fractionCompleted < lastReportedFractionCompleted+0.01 {
-			return job.NoTxn().CheckState(ctx)
+			//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+			return job.DeprecatedNoTxn().CheckState(ctx)
 		}
 		lastReportedFractionCompleted = fractionCompleted
-		return job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(fractionCompleted))
+		return s.FlowCtx.Cfg.DB.Txn(ctx, func(ctx context.Context, txn isql.Txn) error {
+			return jobs.ProgressStorage(jobID).SetFraction(ctx, txn, float64(fractionCompleted))
+		})
 	}
 
 	var rowsProcessed uint64
-	progressUpdates := util.Every(SampleAggregatorProgressInterval)
+	progressUpdates := util.EveryMono(SampleAggregatorProgressInterval)
 	var da tree.DatumAlloc
 	for {
 		row, meta := s.input.Next()
+
 		if meta != nil {
 			if meta.SamplerProgress != nil {
 				rowsProcessed += meta.SamplerProgress.RowsProcessed
-				if progressUpdates.ShouldProcess(timeutil.Now()) {
+				if progressUpdates.ShouldProcess(crtime.NowMono()) {
 					// Periodically report fraction progressed and check that the job has
 					// not been paused or canceled.
 					var fractionCompleted float32
@@ -307,6 +307,8 @@ func (s *sampleAggregator) mainLoop(
 		}
 		if row == nil {
 			break
+		} else if s.FlowCtx.Cfg.TestingKnobs.SampleAggregatorTestingKnobRowHook != nil {
+			s.FlowCtx.Cfg.TestingKnobs.SampleAggregatorTestingKnobRowHook()
 		}
 
 		// There are four kinds of rows. They should be identified in this order:
@@ -372,6 +374,8 @@ func (s *sampleAggregator) mainLoop(
 func (s *sampleAggregator) processSketchRow(
 	sketch *sketchInfo, row rowenc.EncDatumRow, da *tree.DatumAlloc,
 ) error {
+	var tmpSketch hyperloglog.Sketch
+
 	numRows, err := row[s.numRowsCol].GetInt()
 	if err != nil {
 		return err
@@ -398,22 +402,11 @@ func (s *sampleAggregator) processSketchRow(
 	if d == tree.DNull {
 		return errors.AssertionFailedf("NULL sketch data")
 	}
-	if sketch.sketchNew != nil {
-		var tmpSketch hllNew.Sketch
-		if err := tmpSketch.UnmarshalBinary([]byte(*d.(*tree.DBytes))); err != nil {
-			return err
-		}
-		if err := sketch.sketchNew.Merge(&tmpSketch); err != nil {
-			return errors.NewAssertionErrorWithWrappedErrf(err, "merging sketch data")
-		}
-	} else {
-		var tmpSketch hllOld.Sketch
-		if err := tmpSketch.UnmarshalBinary([]byte(*d.(*tree.DBytes))); err != nil {
-			return err
-		}
-		if err := sketch.sketchOld.Merge(&tmpSketch); err != nil {
-			return errors.NewAssertionErrorWithWrappedErrf(err, "merging sketch data")
-		}
+	if err := tmpSketch.UnmarshalBinary([]byte(*d.(*tree.DBytes))); err != nil {
+		return err
+	}
+	if err := sketch.sketch.Merge(&tmpSketch); err != nil {
+		return errors.NewAssertionErrorWithWrappedErrf(err, "merging sketch data")
 	}
 	return nil
 }
@@ -427,7 +420,7 @@ func (s *sampleAggregator) maybeDecreaseSamples(
 	if capacity, err := row[s.numRowsCol].GetInt(); err == nil {
 		prevCapacity := sr.Cap()
 		if sr.MaybeResize(ctx, int(capacity)) {
-			log.Infof(
+			log.Dev.Infof(
 				ctx, "histogram samples reduced from %d to %d to match sampler processor",
 				prevCapacity, sr.Cap(),
 			)
@@ -439,17 +432,17 @@ func (s *sampleAggregator) sampleRow(
 	ctx context.Context, sr *stats.SampleReservoir, sampleRow rowenc.EncDatumRow, rank uint64,
 ) error {
 	prevCapacity := sr.Cap()
-	if err := sr.SampleRow(ctx, s.FlowCtx.EvalCtx, sampleRow, rank); err != nil {
+	if err := sr.SampleRow(ctx, &s.collationEnv, sampleRow, rank); err != nil {
 		if code := pgerror.GetPGCode(err); code != pgcode.OutOfMemory {
 			return err
 		}
 		// We hit an out of memory error. Clear the sample reservoir and
 		// disable histogram sample collection.
 		sr.Disable()
-		log.Info(ctx, "disabling histogram collection due to excessive memory utilization")
+		log.Dev.Info(ctx, "disabling histogram collection due to excessive memory utilization")
 		telemetry.Inc(sqltelemetry.StatsHistogramOOMCounter)
 	} else if sr.Cap() != prevCapacity {
-		log.Infof(
+		log.Dev.Infof(
 			ctx, "histogram samples reduced from %d to %d due to excessive memory utilization",
 			prevCapacity, sr.Cap(),
 		)
@@ -516,17 +509,15 @@ func (s *sampleAggregator) writeResults(ctx context.Context) error {
 				if !ok {
 					return errors.Errorf("no associated inverted sketch")
 				}
-				// GenerateHistogram is false for sketches
-				// with inverted index columns. Instead, the
-				// presence of those histograms is indicated
-				// by the existence of an inverted sketch on
-				// the column.
+				// GenerateHistogram is false for sketches with inverted index
+				// columns. Instead, the presence of those histograms is
+				// indicated by the existence of an inverted sketch on the
+				// column.
 
 				invDistinctCount := s.getDistinctCount(invSketch, false /* includeNulls */)
-				// Use 0 for the colIdx here because it refers
-				// to the column index of the samples, which
-				// only has a single bytes column with the
-				// inverted keys.
+				// Use 0 for the colIdx here because it refers to the column
+				// index of the samples, which only has a single bytes column
+				// with the inverted keys.
 				h, err := s.generateHistogram(
 					ctx,
 					s.FlowCtx.EvalCtx,
@@ -549,23 +540,8 @@ func (s *sampleAggregator) writeResults(ctx context.Context) error {
 				columnIDs[i] = s.sampledCols[c]
 			}
 
-			// Delete old stats that have been superseded,
-			// if the new statistic is not partial
-			if si.spec.PartialPredicate == "" {
-				if err := stats.DeleteOldStatsForColumns(
-					ctx,
-					txn,
-					s.tableID,
-					columnIDs,
-				); err != nil {
-					return err
-				}
-			}
-
-			// Insert the new stat.
-			if err := stats.InsertNewStat(
+			if err := stats.WriteStatsWithOldDeleted(
 				ctx,
-				s.FlowCtx.Cfg.Settings,
 				txn,
 				s.tableID,
 				si.spec.StatName,
@@ -577,6 +553,9 @@ func (s *sampleAggregator) writeResults(ctx context.Context) error {
 				histogram,
 				si.spec.PartialPredicate,
 				si.spec.FullStatisticID,
+				"", /* createdAt */
+				0,  /* statisticID */
+				s.spec.CanaryStatsEnabled,
 			); err != nil {
 				return err
 			}
@@ -631,12 +610,7 @@ func (s *sampleAggregator) getAvgSize(si *sketchInfo) int64 {
 // getDistinctCount returns the number of distinct values in the given sketch,
 // optionally including null values.
 func (s *sampleAggregator) getDistinctCount(si *sketchInfo, includeNulls bool) int64 {
-	var distinctCount int64
-	if si.sketchNew != nil {
-		distinctCount = int64(si.sketchNew.Estimate())
-	} else {
-		distinctCount = int64(si.sketchOld.Estimate())
-	}
+	distinctCount := int64(si.sketch.Estimate())
 	if si.numNulls > 0 && !includeNulls {
 		// Nulls are included in the estimate, so reduce the count by 1 if nulls are
 		// not requested.
@@ -679,15 +653,14 @@ func (s *sampleAggregator) generateHistogram(
 	}
 
 	if sr.Cap() != prevCapacity {
-		log.Infof(
+		log.Dev.Infof(
 			ctx, "histogram samples reduced from %d to %d due to excessive memory utilization",
 			prevCapacity, sr.Cap(),
 		)
 	}
 
 	if lowerBound != nil {
-		h, buckets, err := stats.ConstructExtremesHistogram(ctx, evalCtx, colType, values, numRows, distinctCount, maxBuckets, lowerBound, evalCtx.Settings)
-		_ = buckets
+		h, _, err := stats.ConstructExtremesHistogram(ctx, evalCtx, colType, values, numRows, distinctCount, maxBuckets, lowerBound, evalCtx.Settings)
 		return h, err
 	}
 

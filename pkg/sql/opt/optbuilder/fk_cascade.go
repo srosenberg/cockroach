@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/isolation"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/cat"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/memo"
@@ -225,6 +226,39 @@ func (mb *mutationBuilder) tryNewOnDeleteFastCascadeBuilder(
 		return nil, false
 	}
 
+	// For a REGIONAL BY ROW child table, if the region column is part of the FK,
+	// check that it is constrained to a single value. If this is not the case,
+	// the fast path can be suboptimal, since joining against the parent buffer
+	// will constrain the region column to a single constant value.
+	if childTab.IsRegionalByRow() &&
+		mb.b.evalCtx.SessionData().OptimizerDisableCrossRegionCascadeFastPathForRBRTables {
+		// The regional column is the first in every index, including the primary.
+		regionalColOrd := childTab.Index(cat.PrimaryIndex).Column(0).Ordinal()
+		var regionalColID opt.ColumnID
+		for i, colID := range fkCols {
+			if fk.OriginColumnOrdinal(childTab, i) == regionalColOrd {
+				regionalColID = colID
+				break
+			}
+		}
+		if regionalColID != 0 {
+			regionalColIsConstrained := false
+			for i := range filters {
+				if eq, isEq := filters[i].Condition.(*memo.EqExpr); isEq {
+					if v, leftIsVar := eq.Left.(*memo.VariableExpr); leftIsVar && v.Col == regionalColID {
+						if opt.IsConstValueOp(eq.Right) {
+							regionalColIsConstrained = true
+							break
+						}
+					}
+				}
+			}
+			if !regionalColIsConstrained {
+				return nil, false
+			}
+		}
+	}
+
 	var visited intsets.Fast
 	parentTabID := parentTab.ID()
 	childTabID := childTab.ID()
@@ -313,6 +347,18 @@ func (cb *onDeleteFastCascadeBuilder) Build(
 				indexFlags = &tree.IndexFlags{AvoidFullScan: true}
 			}
 
+			locking := noRowLocking
+			if b.evalCtx.TxnIsoLevel != isolation.Serializable {
+				locking = lockingSpec{
+					&lockingItem{
+						item: &tree.LockingItem{
+							Strength:   tree.ForUpdate,
+							WaitPolicy: tree.LockWaitBlock,
+						},
+					},
+				}
+			}
+
 			// Build the input to the delete mutation, which is simply a Scan with a
 			// Select on top. The scan is exempt from RLS to maintain data integrity.
 			mb.fetchScope = b.buildScan(
@@ -323,7 +369,7 @@ func (cb *onDeleteFastCascadeBuilder) Build(
 					includeInverted:  false,
 				}),
 				indexFlags,
-				noRowLocking,
+				locking,
 				b.allocScope(),
 				true, /* disableNotVisibleIndex */
 				cat.PolicyScopeExempt,
@@ -515,7 +561,7 @@ func (cb *onDeleteSetBuilder) Build(
 					updateExprs[i].Expr = tree.DefaultVal{}
 				}
 			}
-			mb.addUpdateCols(updateExprs)
+			mb.addUpdateCols(updateExprs, nil /* colRefs */)
 
 			// Register the mutation with the statementTree
 			b.checkMultipleMutations(mb.tab, generalMutation)
@@ -527,7 +573,8 @@ func (cb *onDeleteSetBuilder) Build(
 			// against the parent we are cascading from. Need to investigate in which
 			// cases this is safe (e.g. other cascades could have messed with the parent
 			// table in the meantime).
-			mb.buildUpdate(nil /* returning */)
+			// The exempt policy is used for RLS to maintain data integrity.
+			mb.buildUpdate(nil /* returning */, cat.PolicyScopeExempt, nil /* colRefs */)
 			return mb.outScope.expr
 		})
 }
@@ -570,6 +617,18 @@ func (b *Builder) buildDeleteCascadeMutationInput(
 		indexFlags = &tree.IndexFlags{AvoidFullScan: true}
 	}
 
+	locking := noRowLocking
+	if b.evalCtx.TxnIsoLevel != isolation.Serializable {
+		locking = lockingSpec{
+			&lockingItem{
+				item: &tree.LockingItem{
+					Strength:   tree.ForUpdate,
+					WaitPolicy: tree.LockWaitBlock,
+				},
+			},
+		}
+	}
+
 	// The scan is exempt from RLS to maintain data integrity.
 	outScope = b.buildScan(
 		b.addTable(childTable, childTableAlias),
@@ -579,7 +638,7 @@ func (b *Builder) buildDeleteCascadeMutationInput(
 			includeInverted:  false,
 		}),
 		indexFlags,
-		noRowLocking,
+		locking,
 		b.allocScope(),
 		true, /* disableNotVisibleIndex */
 		cat.PolicyScopeExempt,
@@ -775,7 +834,7 @@ func (cb *onUpdateCascadeBuilder) Build(
 					panic(errors.AssertionFailedf("unsupported action"))
 				}
 			}
-			mb.addUpdateCols(updateExprs)
+			mb.addUpdateCols(updateExprs, nil /* colRefs */)
 
 			// Register the mutation with the statementTree
 			b.checkMultipleMutations(mb.tab, generalMutation)
@@ -783,7 +842,8 @@ func (cb *onUpdateCascadeBuilder) Build(
 			// Cascades can fire triggers on the child table.
 			mb.buildRowLevelBeforeTriggers(tree.TriggerEventUpdate, true /* cascade */)
 
-			mb.buildUpdate(nil /* returning */)
+			// The exempt policy is used for RLS to maintain data integrity.
+			mb.buildUpdate(nil /* returning */, cat.PolicyScopeExempt, nil /* colRefs */)
 			return mb.outScope.expr
 		})
 }
@@ -845,6 +905,18 @@ func (b *Builder) buildUpdateCascadeMutationInput(
 		indexFlags = &tree.IndexFlags{AvoidFullScan: true}
 	}
 
+	locking := noRowLocking
+	if b.evalCtx.TxnIsoLevel != isolation.Serializable {
+		locking = lockingSpec{
+			&lockingItem{
+				item: &tree.LockingItem{
+					Strength:   tree.ForUpdate,
+					WaitPolicy: tree.LockWaitBlock,
+				},
+			},
+		}
+	}
+
 	// The scan is exempt from RLS to maintain data integrity.
 	outScope = b.buildScan(
 		b.addTable(childTable, childTableAlias),
@@ -854,7 +926,7 @@ func (b *Builder) buildUpdateCascadeMutationInput(
 			includeInverted:  false,
 		}),
 		indexFlags,
-		noRowLocking,
+		locking,
 		b.allocScope(),
 		true, /* disableNotVisibleIndex */
 		cat.PolicyScopeExempt,
@@ -999,7 +1071,7 @@ func buildTriggerCascadeHelper(
 	factoryI interface{},
 	stmtTreeInitFn func() statementTree,
 	fn func(b *Builder) memo.RelExpr,
-) (_ memo.RelExpr, err error) {
+) (_ memo.RelExpr, retErr error) {
 	factory := factoryI.(*norm.Factory)
 	b := New(ctx, semaCtx, evalCtx, catalog, factory, nil /* stmt */)
 	if stmtTreeInitFn != nil {
@@ -1010,15 +1082,7 @@ func buildTriggerCascadeHelper(
 	defer b.stmtTree.Pop()
 
 	// Enact panic handling similar to Builder.Build().
-	defer func() {
-		if r := recover(); r != nil {
-			if ok, e := errorutil.ShouldCatch(r); ok {
-				err = e
-			} else {
-				panic(r)
-			}
-		}
-	}()
+	defer errorutil.MaybeCatchPanic(&retErr, nil /* errCallback */)
 
 	return fn(b), nil
 }

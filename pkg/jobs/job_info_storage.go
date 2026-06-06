@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlliveness"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
 )
@@ -47,6 +48,10 @@ func (j *Job) ProgressStorage() ProgressStorage {
 func (i ProgressStorage) Get(
 	ctx context.Context, txn isql.Txn,
 ) (float64, hlc.Timestamp, time.Time, error) {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return 0, hlc.Timestamp{}, time.Time{}, errors.AssertionFailedf("invalid job ID")
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "get-job-progress")
 	defer sp.Finish()
 
@@ -91,11 +96,27 @@ func (i ProgressStorage) Get(
 	return fraction, ts, written.Time, nil
 }
 
+// SetFraction is a short-hand for Set() with an empty resolved timestamp.
+func (i ProgressStorage) SetFraction(ctx context.Context, txn isql.Txn, fraction float64) error {
+	return i.Set(ctx, txn, fraction, hlc.Timestamp{})
+}
+
+// SetResolved is a short-hand for Set() with an empty fraction.
+func (i ProgressStorage) SetResolved(
+	ctx context.Context, txn isql.Txn, resolved hlc.Timestamp,
+) error {
+	return i.Set(ctx, txn, math.NaN(), resolved)
+}
+
 // Set records a progress update. If fraction is NaN or resolved is empty, that
 // field is left null. The time at which the progress was reported is recorded.
 func (i ProgressStorage) Set(
 	ctx context.Context, txn isql.Txn, fraction float64, resolved hlc.Timestamp,
 ) error {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return errors.AssertionFailedf("invalid job ID")
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "write-job-progress")
 	defer sp.Finish()
 
@@ -107,33 +128,18 @@ func (i ProgressStorage) Set(
 		ts = resolved.AsOfSystemTime()
 	}
 
-	// Optimistically update the job's progress row, but if it does not exist,
-	// insert it. This could have been implemented as a DELETE followed by an
-	// INSERT, but that would have always required two separate SQL operations.
-	rowsUpdated, err := txn.ExecEx(
-		ctx, "write-job-progress-update", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-		`UPDATE system.job_progress SET (written, fraction, resolved) = (now(), $2, $3) WHERE job_id = $1`,
-		i, frac, ts,
-	)
-	if err != nil {
-		// Defend against the update failing on a unique violation due to updating
-		// >1 keys with the same id. This shouldn't happen, unless a user manually
-		// inserted into the job_progress table.
-		if _, err := txn.ExecEx(
-			ctx, "write-job-progress-delete-fallback", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-			`DELETE FROM system.job_progress where job_id = $1`,
-			i); err != nil {
-			return err
-		}
+	if _, err := txn.ExecEx(
+		ctx, "write-job-progress-delete", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+		`DELETE FROM system.job_progress where job_id = $1`,
+		i); err != nil {
+		return err
 	}
-	if rowsUpdated == 0 {
-		if _, err := txn.ExecEx(
-			ctx, "write-job-progress-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-			`INSERT INTO system.job_progress (job_id, written, fraction, resolved) VALUES ($1, now(), $2, $3)`,
-			i, frac, ts,
-		); err != nil {
-			return err
-		}
+	if _, err := txn.ExecEx(
+		ctx, "write-job-progress-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
+		`INSERT INTO system.job_progress (job_id, written, fraction, resolved) VALUES ($1, now(), $2, $3)`,
+		i, frac, ts,
+	); err != nil {
+		return err
 	}
 
 	if _, err := txn.ExecEx(
@@ -181,6 +187,10 @@ func (j *Job) StatusStorage() StatusStorage {
 
 // Clear clears the status message row for the job, if it exists.
 func (i StatusStorage) Clear(ctx context.Context, txn isql.Txn) error {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return errors.AssertionFailedf("invalid job ID")
+	}
+
 	_, err := txn.ExecEx(
 		ctx, "clear-job-status-delete", txn.KV(), sessiondata.NodeUserSessionDataOverride,
 		`DELETE FROM system.job_status WHERE job_id = $1`, i,
@@ -191,6 +201,10 @@ func (i StatusStorage) Clear(ctx context.Context, txn isql.Txn) error {
 // Sets writes the current status, replacing the current one if it exists.
 // Setting an empty status is the same as calling Clear().
 func (i StatusStorage) Set(ctx context.Context, txn isql.Txn, status string) error {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return errors.AssertionFailedf("invalid job ID")
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "write-job-status")
 	defer sp.Finish()
 
@@ -198,28 +212,11 @@ func (i StatusStorage) Set(ctx context.Context, txn isql.Txn, status string) err
 		return err
 	}
 
-	// Optimistically update the job's status row, but if it does not exist,
-	// insert it. This could have been implemented as a DELETE followed by an
-	// INSERT, but that would have always required two separate SQL operations.
-	rowsUpdated, err := txn.ExecEx(
-		ctx, "write-job-status-update", txn.KV(), sessiondata.NodeUserSessionDataOverride,
-		`UPDATE system.job_status SET (written, status) = (now(), $2) WHERE job_id = $1`,
-		i, status,
-	)
-	if rowsUpdated > 0 && err == nil {
-		return nil
+	if err := i.Clear(ctx, txn); err != nil {
+		return err
 	}
 
-	if err != nil {
-		// Defend against the update failing on a unique violation due to updating
-		// >1 keys with the same id. This should not happen, unless a user manually
-		// inserted into the job_status table.
-		if err := i.Clear(ctx, txn); err != nil {
-			return err
-		}
-	}
-
-	_, err = txn.ExecEx(
+	_, err := txn.ExecEx(
 		ctx, "write-job-status-insert", txn.KV(), sessiondata.NodeUserSessionDataOverride,
 		`INSERT INTO system.job_status (job_id, written, status) VALUES ($1, now(), $2)`,
 		i, status,
@@ -229,6 +226,10 @@ func (i StatusStorage) Set(ctx context.Context, txn isql.Txn, status string) err
 
 // Get gets the current status mesasge for a job, if any.
 func (i StatusStorage) Get(ctx context.Context, txn isql.Txn) (string, time.Time, error) {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return "", time.Time{}, errors.AssertionFailedf("invalid job ID")
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "get-job-status")
 	defer sp.Finish()
 
@@ -279,6 +280,10 @@ func (j *Job) Messages() MessageStorage {
 // log for this job, and prunes retained messages of the same kind based on the
 // configured limit to keep the total number of retained messages bounded.
 func (i MessageStorage) Record(ctx context.Context, txn isql.Txn, kind, message string) error {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return errors.AssertionFailedf("invalid job ID")
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "write-job-message")
 	defer sp.Finish()
 
@@ -311,6 +316,10 @@ type JobMessage struct {
 }
 
 func (i MessageStorage) Fetch(ctx context.Context, txn isql.Txn) (_ []JobMessage, retErr error) {
+	if jobspb.JobID(i) == jobspb.InvalidJobID {
+		return nil, errors.AssertionFailedf("invalid job ID")
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "get-all-job-message")
 	defer sp.Finish()
 
@@ -406,6 +415,9 @@ func (i *InfoStorage) checkClaimSession(ctx context.Context) error {
 }
 
 func (i InfoStorage) get(ctx context.Context, opName, infoKey string) ([]byte, bool, error) {
+	if i.j.ID() == jobspb.InvalidJobID {
+		return nil, false, errors.AssertionFailedf("invalid job ID")
+	}
 	if i.txn == nil {
 		return nil, false, errors.New("cannot access the job info table without an associated txn")
 	}
@@ -445,69 +457,36 @@ func (i InfoStorage) write(
 	ctx context.Context, infoKey string, value []byte, firstWrite bool,
 ) error {
 	return i.doWrite(ctx, func(ctx context.Context, j *Job, txn isql.Txn) error {
-		if firstWrite {
-			// firstWrite implies that the value is being written for the first time,
-			// so no need to update it.
-			_, err := txn.ExecEx(
-				ctx, "write-job-info-insert", txn.KV(),
-				sessiondata.NodeUserSessionDataOverride,
-				`INSERT INTO system.job_info (job_id, info_key, written, value) VALUES ($1, $2, now(), $3)`,
-				j.ID(), infoKey, value,
-			)
-			return err
-		}
-
-		deleteQuery := "DELETE FROM system.job_info WHERE job_id = $1 AND info_key::string = $2"
-		if value == nil {
-			_, err := txn.ExecEx(
+		if !firstWrite {
+			if _, err := txn.ExecEx(
 				ctx, "write-job-info-delete", txn.KV(),
 				sessiondata.NodeUserSessionDataOverride,
-				deleteQuery,
-				j.ID(), infoKey,
-			)
-			return err
-		}
-
-		// Optimistically update the job info row, but if it does not exist,
-		// insert it. This could have been implemented as a DELETE followed by an
-		// INSERT, but that would have always required two separate SQL operations.
-		rowsUpdated, err := txn.ExecEx(
-			ctx, "write-job-info-update", txn.KV(),
-			sessiondata.NodeUserSessionDataOverride,
-			`UPDATE system.job_info SET (written, value) = (now(), $3) WHERE job_id = $1 AND info_key::string = $2`,
-			j.ID(), infoKey, value,
-		)
-		if rowsUpdated > 0 && err == nil {
-			return nil
-		}
-
-		if err != nil {
-			// Defend against the update failing on a unique violation due to updating
-			// >1 keys with the same id and info_key. This shouldn't happen, unless a
-			// user manually inserted into the job_info table.
-			if _, err := txn.ExecEx(
-				ctx, "write-job-info-delete-fallback", txn.KV(),
-				sessiondata.NodeUserSessionDataOverride,
-				deleteQuery,
+				"DELETE FROM system.job_info WHERE job_id = $1 AND info_key::string = $2",
 				j.ID(), infoKey,
 			); err != nil {
 				return err
 			}
 		}
-
-		_, err = txn.ExecEx(
-			ctx, "write-job-info-insert", txn.KV(),
-			sessiondata.NodeUserSessionDataOverride,
-			`INSERT INTO system.job_info (job_id, info_key, written, value) VALUES ($1, $2, now(), $3)`,
-			j.ID(), infoKey, value,
-		)
-		return err
+		if value != nil {
+			if _, err := txn.ExecEx(
+				ctx, "write-job-info-insert", txn.KV(),
+				sessiondata.NodeUserSessionDataOverride,
+				`INSERT INTO system.job_info (job_id, info_key, written, value) VALUES ($1, $2, now(), $3)`,
+				j.ID(), infoKey, value,
+			); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 }
 
 func (i InfoStorage) doWrite(
 	ctx context.Context, fn func(ctx context.Context, job *Job, txn isql.Txn) error,
 ) error {
+	if i.j.ID() == jobspb.InvalidJobID {
+		return errors.AssertionFailedf("invalid job ID")
+	}
 	if i.txn == nil {
 		return errors.New("cannot write to the job info table without an associated txn")
 	}
@@ -522,7 +501,7 @@ func (i InfoStorage) doWrite(
 			return err
 		}
 	} else {
-		log.VInfof(ctx, 1, "job %d: writing to the system.job_info with no session ID", j.ID())
+		log.Dev.VInfof(ctx, 1, "job %d: writing to the system.job_info with no session ID", j.ID())
 	}
 
 	return fn(ctx, j, i.txn)
@@ -534,6 +513,9 @@ func (i InfoStorage) iterate(
 	infoPrefix string,
 	fn func(infoKey string, value []byte) error,
 ) (retErr error) {
+	if i.j.ID() == jobspb.InvalidJobID {
+		return errors.AssertionFailedf("invalid job ID")
+	}
 	if i.txn == nil {
 		return errors.New("cannot iterate over the job info table without an associated txn")
 	}
@@ -657,6 +639,9 @@ func (i InfoStorage) DeleteRange(
 
 // Count counts the info records in the range [start, end).
 func (i InfoStorage) Count(ctx context.Context, startInfoKey, endInfoKey string) (int, error) {
+	if i.j.ID() == jobspb.InvalidJobID {
+		return 0, errors.AssertionFailedf("invalid job ID")
+	}
 	if i.txn == nil {
 		return 0, errors.New("cannot access the job info table without an associated txn")
 	}
@@ -754,4 +739,64 @@ func (i InfoStorage) writeFirstLegacyProgress(ctx context.Context, progress []by
 // info record does not already exist.
 func (i InfoStorage) writeFirstLegacyPayload(ctx context.Context, payload []byte) error {
 	return i.WriteFirstKey(ctx, LegacyPayloadKey, payload)
+}
+
+// LoadLegacyPayload loads and unwraps job-specific payload details from the
+// legacy_payload key.
+//
+// Callers should type-assert the returned Details to their concrete type, e.g.:
+// details.(jobspb.StreamIngestionDetails).
+func LoadLegacyPayload(
+	ctx context.Context, txn isql.Txn, jobID jobspb.JobID,
+) (jobspb.Details, error) {
+	progressBytes, exists, err := InfoStorageForJob(txn, jobID).GetLegacyPayload(ctx, "load-payload-details")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, &JobNotFoundError{jobID: jobID}
+	}
+	var payload jobspb.Payload
+	if err := protoutil.Unmarshal(progressBytes, &payload); err != nil {
+		return nil, err
+	}
+	return payload.UnwrapDetails(), nil
+}
+
+// LoadLegacyProgress loads and unwraps job-specific progress details
+// from the legacy_progress key.
+//
+// Callers should type-assert the returned ProgressDetails to their concrete
+// type, e.g.: details.(jobspb.RowLevelTTLProgress).
+func LoadLegacyProgress(
+	ctx context.Context, txn isql.Txn, jobID jobspb.JobID,
+) (jobspb.ProgressDetails, error) {
+	progressBytes, exists, err := InfoStorageForJob(txn, jobID).GetLegacyProgress(ctx, "load-progress-details")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, NewJobNotFoundError(jobID)
+	}
+	var progress jobspb.Progress
+	if err := protoutil.Unmarshal(progressBytes, &progress); err != nil {
+		return nil, err
+	}
+	return progress.UnwrapDetails(), nil
+}
+
+// StoreLegacyProgress wraps and stores job-specific progress details in the
+// job_info legacy_progress key.
+//
+// Only the Details field off the legacy jobspb.Progress wrapper is set; the
+// fraction and status fields deprecated in favor of their dedicated tables now.
+func StoreLegacyProgress(
+	ctx context.Context, txn isql.Txn, jobID jobspb.JobID, details jobspb.ProgressDetails,
+) error {
+	progress := &jobspb.Progress{Details: jobspb.WrapProgressDetails(details)}
+	progressBytes, err := protoutil.Marshal(progress)
+	if err != nil {
+		return err
+	}
+	return InfoStorageForJob(txn, jobID).WriteLegacyProgress(ctx, progressBytes)
 }

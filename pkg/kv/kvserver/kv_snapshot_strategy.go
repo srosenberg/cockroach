@@ -9,18 +9,20 @@ import (
 	"context"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage/snaprecv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/rditer"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/storage"
+	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/util/admission"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/objstorage/remote"
 	"github.com/cockroachdb/pebble/rangekey"
 	"github.com/cockroachdb/redact"
 	"golang.org/x/time/rate"
@@ -43,7 +45,7 @@ type kvBatchSnapshotStrategy struct {
 	// before flushing to disk. Only used on the receiver side.
 	sstChunkSize int64
 	// Only used on the receiver side.
-	scratch   *SSTSnapshotStorageScratch
+	scratch   *snaprecv.SSTSnapshotStorageScratch
 	st        *cluster.Settings
 	clusterID uuid.UUID
 }
@@ -104,52 +106,24 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 		return noSnap, sendSnapshotError(ctx, s, stream, errors.New("cannot accept shared sstables"))
 	}
 
-	// We rely on the last keyRange passed into multiSSTWriter being the user key
+	// We rely on the last keyRange passed into MultiSSTWriter being the user key
 	// span. If the sender signals that it can no longer do shared replication
 	// (with a TransitionFromSharedToRegularReplicate = true), we will have to
-	// switch to adding a rangedel for that span. Since multiSSTWriter acts on an
+	// switch to adding a rangedel for that span. Since MultiSSTWriter acts on an
 	// opaque slice of keyRanges, we just tell it to add a rangedel for the last
 	// span. To avoid bugs, assert on the last span in keyRanges actually being
 	// equal to the user key span.
 	if !keyRanges[len(keyRanges)-1].Equal(header.State.Desc.KeySpan().AsRawSpanWithNoLocals()) {
-		return noSnap, errors.AssertionFailedf("last span in multiSSTWriter did not equal the user key span: %s", keyRanges[len(keyRanges)-1].String())
+		return noSnap, errors.AssertionFailedf("last span in MultiSSTWriter did not equal the user key span: %s", keyRanges[len(keyRanges)-1].String())
 	}
-
-	// TODO(aaditya): Remove once we support flushableIngests for shared and
-	// external files in the engine.
-
-	// TODO(tbg): skipClearForMVCCSpan should equal true (since we always excise
-	// the MVCC span), but there appear to be bugs in this code as demonstrated by
-	// TestRaftSnapshotsWithMVCCRangeKeysEverywhere failing with the proposed
-	// change:
-	//
-	// * panic: failed to put range key in sst: pebble: spans must be added in order: /Local/RangeID/75/r":a"/0,0 > /Local/RangeID/75/r""/0,0
-	// ^- we added the ":a" key first, now we're trying to add the r"" key.
-	//
-	// My basic understanding of this failure mode is:
-	// - first, a range del covering the range-local replicated key span `/Range/75/{r-s}` is added in (msstw.initSST)
-	// - the fragmenter's start key is now `/Range/75/r`.
-	// - when the `/Range/75/r/{:a-:z}` rangedel, is handled, it enters through `msstw.PutRangeKey`
-	//    - since  `skipClearForMVCCSpan` is set, this does not update the fragmenter.
-	//    - the range deletion is added to the current SST.
-	// - when the first key >= `/Range/75/r` is added, `msstw.finalizeSST` flushes
-	//   the fragmenter to the current SST.
-	// - we hit the above error, since the SST already contains the rangedel
-	//   starting at `/Range/75/r:a` and we're not attempting to add a rangedel
-	//   `/Range/75/r` with smaller start key.
-	//
-	// The crucial problem is skipping the fragmenter. This seems to have to do with
-	// wanting to allow callers to use `skipClearForMVCCSpan`, but this is going to
-	// be dead code.
-	//
-	// Another note: CI passes when this is unconditionally set to `false`,
-	// indicating that we have poor coverage of the shared and external code paths.
-	skipClearForMVCCSpan := header.SharedReplicate || header.ExternalReplicate
 
 	// The last key range is the user key span.
 	localRanges := keyRanges[:len(keyRanges)-1]
 	mvccRange := keyRanges[len(keyRanges)-1]
-	msstw, err := newMultiSSTWriter(ctx, kvSS.st, kvSS.scratch, localRanges, mvccRange, kvSS.sstChunkSize, skipClearForMVCCSpan, header.RangeKeysInOrder)
+	msstw, err := snaprecv.NewMultiSSTWriter(ctx, kvSS.st, kvSS.scratch, localRanges, mvccRange, snaprecv.MultiSSTWriterOptions{
+		SSTChunkSize: kvSS.sstChunkSize,
+		MaxSSTSize:   MaxSnapshotSSTableSize.Get(&kvSS.st.SV),
+	})
 	if err != nil {
 		return noSnap, err
 	}
@@ -157,18 +131,48 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 
 	log.Event(ctx, "waiting for snapshot batches to begin")
 
-	var sharedSSTs []pebble.SharedSSTMeta
-	var externalSSTs []pebble.ExternalFile
-	var prevWriteBytes int64
+	var sharedSSTs []kvserverpb.SnapshotRequest_SharedTable
+	var externalSSTs []kvserverpb.SnapshotRequest_ExternalTable
+	var prevBytesEstimate int64
 
 	snapshotQ := s.cfg.KVAdmissionController.GetSnapshotQueue(s.StoreID())
 	if snapshotQ == nil {
-		log.Errorf(ctx, "unable to find snapshot queue for store: %s", s.StoreID())
+		log.KvDistribution.Errorf(ctx, "unable to find snapshot queue for store: %s", s.StoreID())
 	}
 	// Using a nil pacer is effectively a noop if snapshot control is disabled.
 	var pacer *admission.SnapshotPacer = nil
 	if admission.DiskBandwidthForSnapshotIngest.Get(&s.cfg.Settings.SV) && snapshotQ != nil {
-		pacer = admission.NewSnapshotPacer(snapshotQ)
+		minRate := int64(0)
+		if admission.DiskBandwidthForSnapshotIngestMinRateEnabled.Get(&s.cfg.Settings.SV) {
+			minFractionOfTimeoutForApplyingSnapshot := 1 - snapshotReservationQueueTimeoutFraction.Get(&s.cfg.Settings.SV)
+			// Use a slowdown factor of half the permittedRangeScanSlowdown
+			// factor, which means we allow snapshots to ingest atleast as fast
+			// as would be necessary to complete within half of a snapshots
+			// timeout duration.
+			snapshotApplySlowdownFactor := (permittedRangeScanSlowdown / 2) * minFractionOfTimeoutForApplyingSnapshot
+			if snapshotApplySlowdownFactor < 1 {
+				// Avoid division by 0. A snapshotApplySlowdownFactor between 0
+				// and 1 would cause the minRate to be greater than
+				// rebalanceSnapshotRate, which is the max speed snapshots can
+				// be sent at, so we don't need to ingest snapshots at a faster
+				// rate than that.
+				snapshotApplySlowdownFactor = 1
+			}
+
+			minRate = int64(float64(rebalanceSnapshotRate.Get(&s.cfg.Settings.SV)) / snapshotApplySlowdownFactor)
+			storeBW := s.cfg.KVAdmissionController.GetProvisionedBandwidth(s.StoreID())
+			if storeBW > 0 {
+				if minRate > int64(float64(storeBW)*0.25) {
+					log.KvDistribution.Warningf(ctx,
+						"snapshot ingest minRate is greater than 25%% of the store's provisioned bandwidth, minrate: %d, storeBW: %d",
+						minRate, storeBW,
+					)
+				}
+			}
+		}
+
+		timer := &timeutil.Timer{}
+		pacer = admission.NewSnapshotPacer(snapshotQ, minRate, timer.AsTimerI())
 	}
 
 	for {
@@ -196,86 +200,60 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 
 			timingTag.start("sst")
 			verifyCheckSum := snapshotChecksumVerification.Get(&s.ClusterSettings().SV)
-			// All batch operations are guaranteed to be point key or range key puts.
+			// All batch operations are guaranteed to be point keys or range keys.
+			// When the snapshot contains shared or external SSTs, Pebble internal
+			// keys (DELS, RANGEDELs etc.), can also appear among the point and
+			// range keys.
 			for batchReader.Next() {
 				// TODO(lyang24): maybe avoid decoding engine key twice.
-				// msstw calls (i.e. PutInternalPointKey) can use the decoded engine key here as input.
+				// msstw calls (i.e. putInternalPointKey) can use the decoded engine key here as input.
 
-				writeBytes := msstw.writeBytes - prevWriteBytes
+				bytesEstimate := msstw.EstimatedDataSize()
+				delta := bytesEstimate - prevBytesEstimate
 				// Calling nil pacer is a noop.
-				if err := pacer.Pace(ctx, writeBytes, false /* final */); err != nil {
+				if err := pacer.Pace(ctx, delta, false /* final */); err != nil {
 					return noSnap, errors.Wrapf(err, "snapshot admission pacer")
 				}
-				prevWriteBytes = msstw.writeBytes
+				prevBytesEstimate = bytesEstimate
 
 				ek, err := batchReader.EngineKey()
 				if err != nil {
 					return noSnap, err
 				}
 				// Verify value checksum to catch data corruption.
-				if verifyCheckSum {
+				if verifyCheckSum && batchReader.IsPointValue() {
 					if err = ek.Verify(batchReader.Value()); err != nil {
 						return noSnap, errors.Wrap(err, "verifying value checksum")
 					}
 				}
 
-				if err := kvSS.readOneToBatch(ctx, ek, header.SharedReplicate, batchReader, msstw); err != nil {
+				if err := msstw.ReadOne(
+					ctx, ek, header.SharedReplicate || header.ExternalReplicate, batchReader); err != nil {
 					return noSnap, err
 				}
 			}
-			if batchReader.Error() != nil {
+			if err := batchReader.Error(); err != nil {
 				return noSnap, err
 			}
 			timingTag.stop("sst")
 		}
 
-		for i := range req.SharedTables {
-			sst := req.SharedTables[i]
-			pbToInternalKey := func(k *kvserverpb.SnapshotRequest_SharedTable_InternalKey) pebble.InternalKey {
-				return pebble.InternalKey{UserKey: k.UserKey, Trailer: pebble.InternalKeyTrailer(k.Trailer)}
-			}
-			sharedSSTs = append(sharedSSTs, pebble.SharedSSTMeta{
-				Backing:          stubBackingHandle{sst.Backing},
-				Smallest:         pbToInternalKey(sst.Smallest),
-				Largest:          pbToInternalKey(sst.Largest),
-				SmallestRangeKey: pbToInternalKey(sst.SmallestRangeKey),
-				LargestRangeKey:  pbToInternalKey(sst.LargestRangeKey),
-				SmallestPointKey: pbToInternalKey(sst.SmallestPointKey),
-				LargestPointKey:  pbToInternalKey(sst.LargestPointKey),
-				Level:            uint8(sst.Level),
-				Size:             sst.Size_,
-			})
-		}
-		for i := range req.ExternalTables {
-			sst := req.ExternalTables[i]
-			externalSSTs = append(externalSSTs, pebble.ExternalFile{
-				Locator:           remote.Locator(sst.Locator),
-				ObjName:           sst.ObjectName,
-				StartKey:          sst.StartKey,
-				EndKey:            sst.EndKey,
-				EndKeyIsInclusive: sst.EndKeyIsInclusive,
-				HasPointKey:       sst.HasPointKey,
-				HasRangeKey:       sst.HasRangeKey,
-				SyntheticPrefix:   sst.SyntheticPrefix,
-				SyntheticSuffix:   sst.SyntheticSuffix,
-				Level:             uint8(sst.Level),
-				Size:              sst.Size_,
-			})
-		}
+		sharedSSTs = append(sharedSSTs, req.SharedTables...)
+		externalSSTs = append(externalSSTs, req.ExternalTables...)
+
 		if req.Final {
 			// We finished receiving all batches and log entries. It's possible that
 			// we did not receive any key-value pairs for some of the key spans, but
 			// we must still construct SSTs with range deletion tombstones to remove
 			// the data.
 			timingTag.start("sst")
-			dataSize, err := msstw.Finish(ctx)
-			sstSize := msstw.sstSize
+			dataSize, sstSize, err := msstw.Finish(ctx)
 			if err != nil {
 				return noSnap, errors.Wrapf(err, "finishing sst for raft snapshot")
 			}
 			// Defensive call to account for any discrepancies. The SST sizes should
 			// have been updated upon closing.
-			additionalWrites := sstSize - msstw.writeBytes
+			additionalWrites := sstSize - prevBytesEstimate
 			if err := pacer.Pace(ctx, additionalWrites, true /* final */); err != nil {
 				return noSnap, errors.Wrapf(err, "snapshot admission pacer")
 			}
@@ -284,7 +262,7 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 			log.Eventf(ctx, "all data received from snapshot and all SSTs were finalized")
 			var sharedSize int64
 			for i := range sharedSSTs {
-				sharedSize += int64(sharedSSTs[i].Size)
+				sharedSize += int64(sharedSSTs[i].Size_)
 			}
 
 			snapUUID, err := uuid.FromBytes(header.RaftMessageRequest.Message.Snapshot.Data)
@@ -294,19 +272,18 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 			}
 
 			inSnap := IncomingSnapshot{
-				SnapUUID:                    snapUUID,
-				SSTStorageScratch:           kvSS.scratch,
-				FromReplica:                 header.RaftMessageRequest.FromReplica,
-				Desc:                        header.State.Desc,
-				DataSize:                    dataSize,
-				SSTSize:                     sstSize,
-				SharedSize:                  sharedSize,
-				raftAppliedIndex:            header.State.RaftAppliedIndex,
-				msgAppRespCh:                make(chan raftpb.Message, 1),
-				sharedSSTs:                  sharedSSTs,
-				externalSSTs:                externalSSTs,
-				includesRangeDelForLastSpan: !skipClearForMVCCSpan,
-				clearedSpans:                keyRanges,
+				SnapUUID:          snapUUID,
+				SSTStorageScratch: kvSS.scratch,
+				FromReplica:       header.RaftMessageRequest.FromReplica,
+				Desc:              header.State.Desc,
+				DataSize:          dataSize,
+				SSTSize:           sstSize,
+				SharedSize:        sharedSize,
+				raftAppliedIndex:  header.State.RaftAppliedIndex,
+				msgAppRespCh:      make(chan raftpb.Message, 1),
+				sharedSSTs:        sharedSSTs,
+				externalSSTs:      externalSSTs,
+				clearedSpans:      keyRanges,
 			}
 
 			timingTag.stop("totalTime")
@@ -315,79 +292,6 @@ func (kvSS *kvBatchSnapshotStrategy) Receive(
 			return inSnap, nil
 		}
 	}
-}
-
-func (kvSS *kvBatchSnapshotStrategy) readOneToBatch(
-	ctx context.Context,
-	ek storage.EngineKey,
-	shared bool, // may receive shared SSTs
-	batchReader *storage.BatchReader,
-	msstw *multiSSTWriter,
-) error {
-	switch batchReader.KeyKind() {
-	case pebble.InternalKeyKindSet, pebble.InternalKeyKindSetWithDelete:
-		if err := msstw.Put(ctx, ek, batchReader.Value()); err != nil {
-			return errors.Wrapf(err, "writing sst for raft snapshot")
-		}
-	case pebble.InternalKeyKindDelete, pebble.InternalKeyKindDeleteSized:
-		if !shared {
-			return errors.AssertionFailedf("unexpected batch entry key kind %d", batchReader.KeyKind())
-		}
-		if err := msstw.PutInternalPointKey(ctx, batchReader.Key(), batchReader.KeyKind(), nil); err != nil {
-			return errors.Wrapf(err, "writing sst for raft snapshot")
-		}
-	case pebble.InternalKeyKindRangeDelete:
-		if !shared {
-			return errors.AssertionFailedf("unexpected batch entry key kind %d", batchReader.KeyKind())
-		}
-		start := batchReader.Key()
-		end, err := batchReader.EndKey()
-		if err != nil {
-			return err
-		}
-		if err := msstw.PutInternalRangeDelete(ctx, start, end); err != nil {
-			return errors.Wrapf(err, "writing sst for raft snapshot")
-		}
-
-	case pebble.InternalKeyKindRangeKeyUnset, pebble.InternalKeyKindRangeKeyDelete:
-		if !shared {
-			return errors.AssertionFailedf("unexpected batch entry key kind %d", batchReader.KeyKind())
-		}
-		start := batchReader.Key()
-		end, err := batchReader.EndKey()
-		if err != nil {
-			return err
-		}
-		rangeKeys, err := batchReader.RawRangeKeys()
-		if err != nil {
-			return err
-		}
-		for _, rkv := range rangeKeys {
-			err := msstw.PutInternalRangeKey(ctx, start, end, rkv)
-			if err != nil {
-				return errors.Wrapf(err, "writing sst for raft snapshot")
-			}
-		}
-	case pebble.InternalKeyKindRangeKeySet:
-		start := ek
-		end, err := batchReader.EngineEndKey()
-		if err != nil {
-			return err
-		}
-		rangeKeys, err := batchReader.EngineRangeKeys()
-		if err != nil {
-			return err
-		}
-		for _, rkv := range rangeKeys {
-			err := msstw.PutRangeKey(ctx, start.Key, end.Key, rkv.Version, rkv.Value)
-			if err != nil {
-				return errors.Wrapf(err, "writing sst for raft snapshot")
-			}
-		}
-	default:
-		return errors.AssertionFailedf("unexpected batch entry key kind %d", batchReader.KeyKind())
-	}
-	return nil
 }
 
 // Send implements the snapshotStrategy interface.
@@ -459,16 +363,6 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 		return nil
 	}
 
-	// If snapshots containing shared files are allowed, and this range is a
-	// non-system range, take advantage of shared storage to minimize the amount
-	// of data we're iterating on and sending over the network.
-	sharedReplicate := header.SharedReplicate && rditer.IterateReplicaKeySpansShared != nil
-	externalReplicate := header.ExternalReplicate && rditer.IterateReplicaKeySpansShared != nil
-	replicatedFilter := rditer.ReplicatedSpansAll
-	if sharedReplicate || externalReplicate {
-		replicatedFilter = rditer.ReplicatedSpansExcludeUser
-	}
-
 	iterateRKSpansVisitor := func(iter storage.EngineIterator, _ roachpb.Span) error {
 		timingTag.start("iter")
 		defer timingTag.stop("iter")
@@ -518,16 +412,27 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 		}
 		return err
 	}
-	err := rditer.IterateReplicaKeySpans(ctx, snap.State.Desc, snap.EngineSnap, true, /* replicatedOnly */
-		replicatedFilter, iterateRKSpansVisitor)
-	if err != nil {
+	if err := rditer.IterateReplicaKeySpans(ctx, snap.State.Desc, snap.StateSnap, fs.RangeSnapshotReadCategory, rditer.SelectOpts{
+		Ranged: rditer.SelectRangedOptions{
+			SystemKeys: true,
+			LockTable:  true,
+			// In shared/external mode, the user span come from external SSTs and
+			// are not iterated over here.
+			UserKeys: !(header.SharedReplicate || header.ExternalReplicate),
+		},
+		ReplicatedByRangeID:   true,
+		UnreplicatedByRangeID: false,
+	}, iterateRKSpansVisitor); err != nil {
 		return 0, err
 	}
 
 	var valBuf []byte
-	if sharedReplicate || externalReplicate {
+	// If snapshots containing shared files are allowed, and this range is a
+	// non-system range, take advantage of shared storage to minimize the amount
+	// of data we're iterating on and sending over the network.
+	if header.SharedReplicate || header.ExternalReplicate {
 		var sharedVisitor func(sst *pebble.SharedSSTMeta) error
-		if sharedReplicate {
+		if header.SharedReplicate {
 			sharedVisitor = func(sst *pebble.SharedSSTMeta) error {
 				sharedSSTCount++
 				snap.sharedBackings = append(snap.sharedBackings, sst.Backing)
@@ -556,11 +461,11 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 			}
 		}
 		var externalVisitor func(sst *pebble.ExternalFile) error
-		if externalReplicate {
+		if header.ExternalReplicate {
 			externalVisitor = func(sst *pebble.ExternalFile) error {
 				externalSSTCount++
 				externalSSTs = append(externalSSTs, kvserverpb.SnapshotRequest_ExternalTable{
-					Locator:           []byte(sst.Locator),
+					Locator:           []byte(sst.Locator.RawRedactableString),
 					ObjectName:        sst.ObjName,
 					Size_:             sst.Size,
 					StartKey:          sst.StartKey,
@@ -576,7 +481,7 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 			}
 		}
 		kvsBefore := kvs
-		err := rditer.IterateReplicaKeySpansShared(ctx, snap.State.Desc, kvSS.st, kvSS.clusterID, snap.EngineSnap, func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
+		err := rditer.IterateReplicaKeySpansShared(ctx, snap.State.Desc, kvSS.st, kvSS.clusterID, snap.StateSnap, func(key *pebble.InternalKey, value pebble.LazyValue, _ pebble.IteratorLevel) error {
 			kvs++
 			if b == nil {
 				b = kvSS.newWriteBatch()
@@ -639,15 +544,20 @@ func (kvSS *kvBatchSnapshotStrategy) Send(
 			//
 			// See: https://github.com/cockroachdb/cockroach/issues/142673
 			transitionFromSharedToRegularReplicate = true
-			err = rditer.IterateReplicaKeySpans(ctx, snap.State.Desc, snap.EngineSnap, true, /* replicatedOnly */
-				rditer.ReplicatedSpansUserOnly, iterateRKSpansVisitor)
+			err = rditer.IterateReplicaKeySpans(ctx, snap.State.Desc, snap.StateSnap, fs.RangeSnapshotReadCategory, rditer.SelectOpts{
+				Ranged: rditer.SelectRangedOptions{
+					UserKeys: true,
+				},
+				ReplicatedByRangeID:   false, // we only want the user span
+				UnreplicatedByRangeID: false,
+			}, iterateRKSpansVisitor)
 		}
 		if err != nil {
 			return 0, err
 		}
 	}
 	if b != nil {
-		if err = flushBatch(); err != nil {
+		if err := flushBatch(); err != nil {
 			return 0, err
 		}
 	}
@@ -697,7 +607,7 @@ func (kvSS *kvBatchSnapshotStrategy) Close(ctx context.Context) {
 		// disk space (which is reclaimed on node restart). It is unexpected
 		// though, so log a warning.
 		if err := kvSS.scratch.Close(); err != nil {
-			log.Warningf(ctx, "error closing kvBatchSnapshotStrategy: %v", err)
+			log.KvDistribution.Warningf(ctx, "error closing kvBatchSnapshotStrategy: %v", err)
 		}
 	}
 }

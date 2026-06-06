@@ -67,7 +67,6 @@ func Example_sql() {
 	// $ cockroach sql
 	// sql -e create database t; create table t.f (x int, y int); insert into t.f values (42, 69)
 	// CREATE DATABASE
-	// NOTICE: auto-committing transaction before processing DDL due to autocommit_before_ddl setting
 	// CREATE TABLE
 	// INSERT 0 1
 	// sql -e select 3 as "3" -e select * from t.f
@@ -103,13 +102,11 @@ func Example_sql() {
 	// sql -e create table t.g1 (x int)
 	// CREATE TABLE
 	// sql -e create table t.g2 as select * from generate_series(1,10)
-	// NOTICE: CREATE TABLE ... AS does not copy over indexes, default expressions, or constraints; the new table has a hidden rowid primary key column
 	// CREATE TABLE AS
 	// sql -d nonexistent -e select count(*) from "".information_schema.tables limit 0
 	// count
 	// sql -d nonexistent -e create database nonexistent; create table foo(x int); select * from foo
 	// CREATE DATABASE
-	// NOTICE: auto-committing transaction before processing DDL due to autocommit_before_ddl setting
 	// CREATE TABLE
 	// x
 	// sql -e copy t.f from stdin
@@ -211,7 +208,6 @@ func Example_misc_table() {
 	// Output:
 	// sql -e create database t; create table t.t (s string, d string);
 	// CREATE DATABASE
-	// NOTICE: auto-committing transaction before processing DDL due to autocommit_before_ddl setting
 	// CREATE TABLE
 	// sql --format=table -e select '  hai' as x
 	//     x
@@ -222,7 +218,6 @@ func Example_misc_table() {
 	//            info
 	// --------------------------
 	//   distribution: local
-	//   vectorized: true
 	//
 	//   • render
 	//   │
@@ -230,7 +225,7 @@ func Example_misc_table() {
 	//         missing stats
 	//         table: t@t_pkey
 	//         spans: FULL SCAN
-	// (9 rows)
+	// (8 rows)
 }
 
 func Example_in_memory() {
@@ -250,7 +245,6 @@ func Example_in_memory() {
 	// Output:
 	// sql -e create database t; create table t.f (x int, y int); insert into t.f values (42, 69)
 	// CREATE DATABASE
-	// NOTICE: auto-committing transaction before processing DDL due to autocommit_before_ddl setting
 	// CREATE TABLE
 	// INSERT 0 1
 	// node ls
@@ -274,7 +268,6 @@ func Example_pretty_print_numerical_strings() {
 	// Output:
 	// sql -e create database t; create table t.t (s string, d string);
 	// CREATE DATABASE
-	// NOTICE: auto-committing transaction before processing DDL due to autocommit_before_ddl setting
 	// CREATE TABLE
 	// sql -e insert into t.t values (e'0', 'positive numerical string')
 	// INSERT 0 1
@@ -362,6 +355,53 @@ func Example_includes() {
 	// sql -f testdata/i_maxrecursion.sql
 	// ERROR: \i: too many recursion levels (max 10)
 	// ERROR: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: testdata/i_maxrecursion.sql: \i: too many recursion levels (max 10)
+}
+
+// Example_sql_restrict tests the \restrict and \unrestrict metacommands,
+// which mirror psql's CVE-2025-8714 mitigation by blocking all backslash
+// metacommands except \unrestrict while restricted mode is active.
+func Example_sql_restrict() {
+	c := cli.NewCLITest(cli.TestCLIParams{})
+	defer c.Cleanup()
+
+	// Missing argument is rejected.
+	c.RunWithArgs([]string{`sql`, `-e`, `\restrict`})
+	c.RunWithArgs([]string{`sql`, `-e`, `\unrestrict`})
+
+	// \unrestrict outside of restricted mode is rejected.
+	c.RunWithArgs([]string{`sql`, `-e`, `\unrestrict somekey`})
+
+	// While restricted, other metacommands are blocked but SQL still runs.
+	c.RunWithArgs([]string{`sql`, `-e`, `\restrict mykey`, `-e`, `select 42 as n`, `-e`, `\echo hi`})
+
+	// Wrong key on \unrestrict is rejected.
+	c.RunWithArgs([]string{`sql`, `-e`, `\restrict mykey`, `-e`, `\unrestrict wrong`})
+
+	// Re-running \restrict while already restricted is rejected by the
+	// pre-dispatch check (the in-handler "already in restricted mode" error
+	// is defense-in-depth and not reachable from this path).
+	c.RunWithArgs([]string{`sql`, `-e`, `\restrict mykey`, `-e`, `\restrict other`})
+
+	// Correct key exits restricted mode and \echo works again.
+	c.RunWithArgs([]string{`sql`, `-e`, `\restrict mykey`, `-e`, `\unrestrict mykey`, `-e`, `\echo hi`})
+
+	// Output:
+	// sql -e \restrict
+	// ERROR: -e: \restrict: missing required argument
+	// sql -e \unrestrict
+	// ERROR: -e: \unrestrict: missing required argument
+	// sql -e \unrestrict somekey
+	// ERROR: -e: \unrestrict: not currently in restricted mode
+	// sql -e \restrict mykey -e select 42 as n -e \echo hi
+	// n
+	// 42
+	// ERROR: -e: backslash commands are restricted; only \unrestrict is allowed
+	// sql -e \restrict mykey -e \unrestrict wrong
+	// ERROR: -e: \unrestrict: wrong key
+	// sql -e \restrict mykey -e \restrict other
+	// ERROR: -e: backslash commands are restricted; only \unrestrict is allowed
+	// sql -e \restrict mykey -e \unrestrict mykey -e \echo hi
+	// hi
 }
 
 // Example_sql_lex tests the usage of the lexer in the sql subcommand.
@@ -494,7 +534,7 @@ func TestAutoTraceInAutoRunStatements(t *testing.T) {
 	if !strings.HasPrefix(out, strings.Join(stmt, " ")+"\n?column?\nhello") {
 		t.Errorf("output does not start with statement result")
 	}
-	if !strings.Contains(out, "SPAN START") {
+	if !strings.Contains(out, "=== operation:") {
 		t.Errorf("output does not contain trace")
 	}
 }

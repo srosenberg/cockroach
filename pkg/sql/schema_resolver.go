@@ -125,6 +125,9 @@ func (sr *schemaResolver) LookupObject(
 	if flags.DesiredObjectKind == tree.TypeObject && scName == catconstants.PublicSchemaName {
 		if alias, ok := types.PublicSchemaAliases[obName]; ok {
 			if flags.RequireMutable {
+				if !flags.Required {
+					return false, catalog.ResolvedObjectPrefix{}, nil, nil
+				}
 				return true, catalog.ResolvedObjectPrefix{}, nil, pgerror.Newf(pgcode.WrongObjectType, "type %q is a built-in type", obName)
 			}
 
@@ -266,7 +269,7 @@ func (sr *schemaResolver) getQualifiedTableName(
 	switch {
 	case scDesc != nil:
 		schemaName = tree.Name(scDesc.GetName())
-	case desc.IsTemporary() && scDesc == nil:
+	case desc.IsTemporary():
 		// We've lost track of the session which owned this schema, but we
 		// can come up with a name that is also going to be unique and
 		// informative and looks like a pg_temp_<session_id> name.
@@ -457,10 +460,7 @@ func (sr *schemaResolver) ResolveFunction(
 	}
 
 	// Get builtin and udf functions if there is any match.
-	builtinDef, err := tree.GetBuiltinFuncDefinition(fn, path)
-	if err != nil {
-		return nil, err
-	}
+	builtinDef := tree.GetBuiltinFuncDefinition(fn, path)
 	routine, err := maybeLookupRoutine(ctx, sr, path, fn)
 	if err != nil {
 		return nil, err

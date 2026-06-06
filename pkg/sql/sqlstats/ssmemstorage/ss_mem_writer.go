@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/sql/appstatspb"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats"
 	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/errors"
@@ -38,7 +39,7 @@ var timestampSize = int64(unsafe.Sizeof(time.Time{}))
 // Note: This error is only related to the operation of recording the statement
 // statistics into in-memory structs. It is unrelated to the stmtErr in the
 // arguments.
-func (s *Container) RecordStatement(ctx context.Context, value sqlstats.RecordedStmtStats) error {
+func (s *Container) RecordStatement(ctx context.Context, value *sqlstats.RecordedStmtStats) error {
 	t := sqlstats.StatsCollectionLatencyThreshold.Get(&s.st.SV)
 	// TODO(117690): Unify StmtStatsEnable and TxnStatsEnable into a single cluster setting.
 	if !sqlstats.StmtStatsEnable.Get(&s.st.SV) || (t > 0 && t.Seconds() >= value.ServiceLatencySec) {
@@ -49,12 +50,13 @@ func (s *Container) RecordStatement(ctx context.Context, value sqlstats.Recorded
 		fingerprintID:            value.FingerprintID,
 		planHash:                 value.PlanHash,
 		transactionFingerprintID: value.TransactionFingerprintID,
+		aggregatedTs:             value.AggregatedTs,
+		aggInterval:              value.AggInterval,
 	}
 
 	// Get the statistics object.
 	stats, created, throttled := s.tryCreateStatsForStmtWithKey(statementKey, sampledPlanKey{
 		stmtNoConstants: value.Query,
-		implicitTxn:     value.ImplicitTxn,
 		database:        value.Database,
 	})
 
@@ -77,6 +79,27 @@ func (s *Container) RecordStatement(ctx context.Context, value sqlstats.Recorded
 		}
 		stats.mu.data.FailureCount++
 	}
+	if value.Generic {
+		stats.mu.data.GenericCount++
+	}
+	if value.AppliedStmtHints {
+		stats.mu.data.StmtHintsCount++
+	}
+	// Track canary and stable stats separately: these latencies use their own
+	// counts (not the overall Count) for Welford's running average, since they
+	// represent only the subsets of executions that participated in the canary
+	// experiment. Executions where the experiment is off (canary_fraction = 0)
+	// are counted in neither bucket.
+	switch value.StatsRollout {
+	case eval.StatsRolloutCanary:
+		stats.mu.data.CanaryStats.Count++
+		stats.mu.data.CanaryStats.RunLat.Record(stats.mu.data.CanaryStats.Count, value.RunLatencySec)
+		stats.mu.data.CanaryStats.PlanLat.Record(stats.mu.data.CanaryStats.Count, value.PlanLatencySec)
+	case eval.StatsRolloutStable:
+		stats.mu.data.StableStats.Count++
+		stats.mu.data.StableStats.RunLat.Record(stats.mu.data.StableStats.Count, value.RunLatencySec)
+		stats.mu.data.StableStats.PlanLat.Record(stats.mu.data.StableStats.Count, value.PlanLatencySec)
+	}
 	if value.AutoRetryCount == 0 {
 		stats.mu.data.FirstAttemptCount++
 	} else if int64(value.AutoRetryCount) > stats.mu.data.MaxRetries {
@@ -94,6 +117,7 @@ func (s *Container) RecordStatement(ctx context.Context, value sqlstats.Recorded
 	stats.mu.data.BytesRead.Record(stats.mu.data.Count, float64(value.BytesRead))
 	stats.mu.data.RowsRead.Record(stats.mu.data.Count, float64(value.RowsRead))
 	stats.mu.data.RowsWritten.Record(stats.mu.data.Count, float64(value.RowsWritten))
+	stats.mu.data.KVCPUTimeNanos.Record(stats.mu.data.Count, float64(value.KVCPUTimeNanos))
 	stats.mu.data.LastExecTimestamp = s.getTimeNow()
 	stats.mu.data.Nodes = util.CombineUnique(stats.mu.data.Nodes, value.Nodes)
 	stats.mu.data.KVNodeIDs = util.CombineUnique(stats.mu.data.KVNodeIDs, value.KVNodeIDs)
@@ -150,10 +174,9 @@ func (s *Container) RecordStatement(ctx context.Context, value sqlstats.Recorded
 
 // StatementSampled returns true if the statement with the given fingerprint
 // exists in the sampled statement cache.
-func (s *Container) StatementSampled(fingerprint string, implicitTxn bool, database string) bool {
+func (s *Container) StatementSampled(fingerprint string, database string) bool {
 	key := sampledPlanKey{
 		stmtNoConstants: fingerprint,
-		implicitTxn:     implicitTxn,
 		database:        database,
 	}
 	s.mu.Lock()
@@ -164,12 +187,9 @@ func (s *Container) StatementSampled(fingerprint string, implicitTxn bool, datab
 
 // TrySetStatementSampled attempts to add the statement to the sampled
 // statement cache. If the statement is already in the cache, it returns false.
-func (s *Container) TrySetStatementSampled(
-	fingerprint string, implicitTxn bool, database string,
-) bool {
+func (s *Container) TrySetStatementSampled(fingerprint string, database string) bool {
 	key := sampledPlanKey{
 		stmtNoConstants: fingerprint,
-		implicitTxn:     implicitTxn,
 		database:        database,
 	}
 	s.mu.Lock()
@@ -182,11 +202,16 @@ func (s *Container) TrySetStatementSampled(
 }
 
 // RecordTransaction saves per-transaction statistics.
-func (s *Container) RecordTransaction(ctx context.Context, value sqlstats.RecordedTxnStats) error {
+func (s *Container) RecordTransaction(ctx context.Context, value *sqlstats.RecordedTxnStats) error {
 	s.recordTransactionHighLevelStats(value.TransactionTimeSec, value.Committed, value.ImplicitTxn)
 
 	// Get the statistics object.
-	stats, created, throttled := s.tryCreateStatsForTxnWithKey(value.FingerprintID, value.StatementFingerprintIDs)
+	key := txnKey{
+		transactionFingerprintID: value.FingerprintID,
+		aggregatedTs:             value.AggregatedTs,
+		aggInterval:              value.AggInterval,
+	}
+	stats, created, throttled := s.tryCreateStatsForTxnWithKey(key, value.StatementFingerprintIDs)
 
 	if throttled {
 		return ErrFingerprintLimitReached
@@ -203,14 +228,14 @@ func (s *Container) RecordTransaction(ctx context.Context, value sqlstats.Record
 	// fingerprints for this app. We also abort the operation and return an error.
 	if created {
 		estimatedMemAllocBytes :=
-			stats.sizeUnsafeLocked() + value.FingerprintID.Size() + 8 /* hash of transaction key */
+			stats.sizeUnsafeLocked() + key.size() + 8 /* hash of transaction key */
 		if err := func() error {
 			// If the monitor is nil, we do not track memory usage.
 			if s.acc != nil {
 				if err := s.acc.Grow(ctx, estimatedMemAllocBytes); err != nil {
 					s.mu.Lock()
 					defer s.mu.Unlock()
-					delete(s.mu.txns, value.FingerprintID)
+					delete(s.mu.txns, key)
 					return ErrMemoryPressure
 				}
 			}
@@ -233,15 +258,17 @@ func (s *Container) RecordTransaction(ctx context.Context, value sqlstats.Record
 	stats.mu.data.RowsRead.Record(stats.mu.data.Count, float64(value.RowsRead))
 	stats.mu.data.RowsWritten.Record(stats.mu.data.Count, float64(value.RowsWritten))
 	stats.mu.data.BytesRead.Record(stats.mu.data.Count, float64(value.BytesRead))
+	stats.mu.data.KVCPUTimeNanos.Record(stats.mu.data.Count, float64(value.KVCPUTimeNanos.Nanoseconds()))
 
 	if value.CollectedExecStats {
 		stats.mu.data.ExecStats.Count++
-		stats.mu.data.ExecStats.NetworkBytes.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.NetworkBytesSent))
+		stats.mu.data.ExecStats.NetworkBytes.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.DistSQLNetworkBytesSent))
 		stats.mu.data.ExecStats.MaxMemUsage.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.MaxMemUsage))
 		stats.mu.data.ExecStats.ContentionTime.Record(stats.mu.data.ExecStats.Count, value.ExecStats.ContentionTime.Seconds())
-		stats.mu.data.ExecStats.NetworkMessages.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.NetworkMessages))
+		stats.mu.data.ExecStats.NetworkMessages.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.DistSQLNetworkMessages))
 		stats.mu.data.ExecStats.MaxDiskUsage.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.MaxDiskUsage))
-		stats.mu.data.ExecStats.CPUSQLNanos.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.CPUTime.Nanoseconds()))
+		stats.mu.data.ExecStats.CPUSQLNanos.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.SQLCPUTime.Nanoseconds()))
+		stats.mu.data.ExecStats.AdmissionWaitTime.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.AdmissionWaitTime.Nanoseconds()))
 
 		stats.mu.data.ExecStats.MVCCIteratorStats.StepCount.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.MvccSteps))
 		stats.mu.data.ExecStats.MVCCIteratorStats.StepCountInternal.Record(stats.mu.data.ExecStats.Count, float64(value.ExecStats.MvccStepsInternal))
@@ -269,4 +296,8 @@ func (s *Container) recordTransactionHighLevelStats(
 		return
 	}
 	s.txnCounts.recordTransactionCounts(transactionTimeSec, committed, implicit)
+}
+
+func (s *Container) ApplicationName() string {
+	return s.appName
 }

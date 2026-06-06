@@ -312,7 +312,7 @@ func mkTargets(tableDesc catalog.TableDescriptor) changefeedbase.Targets {
 	targets := changefeedbase.Targets{}
 	targets.Add(changefeedbase.Target{
 		Type:              jobspb.ChangefeedTargetSpecification_PRIMARY_FAMILY_ONLY,
-		TableID:           tableDesc.GetID(),
+		DescID:            tableDesc.GetID(),
 		StatementTimeName: changefeedbase.StatementTimeName(tableDesc.GetName()),
 	})
 	return targets
@@ -342,7 +342,8 @@ func parseTableDesc(createTableStmt string) (catalog.TableDescriptor, error) {
 	tableID := descpb.ID(bootstrap.TestingUserDescID(1))
 	semaCtx := makeTestSemaCtx()
 	mutDesc, err := importer.MakeTestingSimpleTableDescriptor(
-		ctx, &semaCtx, st, createTable, parentID, keys.PublicSchemaID, tableID, importer.NoFKs, timeutil.Now().UnixNano())
+		ctx, &semaCtx, st, createTable, parentID, keys.PublicSchemaID, tableID, timeutil.Now().UnixNano(),
+	)
 	if err != nil {
 		return nil, err
 	}

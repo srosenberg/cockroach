@@ -23,12 +23,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
-	"github.com/cockroachdb/cockroach/pkg/storage"
+	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/testutils/release"
 	"github.com/cockroachdb/cockroach/pkg/ts/tspb"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
-	"github.com/cockroachdb/cockroach/pkg/util/version"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/version"
 )
 
 type versionFeatureTest struct {
@@ -100,7 +100,6 @@ func runVersionUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) {
 	testCtx := ctx
 	opts := []mixedversion.CustomOption{
 		mixedversion.AlwaysUseFixtures,
-		mixedversion.AlwaysUseLatestPredecessors,
 	}
 	if c.IsLocal() {
 		localTimeout := 30 * time.Minute
@@ -109,7 +108,13 @@ func runVersionUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) {
 		defer cancel()
 		opts = append(
 			opts,
+			mixedversion.AlwaysUseLatestPredecessors,
 			mixedversion.NumUpgrades(1),
+		)
+	} else {
+		opts = append(
+			opts,
+			mixedversion.WithSameSeriesUpgradeProbability(0.5),
 		)
 	}
 
@@ -123,8 +128,9 @@ func runVersionUpgrade(ctx context.Context, t test.Test, c cluster.Cluster) {
 				// Verify that backups can be created in various configurations. This is
 				// important to test because changes in system tables might cause backups to
 				// fail in mixed-version clusters.
-				dest := fmt.Sprintf("nodelocal://1/%d", timeutil.Now().UnixNano())
-				return h.Exec(rng, `BACKUP INTO $1`, dest)
+				gatewayNode := h.RandomAvailableNode(rng)
+				dest := fmt.Sprintf("nodelocal://%d/%d", gatewayNode, timeutil.Now().UnixNano())
+				return h.ExecWithGateway(rng, option.NodeListOption{gatewayNode}, `BACKUP INTO $1`, dest)
 			} else {
 				// Skip the backup step in separate-process deployments, since nodelocal
 				// is not supported in pods.
@@ -198,7 +204,8 @@ func makeVersionFixtureAndFatal(
 		}
 	}()
 
-	predecessorVersionStr, err := release.LatestPredecessor(version.MustParse(makeFixtureVersion))
+	v := version.MustParse(makeFixtureVersion)
+	predecessorVersionStr, err := release.LatestPredecessor(&v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +269,7 @@ func makeVersionFixtureAndFatal(
 	// cluster version might be 2.0, so we can only use the 2.0 or
 	// 2.1 binary, but not the 19.1 binary (as 19.1 and 2.0 are not
 	// compatible).
-	binaryVersion, err := clusterupgrade.BinaryVersion(ctx, dbFunc(1))
+	binaryVersion, err := clusterupgrade.BinaryVersion(ctx, t.L(), dbFunc(1))
 	if err != nil {
 		t.Fatalf("fetching binary version on n1: %v", err)
 	}
@@ -280,7 +287,7 @@ func makeVersionFixtureAndFatal(
 	// #54761.
 	c.Run(ctx, option.WithNodes(c.Node(1)), "cp", "{store-dir}/cluster-bootstrapped", "{store-dir}/"+name)
 	// Similar to the above - newer versions require the min version file to open a store.
-	c.Run(ctx, option.WithNodes(c.All()), "cp", fmt.Sprintf("{store-dir}/%s", storage.MinVersionFilename), "{store-dir}/"+name)
+	c.Run(ctx, option.WithNodes(c.All()), "cp", fmt.Sprintf("{store-dir}/%s", fs.MinVersionFilename), "{store-dir}/"+name)
 	c.Run(ctx, option.WithNodes(c.All()), "tar", "-C", "{store-dir}/"+name, "-czf", "{log-dir}/"+name+".tgz", ".")
 	t.Fatalf(`successfully created checkpoints; failing test on purpose.
 
@@ -301,12 +308,15 @@ done
 // did not initialize the cluster version in time.
 func registerHTTPRestart(r registry.Registry) {
 	r.Add(registry.TestSpec{
-		Name:             "http-register-routes/mixed-version",
-		Owner:            registry.OwnerObservability,
-		Cluster:          r.MakeClusterSpec(4),
-		CompatibleClouds: registry.AllClouds,
+		Name:    "http-register-routes/mixed-version",
+		Owner:   registry.OwnerObservability,
+		Cluster: r.MakeClusterSpec(4),
+		// Disabled on IBM because s390x is only built on master
+		// and version upgrade is impossible to test as of 05/2025.
+		CompatibleClouds: registry.AllClouds.NoIBM(),
 		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
 		Randomized:       true,
+		Monitor:          true,
 		Run:              runHTTPRestart,
 		Timeout:          1 * time.Hour,
 	})

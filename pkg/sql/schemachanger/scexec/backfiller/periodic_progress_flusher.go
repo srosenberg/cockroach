@@ -40,10 +40,7 @@ func NewPeriodicProgressFlusherForIndexBackfill(
 
 		},
 		func() time.Duration {
-			// fractionInterval is copied from the logic in existing backfill code.
-			// TODO(ajwerner): Add a cluster setting to control this.
-			const fractionInterval = 10 * time.Second
-			return fractionInterval
+			return backfill.IndexBackfillProgressInterval.Get(&settings.SV)
 		},
 	)
 }
@@ -72,9 +69,8 @@ func (p *periodicProgressFlusher) StartPeriodicUpdates(
 			case <-ctx.Done():
 				return ctx.Err()
 			case <-timer.Ch():
-				timer.MarkRead()
 				if err := write(ctx); err != nil {
-					log.Warningf(ctx, "could not flush progress: %v", err)
+					log.Dev.Warningf(ctx, "could not flush progress: %v", err)
 				}
 			}
 		}
@@ -95,7 +91,7 @@ func (p *periodicProgressFlusher) StartPeriodicUpdates(
 			toClose = nil
 		}
 		if err := g.Wait(); err != nil {
-			log.Warningf(ctx, "waiting for progress flushing goroutines: %v", err)
+			log.Dev.Warningf(ctx, "waiting for progress flushing goroutines: %v", err)
 		}
 	}
 }

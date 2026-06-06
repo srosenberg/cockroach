@@ -43,6 +43,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/admission"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
+	"github.com/cockroachdb/cockroach/pkg/util/growstack"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
@@ -135,7 +136,7 @@ func (s *fdCountingSemaphore) Acquire(ctx context.Context, n int) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	log.Warning(ctx, "acquiring of file descriptors for disk-spilling timed out")
+	log.Dev.Warning(ctx, "acquiring of file descriptors for disk-spilling timed out")
 	return errAcquireTimeout
 }
 
@@ -391,7 +392,7 @@ func (f *vectorizedFlow) Cleanup(ctx context.Context) {
 		if err := f.Cfg.TempFS.RemoveAll(f.GetPath(ctx)); err != nil {
 			// Log error as a Warning but keep on going to close the memory
 			// infrastructure.
-			log.Warningf(
+			log.Dev.Warningf(
 				ctx,
 				"unable to remove flow %s's temporary directory at %s, files may be left over: %v",
 				f.GetID().Short(),
@@ -485,6 +486,11 @@ func (s *vectorizedFlowCreator) makeGetStatsFnForOutbox(
 			// At the last outbox, we can accurately retrieve stats for the
 			// whole flow from parent monitors. These stats are added to a
 			// flow-level span.
+			// TODO(yuzefovich): in theory, we should be doing this in the very
+			// last goroutine that is part of the remote flow, which could be
+			// a goroutine corresponding to a remote router. It shouldn't matter
+			// as much in practice, so we approximate "the last goroutine of the
+			// flow" as "the last outbox goroutine of the flow".
 			result = append(result, &execinfrapb.ComponentStats{
 				Component: flowCtx.FlowComponentID(),
 				FlowStats: execinfrapb.FlowStats{
@@ -713,6 +719,11 @@ func (s *vectorizedFlowCreator) accumulateAsyncComponent(run runFn) {
 		flowinfra.StartableFn(func(ctx context.Context, wg *sync.WaitGroup, flowCtxCancel context.CancelFunc) {
 			wg.Add(1)
 			go func() {
+				if cpuHandle := admission.SQLCPUHandleFromContext(ctx); cpuHandle != nil {
+					gh := cpuHandle.RegisterGoroutine()
+					defer gh.Close(ctx)
+				}
+				growstack.Grow()
 				defer wg.Done()
 				run(ctx, flowCtxCancel)
 			}()
@@ -793,7 +804,7 @@ func (s *vectorizedFlowCreator) setupRouter(
 		sb.WriteString(s.StreamID.String())
 	}
 	streamIDs := redact.SafeString(sb.String())
-	mmName := "hash-router-[" + streamIDs + "]"
+	mmName := mon.MakeName("hash-router-[" + streamIDs + "]")
 
 	numOutputs := len(output.Streams)
 	// We need to create two memory accounts for each output (one for the
@@ -827,11 +838,14 @@ func (s *vectorizedFlowCreator) setupRouter(
 		case execinfrapb.StreamEndpointSpec_SYNC_RESPONSE:
 			return errors.AssertionFailedf("unexpected sync response output when setting up router")
 		case execinfrapb.StreamEndpointSpec_REMOTE:
+			// We pass nil statsCollectors here since the router is responsible
+			// for collecting stats from the input.
+			getStats := s.makeGetStatsFnForOutbox(flowCtx, nil /* statsCollectors */)
 			if _, err := s.setupRemoteOutputStream(
 				ctx, flowCtx, processorID, colexecargs.OpWithMetaInfo{
 					Root:            op,
 					MetadataSources: colexecop.MetadataSources{op},
-				}, outputTyps, stream, factory, nil, /* getStats */
+				}, outputTyps, stream, factory, getStats,
 			); err != nil {
 				return err
 			}
@@ -969,9 +983,6 @@ func (s *vectorizedFlowCreator) setupInput(
 			var err error
 			if input.EnforceHomeRegionError != nil {
 				err = input.EnforceHomeRegionError.ErrorDetail(ctx)
-				if flowCtx.EvalCtx.SessionData().EnforceHomeRegionFollowerReadsEnabled {
-					err = execinfra.NewDynamicQueryHasNoHomeRegionError(err)
-				}
 			}
 			sync := colexec.NewSerialUnorderedSynchronizer(
 				flowCtx, processorID, allocator, input.ColumnTypes, inputStreamOps,
@@ -1266,11 +1277,11 @@ var _ flowinfra.InboundStreamHandler = vectorizedInboundStreamHandler{}
 // Run is part of the flowinfra.InboundStreamHandler interface.
 func (s vectorizedInboundStreamHandler) Run(
 	ctx context.Context,
-	stream execinfrapb.DistSQL_FlowStreamServer,
-	_ *execinfrapb.ProducerMessage,
+	stream execinfrapb.RPCDistSQL_FlowStreamStream,
+	firstMsg *execinfrapb.ProducerMessage,
 	_ *flowinfra.FlowBase,
 ) error {
-	return s.RunWithStream(ctx, stream)
+	return s.RunWithStream(ctx, stream, firstMsg.Header)
 }
 
 // Timeout is part of the flowinfra.InboundStreamHandler interface.

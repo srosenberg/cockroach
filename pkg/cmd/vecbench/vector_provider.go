@@ -21,6 +21,13 @@ type IndexMetric struct {
 	Value float64
 }
 
+// SearchState holds prepared state needed by a vector provider across multiple
+// calls to Search.
+type SearchState interface {
+	// Close releases any resources held by the search state.
+	Close()
+}
+
 // VectorProvider abstracts the operations needed for vector storage and
 // retrieval. This allows different implementations (in-memory, SQL-based, etc.)
 // to provide the functionality needed by vecbench.
@@ -39,18 +46,33 @@ type VectorProvider interface {
 	// the next time the provider is created.
 	Save(ctx context.Context) error
 
-	// Clear deletes all vectors in the provider, including any persistent state.
-	Clear(ctx context.Context) error
+	// New initializes the provider for building a fresh vector index. Any
+	// existing vectors and persistent state is deleted.
+	New(ctx context.Context) error
 
 	// InsertVectors inserts a set of vectors into the provider, each uniquely
 	// identified by a key.
 	InsertVectors(ctx context.Context, keys []cspann.KeyBytes, vectors vector.Set) error
 
+	// CreateIndex creates a vector index on the data. This is called after
+	// table/store creation when the index should be created before data import.
+	CreateIndex(ctx context.Context) error
+
+	// CheckIndexCreationStatus returns the percentage complete (0.0-1.0) of index
+	// creation and any error. For providers that don't support async index creation,
+	// this should return 1.0, nil.
+	CheckIndexCreationStatus(ctx context.Context) (float64, error)
+
+	// SetupSearch allows the provider to perform expensive up-front steps in
+	// preparation for many calls to Search. It returns provider-specific state
+	// that will be passed to Search.
+	SetupSearch(ctx context.Context, maxResults int, beamSize int) (SearchState, error)
+
 	// Search searches for vectors similar to the query vector. It returns the
 	// keys of the most similar vectors. If supported, stats are recorded in
 	// "stats" for this search.
 	Search(
-		ctx context.Context, vec vector.T, maxResults int, beamSize int, stats *cspann.SearchStats,
+		ctx context.Context, state SearchState, vec vector.T, stats *cspann.SearchStats,
 	) ([]cspann.KeyBytes, error)
 
 	// GetMetrics returns interesting metrics for the vector index. Each provider

@@ -39,7 +39,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilities"
 	"github.com/cockroachdb/cockroach/pkg/multitenant/tenantcapabilities/tenantcapabilitieswatcher"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
-	"github.com/cockroachdb/cockroach/pkg/rpc"
+	"github.com/cockroachdb/cockroach/pkg/rpc/rpcbase"
 	"github.com/cockroachdb/cockroach/pkg/server/license"
 	"github.com/cockroachdb/cockroach/pkg/server/status"
 	"github.com/cockroachdb/cockroach/pkg/server/tenantsettingswatcher"
@@ -52,6 +52,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/storage/disk"
 	"github.com/cockroachdb/cockroach/pkg/storage/fs"
+	"github.com/cockroachdb/cockroach/pkg/storage/storageconfig"
 	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/admission"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
@@ -73,10 +74,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
-	"github.com/cockroachdb/cockroach/pkg/util/tracing/grpcinterceptor"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing/drpcinterceptor"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingutil"
 	"github.com/cockroachdb/cockroach/pkg/util/unique"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/logtags"
 	"github.com/cockroachdb/pebble"
@@ -110,6 +113,7 @@ understanding the health of the KV layer.
 `,
 		Measurement: "Latency",
 		Unit:        metric.Unit_NANOSECONDS,
+		Visibility:  metric.Metadata_SUPPORT,
 	}
 	metaExecSuccess = metric.Metadata{
 		Name: "exec.success",
@@ -174,22 +178,21 @@ This metric is thus not an indicator of KV health.`,
 	}
 	metaCrossZoneBatchRequest = metric.Metadata{
 		Name: "batch_requests.cross_zone.bytes",
-		Help: `Total byte count of batch requests processed cross zone within
-		the same region when region and zone tiers are configured. However, if the
-		region tiers are not configured, this count may also include batch data sent
-		between different regions. Ensuring consistent configuration of region and
-		zone tiers across nodes helps to accurately monitor the data transmitted.`,
+		Help: `Total bytes of batch requests processed cross zones within the same
+		region when zone tiers are configured. If region tiers are not set, it is
+		assumed to be within the same region. To ensure accurate monitoring of
+		cross-zone data transfer, region and zone tiers should be consistently
+		configured across all nodes.`,
 		Measurement: "Bytes",
 		Unit:        metric.Unit_BYTES,
 	}
 	metaCrossZoneBatchResponse = metric.Metadata{
 		Name: "batch_responses.cross_zone.bytes",
-		Help: `Total byte count of batch responses received cross zone within the
-		same region when region and zone tiers are configured. However, if the
-		region tiers are not configured, this count may also include batch data
-		received between different regions. Ensuring consistent configuration of
-		region and zone tiers across nodes helps to accurately monitor the data
-		transmitted.`,
+		Help: `Total bytes of batch responses received cross zones within the same
+		region when zone tiers are configured. If region tiers are not set, it is
+		assumed to be within the same region. To ensure accurate monitoring of
+		cross-zone data transfer, region and zone tiers should be consistently
+		configured across all nodes.`,
 		Measurement: "Bytes",
 		Unit:        metric.Unit_BYTES,
 	}
@@ -260,7 +263,8 @@ type nodeMetrics struct {
 	StreamManagerMetrics *rangefeed.StreamManagerMetrics
 	// BufferedSenderMetrics is for monitoring of BufferedSenders for rangefeed.
 	// Note that there could be multiple buffered senders in a node.
-	BufferedSenderMetrics *rangefeed.BufferedSenderMetrics
+	BufferedSenderMetrics  *rangefeed.BufferedSenderMetrics
+	LockedMuxStreamMetrics *rangefeed.LockedMuxStreamMetrics
 }
 
 func makeNodeMetrics(reg *metric.Registry, histogramWindow time.Duration) *nodeMetrics {
@@ -282,6 +286,7 @@ func makeNodeMetrics(reg *metric.Registry, histogramWindow time.Duration) *nodeM
 		CrossZoneBatchResponseBytes:   metric.NewCounter(metaCrossZoneBatchResponse),
 		StreamManagerMetrics:          rangefeed.NewStreamManagerMetrics(),
 		BufferedSenderMetrics:         rangefeed.NewBufferedSenderMetrics(),
+		LockedMuxStreamMetrics:        rangefeed.NewLockedMuxStreamMetrics(),
 	}
 
 	for i := range nm.MethodCounts {
@@ -309,20 +314,23 @@ func (nm *nodeMetrics) callComplete(d time.Duration, pErr *kvpb.Error) {
 }
 
 // updateCrossLocalityMetricsOnBatchRequest updates nodeMetrics for batch
-// requests processed on the node. The metrics being updated include 1. total
-// byte count of batch requests processed 2. cross-region metrics, which monitor
-// activities across different regions, and 3. cross-zone metrics, which monitor
-// activities across different zones within the same region or in cases where
-// region tiers are not configured. These metrics may include batches that were
-// not successfully sent but were terminated at an early stage.
+// requests processed on the node.
 func (nm *nodeMetrics) updateCrossLocalityMetricsOnBatchRequest(
 	comparisonResult roachpb.LocalityComparisonType, inc int64,
 ) {
+	// Update metrics for total byte count of batch requests processed on the
+	// node.
 	nm.BatchRequestsBytes.Inc(inc)
+	// In cases where both region and zone tiers are not configured,
+	// comparisonResult will be UNDEFINED.
 	switch comparisonResult {
 	case roachpb.LocalityComparisonType_CROSS_REGION:
+		// Update cross-region metrics: monitor activities across different regions.
 		nm.CrossRegionBatchRequestBytes.Inc(inc)
 	case roachpb.LocalityComparisonType_SAME_REGION_CROSS_ZONE:
+		// Update cross-zone metrics: monitor activities across different zones
+		// within the same region. If region tiers are not set, it is assumed to be
+		// within the same region.
 		nm.CrossZoneBatchRequestBytes.Inc(inc)
 	}
 }
@@ -336,6 +344,8 @@ func (nm *nodeMetrics) updateCrossLocalityMetricsOnBatchResponse(
 	comparisonResult roachpb.LocalityComparisonType, inc int64,
 ) {
 	nm.BatchResponsesBytes.Inc(inc)
+	// Read more about locality comparison in
+	// updateCrossLocalityMetricsOnBatchRequest above.
 	switch comparisonResult {
 	case roachpb.LocalityComparisonType_CROSS_REGION:
 		nm.CrossRegionBatchResponseBytes.Inc(inc)
@@ -444,10 +454,10 @@ func allocateStoreIDs(
 
 // GetBootstrapSchema returns the schema which will be used to bootstrap a new
 // server.
-func GetBootstrapSchema(
+func GetBootstrapSchemaForTest(
 	defaultZoneConfig *zonepb.ZoneConfig, defaultSystemZoneConfig *zonepb.ZoneConfig,
 ) bootstrap.MetadataSchema {
-	return bootstrap.MakeMetadataSchema(keys.SystemSQLCodec, defaultZoneConfig, defaultSystemZoneConfig)
+	return bootstrap.MakeMetadataSchema(keys.SystemSQLCodec, defaultZoneConfig, defaultSystemZoneConfig, bootstrap.NoOffset)
 }
 
 // bootstrapCluster initializes the passed-in engines for a new cluster.
@@ -459,11 +469,9 @@ func GetBootstrapSchema(
 // written, since epoch-based leases cannot be granted until then. All other
 // engines are initialized with their StoreIdent.
 func bootstrapCluster(
-	ctx context.Context, engines []storage.Engine, initCfg initServerCfg,
+	ctx context.Context, engines Engines, initCfg initServerCfg,
 ) (*initState, error) {
-	// We expect all the stores to be empty at this point, except for
-	// the store cluster version key. Assert so.
-	//
+	// We expect all the stores to be empty at this point.
 	// TODO(jackson): Eventually we should be able to avoid opening the
 	// engines altogether until here.
 	if err := assertEnginesEmpty(engines); err != nil {
@@ -472,7 +480,7 @@ func bootstrapCluster(
 
 	// We use our binary version to bootstrap the cluster.
 	bootstrapVersion := clusterversion.ClusterVersion{Version: initCfg.latestVersion}
-	if err := kvstorage.WriteClusterVersionToEngines(ctx, engines, bootstrapVersion); err != nil {
+	if err := kvstorage.WriteClusterVersionToEngines(engines, bootstrapVersion); err != nil {
 		return nil, err
 	}
 
@@ -559,7 +567,6 @@ func NewNode(
 	txnMetrics kvcoord.TxnMetrics,
 	stores *kvserver.Stores,
 	clusterID *base.ClusterIDContainer,
-	kvAdmissionQ *admission.WorkQueue,
 	elasticCPUGrantCoord *admission.ElasticCPUGrantCoordinator,
 	storeGrantCoords *admission.StoreGrantCoordinators,
 	tenantUsage multitenant.TenantUsageServer,
@@ -687,7 +694,7 @@ func (n *Node) start(
 					return
 				}
 				n.addStore(ctx, s)
-				log.Infof(ctx, "initialized store s%s in %s (%d replicas)",
+				log.Dev.Infof(ctx, "initialized store s%s in %s (%d replicas)",
 					s.StoreID(), timeutil.Since(start).Truncate(time.Millisecond), s.ReplicaCount())
 				engineErrC <- nil
 			})
@@ -762,7 +769,7 @@ func (n *Node) start(
 		n.additionalStoreInitCh = make(chan struct{})
 		if err := n.stopper.RunAsyncTask(workersCtx, "initialize-additional-stores", func(ctx context.Context) {
 			if err := n.initializeAdditionalStores(ctx, state.uninitializedEngines); err != nil {
-				log.Fatalf(ctx, "while initializing additional stores: %v", err)
+				log.Dev.Fatalf(ctx, "while initializing additional stores: %v", err)
 			}
 			close(n.additionalStoreInitCh)
 		}); err != nil {
@@ -772,8 +779,6 @@ func (n *Node) start(
 	}
 
 	n.startComputePeriodicMetrics(n.stopper, base.DefaultMetricsSampleInterval)
-	// Stores have been created, so can start providing tenant weights.
-	n.storeCfg.KVAdmissionController.SetTenantWeightProvider(n, n.stopper)
 
 	// Be careful about moving this line above where we start stores; store
 	// upgrades rely on the fact that the cluster version has not been updated
@@ -798,7 +803,7 @@ func (n *Node) start(
 		}
 	})
 
-	log.Infof(ctx, "started with attributes %v", attrs.Attrs)
+	log.Dev.Infof(ctx, "started with attributes %v", attrs.Attrs)
 
 	n.startPeriodicLivenessCompaction(n.stopper, livenessRangeCompactInterval)
 	return nil
@@ -852,18 +857,27 @@ func (n *Node) SetHLCUpperBound(ctx context.Context, hlcUpperBound int64) error 
 }
 
 func (n *Node) addStore(ctx context.Context, store *kvserver.Store) {
-	cv := store.TODOEngine().MinVersion()
-	if cv == (roachpb.Version{}) {
+	// NB: both engines have the same MinVersion, check any.
+	if cv := store.StateEngine().MinVersion(); cv == (roachpb.Version{}) {
 		// The store should have had a version written to it during the store
 		// initialization process.
-		log.Fatal(ctx, "attempting to add a store without a version")
+		log.Dev.Fatal(ctx, "attempting to add a store without a version")
 	}
-	store.TODOEngine().RegisterDiskSlowCallback(func(info pebble.DiskSlowInfo) {
-		n.onStoreDiskSlow(n.AnnotateCtx(context.Background()), store.StoreID(), info)
-	})
-	store.TODOEngine().RegisterLowDiskSpaceCallback(func(info pebble.LowDiskSpaceInfo) {
-		n.onLowDiskSpace(n.AnnotateCtx(context.Background()), store.StoreID(), info)
-	})
+
+	// Register all storage engines for disk slow and low disk space callbacks.
+	register := func(eng storage.Engine) {
+		eng.RegisterDiskSlowCallback(func(info pebble.DiskSlowInfo) {
+			n.onStoreDiskSlow(n.AnnotateCtx(context.Background()), store.StoreID(), info)
+		})
+		eng.RegisterLowDiskSpaceCallback(func(info pebble.LowDiskSpaceInfo) {
+			n.onLowDiskSpace(n.AnnotateCtx(context.Background()), store.StoreID(), info)
+		})
+	}
+	register(store.StateEngine())
+	if store.EnginesSeparated() {
+		register(store.LogEngine())
+	}
+
 	n.stores.AddStore(store)
 	n.recorder.AddStore(store)
 }
@@ -906,7 +920,7 @@ func (n *Node) onStoreDiskSlow(
 		// logStructuredEvent does an async write to system.eventlog, however it could
 		// do a synchronous log write to the node logger, so we call it within this async
 		// task as opposed to outside it.
-		n.logStructuredEvent(ctx, logpb.EventPayload(ev))
+		n.logStructuredEventWithSeverity(ctx, logpb.EventPayload(ev), severity.WARNING)
 
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
@@ -954,7 +968,7 @@ func (n *Node) onLowDiskSpace(
 		TotalBytes:       info.TotalBytes,
 	}
 	ev.CommonDetails().Timestamp = timeutil.Now().UnixNano()
-	n.logStructuredEvent(ctx, logpb.EventPayload(ev))
+	n.logStructuredEventWithSeverity(ctx, logpb.EventPayload(ev), severity.WARNING)
 }
 
 // validateStores iterates over all stores, verifying they agree on node ID.
@@ -975,7 +989,7 @@ func (n *Node) validateStores(ctx context.Context) error {
 // cluster and node ID have been established for this node. Store IDs are
 // allocated via a sequence id generator stored at a system key per node. The
 // new stores are added to n.stores.
-func (n *Node) initializeAdditionalStores(ctx context.Context, engines []storage.Engine) error {
+func (n *Node) initializeAdditionalStores(ctx context.Context, engines []kvstorage.Engines) error {
 	if n.clusterID.Get() == uuid.Nil {
 		return errors.New("missing cluster ID during initialization of additional store")
 	}
@@ -1007,12 +1021,12 @@ func (n *Node) initializeAdditionalStores(ctx context.Context, engines []storage
 			}
 
 			n.addStore(ctx, s)
-			log.Infof(ctx, "initialized new store s%s", s.StoreID())
+			log.Dev.Infof(ctx, "initialized new store s%s", s.StoreID())
 
 			// Done regularly in Node.startGossiping, but this cuts down the time
 			// until this store is used for range allocations.
 			if err := s.GossipStore(ctx, false /* useCached */); err != nil {
-				log.Warningf(ctx, "error doing initial gossiping: %s", err)
+				log.Dev.Warningf(ctx, "error doing initial gossiping: %s", err)
 			}
 
 			sIdent.StoreID++
@@ -1022,7 +1036,7 @@ func (n *Node) initializeAdditionalStores(ctx context.Context, engines []storage
 	// Write a new status summary after all stores have been initialized; this
 	// helps the UI remain responsive when new nodes are added.
 	if err := n.writeNodeStatus(ctx, false /* mustExist */); err != nil {
-		log.Warningf(ctx, "error writing node summary after store bootstrap: %s", err)
+		log.Dev.Warningf(ctx, "error writing node summary after store bootstrap: %s", err)
 	}
 
 	return nil
@@ -1065,7 +1079,7 @@ func (n *Node) startGossiping(ctx context.Context, stopper *stop.Stopper) {
 				n.gossipStores(ctx)
 			case <-nodeTicker.C:
 				if err := n.storeCfg.Gossip.SetNodeDescriptor(&n.Descriptor); err != nil {
-					log.Warningf(ctx, "couldn't gossip descriptor for node %d: %s", n.Descriptor.NodeID, err)
+					log.Dev.Warningf(ctx, "couldn't gossip descriptor for node %d: %s", n.Descriptor.NodeID, err)
 				}
 			case <-stopper.ShouldQuiesce():
 				return
@@ -1079,7 +1093,7 @@ func (n *Node) gossipStores(ctx context.Context) {
 	if err := n.stores.VisitStores(func(s *kvserver.Store) error {
 		return s.GossipStore(ctx, false /* useCached */)
 	}); err != nil {
-		log.Warningf(ctx, "%v", err)
+		log.Dev.Warningf(ctx, "%v", err)
 	}
 }
 
@@ -1098,7 +1112,7 @@ func (n *Node) startComputePeriodicMetrics(stopper *stop.Stopper, interval time.
 			select {
 			case <-ticker.C:
 				if err := n.computeMetricsPeriodically(ctx, previousMetrics, tick); err != nil {
-					log.Errorf(ctx, "failed computing periodic metrics: %s", err)
+					log.Dev.Errorf(ctx, "failed computing periodic metrics: %s", err)
 				}
 			case <-stopper.ShouldQuiesce():
 				return
@@ -1150,28 +1164,23 @@ func (n *Node) startPeriodicLivenessCompaction(
 				_ = n.stores.VisitStores(func(store *kvserver.Store) error {
 					store.VisitReplicas(func(repl *kvserver.Replica) bool {
 						span := repl.Desc().KeySpan().AsRawSpanWithNoLocals()
-						if keys.NodeLivenessSpan.Overlaps(span) {
-
-							// The CompactRange() method expects the start and end keys to be
-							// encoded.
-							startEngineKey :=
-								storage.EngineKey{
-									Key: span.Key,
-								}.Encode()
-
-							endEngineKey :=
-								storage.EngineKey{
-									Key: span.EndKey,
-								}.Encode()
-
-							timeBeforeCompaction := timeutil.Now()
-							if err := store.StateEngine().CompactRange(startEngineKey, endEngineKey); err != nil {
-								log.Errorf(ctx, "failed compacting liveness replica: %+v with error: %s", repl, err)
-							}
-
-							log.Infof(ctx, "finished compacting liveness replica: %+v and it took: %+v",
-								repl, timeutil.Since(timeBeforeCompaction))
+						if !keys.NodeLivenessSpan.Overlaps(span) {
+							return true
 						}
+
+						// CompactRange() expects the start and end keys to be encoded.
+						startEngineKey := storage.EngineKey{Key: span.Key}.Encode()
+						endEngineKey := storage.EngineKey{Key: span.EndKey}.Encode()
+
+						timeBeforeCompaction := timeutil.Now()
+						if err := store.StateEngine().CompactRange(
+							context.Background(), startEngineKey, endEngineKey,
+						); err != nil {
+							log.Dev.Errorf(ctx, "failed compacting liveness replica: %+v with error: %s", repl, err)
+						}
+
+						log.Dev.Infof(ctx, "finished compacting liveness replica: %+v and it took: %+v",
+							repl, timeutil.Since(timeBeforeCompaction))
 						return true
 					})
 					return nil
@@ -1183,14 +1192,14 @@ func (n *Node) startPeriodicLivenessCompaction(
 			}
 		}
 	}); err != nil {
-		log.Errorf(ctx, "failed to start the async liveness compaction task")
+		log.Dev.Errorf(ctx, "failed to start the async liveness compaction task")
 	}
 
 }
 
 // updateNodeRangeCount updates the internal counter of the total ranges across
 // all stores. This value is used to make a decision on whether the node should
-// use expiration leases (see Replica.shouldUseExpirationLeaseRLocked).
+// use expiration leases (see Replica.shouldUseExpirationLease).
 func (n *Node) updateNodeRangeCount() {
 	var count int64
 	_ = n.stores.VisitStores(func(store *kvserver.Store) error {
@@ -1207,7 +1216,7 @@ func (n *Node) computeMetricsPeriodically(
 ) error {
 	err := n.stores.VisitStores(func(store *kvserver.Store) error {
 		if newMetrics, err := store.ComputeMetricsPeriodically(ctx, storeToMetrics[store], tick); err != nil {
-			log.Warningf(ctx, "%s: unable to compute metrics: %s", store, err)
+			log.Dev.Warningf(ctx, "%s: unable to compute metrics: %s", store, err)
 		} else {
 			if storeToMetrics[store] == nil {
 				storeToMetrics[store] = &storage.MetricsForInterval{
@@ -1216,7 +1225,7 @@ func (n *Node) computeMetricsPeriodically(
 			} else {
 				storeToMetrics[store].FlushWriteThroughput = newMetrics.Flush.WriteThroughput
 			}
-			if err := newMetrics.LogWriter.FsyncLatency.Write(&storeToMetrics[store].WALFsyncLatency); err != nil {
+			if err := newMetrics.Metrics.WALMetrics.PrimaryFileOpLatency.Write(&storeToMetrics[store].WALFsyncLatency); err != nil {
 				return err
 			}
 			if newMetrics.WAL.Failover.FailoverWriteAndSyncLatency != nil {
@@ -1225,11 +1234,18 @@ func (n *Node) computeMetricsPeriodically(
 					return err
 				}
 			}
+			if newMetrics.Metrics.WALMetrics.SecondaryFileOpLatency != nil {
+				if err := newMetrics.Metrics.WALMetrics.SecondaryFileOpLatency.Write(
+					&storeToMetrics[store].WALSecondaryFileOpLatency); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
 	n.updateNodeRangeCount()
 	n.storeCfg.KVFlowStreamTokenProvider.UpdateMetricGauges()
+	n.stores.TryLogFlowControlSendQueues(ctx)
 	return err
 }
 
@@ -1238,7 +1254,7 @@ func (n *Node) computeMetricsPeriodically(
 func (n *Node) UpdateIOThreshold(id roachpb.StoreID, threshold *admissionpb.IOThreshold) {
 	s, err := n.stores.GetStore(id)
 	if err != nil {
-		log.Errorf(n.AnnotateCtx(context.Background()), "%v", err)
+		log.Dev.Errorf(n.AnnotateCtx(context.Background()), "%v", err)
 	}
 	s.UpdateIOThreshold(threshold)
 }
@@ -1246,8 +1262,10 @@ func (n *Node) UpdateIOThreshold(id roachpb.StoreID, threshold *admissionpb.IOTh
 // diskStatsMap encapsulates all the logic for populating DiskStats for
 // admission.StoreMetrics.
 type diskStatsMap struct {
-	provisionedRate map[roachpb.StoreID]base.ProvisionedRateSpec
-	diskMonitors    map[roachpb.StoreID]kvserver.DiskStatsMonitor
+	mm                monitorManagerInterface
+	provisionedRate   map[roachpb.StoreID]storageconfig.ProvisionedRate
+	diskMonitors      map[roachpb.StoreID]kvserver.DiskStatsMonitor
+	deviceIDToStoreID map[disk.DeviceID]roachpb.StoreID
 }
 
 func (dsm *diskStatsMap) tryPopulateAdmissionDiskStats(
@@ -1263,18 +1281,52 @@ func (dsm *diskStatsMap) tryPopulateAdmissionDiskStats(
 			return map[roachpb.StoreID]admission.DiskStats{}, err
 		}
 
-		provisionedBandwidth := clusterProvisionedBandwidth
-		spec, ok := dsm.provisionedRate[id]
-		if ok && spec.ProvisionedBandwidth > 0 {
-			provisionedBandwidth = spec.ProvisionedBandwidth
-		}
 		stats[id] = admission.DiskStats{
-			ProvisionedBandwidth: provisionedBandwidth,
 			BytesRead:            uint64(cumulativeStats.BytesRead()),
 			BytesWritten:         uint64(cumulativeStats.BytesWritten()),
+			ProvisionedBandwidth: dsm.provisionedBandwidth(clusterProvisionedBandwidth, id),
 		}
 	}
 	return stats, nil
+}
+
+// collectInstantaneous collects the instantaneous disk stats and populates the
+// result into buf.Stats.
+func (dsm *diskStatsMap) collectInstantaneous(
+	buf *admission.DiskMetricsBuf, clusterProvisionedBandwidth int64,
+) (err error) {
+	buf.Raw, buf.Scratch, err = dsm.mm.CollectInstantaneous(buf.Raw, buf.Scratch)
+	if err != nil {
+		return err
+	}
+
+	buf.Stats = buf.Stats[:0]
+	for _, stat := range buf.Raw {
+		storeID, ok := dsm.deviceIDToStoreID[stat.DeviceID]
+		if !ok {
+			log.Dev.Warningf(context.Background(), "unknown device ID %v in disk stats", stat.DeviceID)
+		}
+		buf.Stats = append(buf.Stats, admission.StoreIDAndStats{
+			StoreID: storeID,
+			Stats: admission.DiskStats{
+				BytesRead:            uint64(stat.BytesRead()),
+				BytesWritten:         uint64(stat.BytesWritten()),
+				ProvisionedBandwidth: dsm.provisionedBandwidth(clusterProvisionedBandwidth, storeID),
+			},
+		})
+	}
+	return nil
+}
+
+// provisionedBandwidthForStore returns the provisioned bandwidth for a store.
+func (dsm *diskStatsMap) provisionedBandwidth(
+	clusterProvisionedBandwidth int64, storeID roachpb.StoreID,
+) int64 {
+	spec, ok := dsm.provisionedRate[storeID]
+	if ok && spec.ProvisionedBandwidth > 0 {
+		return spec.ProvisionedBandwidth
+	}
+	return clusterProvisionedBandwidth
 }
 
 func (dsm *diskStatsMap) empty() bool {
@@ -1284,20 +1336,23 @@ func (dsm *diskStatsMap) empty() bool {
 // monitorManagerInterface abstracts disk.MonitorManager for testing purposes.
 type monitorManagerInterface interface {
 	Monitor(string) (kvserver.DiskStatsMonitor, error)
+	CollectInstantaneous(statsBuf []disk.Stats, byteBuf []byte) ([]disk.Stats, []byte, error)
 }
 
 func (dsm *diskStatsMap) initDiskStatsMap(
-	specs []base.StoreSpec, engines []storage.Engine, diskManager monitorManagerInterface,
+	specs []base.StoreSpec, engines []kvstorage.Engines, diskManager monitorManagerInterface,
 ) error {
 	*dsm = diskStatsMap{
-		provisionedRate: make(map[roachpb.StoreID]base.ProvisionedRateSpec),
-		diskMonitors:    make(map[roachpb.StoreID]kvserver.DiskStatsMonitor),
+		mm:                diskManager,
+		provisionedRate:   make(map[roachpb.StoreID]storageconfig.ProvisionedRate),
+		diskMonitors:      make(map[roachpb.StoreID]kvserver.DiskStatsMonitor),
+		deviceIDToStoreID: make(map[disk.DeviceID]roachpb.StoreID),
 	}
 	for i := range engines {
 		if specs[i].Path == "" || specs[i].InMemory {
 			continue
 		}
-		id, err := kvstorage.ReadStoreIdent(context.Background(), engines[i])
+		id, err := kvstorage.ReadStoreIdent(context.Background(), engines[i].LogEngine())
 		if err != nil {
 			return err
 		}
@@ -1305,8 +1360,9 @@ func (dsm *diskStatsMap) initDiskStatsMap(
 		if err != nil {
 			return err
 		}
-		dsm.provisionedRate[id.StoreID] = specs[i].ProvisionedRateSpec
+		dsm.provisionedRate[id.StoreID] = specs[i].ProvisionedRate
 		dsm.diskMonitors[id.StoreID] = monitor
+		dsm.deviceIDToStoreID[monitor.DeviceID()] = id.StoreID
 	}
 	return nil
 }
@@ -1319,13 +1375,22 @@ func (dsm *diskStatsMap) closeDiskMonitors() {
 
 type diskMonitorManager disk.MonitorManager
 
+var _ monitorManagerInterface = &diskMonitorManager{}
+
 // Monitor wraps disk.MonitorManager to satisfy monitorManagerInterface.
 func (mm *diskMonitorManager) Monitor(path string) (kvserver.DiskStatsMonitor, error) {
 	return (*disk.MonitorManager)(mm).Monitor(path)
 }
 
+// CollectInstantaneous wraps disk.MonitorManager to satisfy monitorManagerInterface.
+func (mm *diskMonitorManager) CollectInstantaneous(
+	statsBuf []disk.Stats, byteBuf []byte,
+) ([]disk.Stats, []byte, error) {
+	return (*disk.MonitorManager)(mm).CollectInstantaneous(statsBuf, byteBuf)
+}
+
 func (n *Node) registerEnginesForDiskStatsMap(
-	specs []base.StoreSpec, engines []storage.Engine, diskManager *diskMonitorManager,
+	specs []base.StoreSpec, engines []kvstorage.Engines, diskManager *diskMonitorManager,
 ) (admission.PebbleMetricsProvider, error) {
 	pmp := &nodePebbleMetricsProvider{n: n}
 	if err := pmp.diskStatsMap.initDiskStatsMap(specs, engines, diskManager); err != nil {
@@ -1346,18 +1411,20 @@ type nodePebbleMetricsProvider struct {
 	diskStatsMap diskStatsMap
 }
 
+var _ admission.PebbleMetricsProvider = &nodePebbleMetricsProvider{}
+
 // GetPebbleMetrics implements admission.PebbleMetricsProvider.
 func (pmp *nodePebbleMetricsProvider) GetPebbleMetrics() []admission.StoreMetrics {
 	clusterProvisionedBandwidth := kvadmission.ProvisionedBandwidth.Get(
 		&pmp.n.storeCfg.Settings.SV)
 	storeIDToDiskStats, err := pmp.diskStatsMap.tryPopulateAdmissionDiskStats(clusterProvisionedBandwidth)
 	if err != nil {
-		log.Warningf(context.Background(), "%v",
+		log.Dev.Warningf(context.Background(), "%v",
 			errors.Wrapf(err, "unable to populate disk stats"))
 	}
 	var metrics []admission.StoreMetrics
 	_ = pmp.n.stores.VisitStores(func(store *kvserver.Store) error {
-		eng := store.TODOEngine()
+		eng := store.TODOBothEngines()
 		m := eng.GetMetrics()
 		opts := eng.GetPebbleOptions()
 		memTableSizeForStopWrites := opts.MemTableSize * uint64(opts.MemTableStopWritesThreshold)
@@ -1365,16 +1432,26 @@ func (pmp *nodePebbleMetricsProvider) GetPebbleMetrics() []admission.StoreMetric
 		if s, ok := storeIDToDiskStats[store.StoreID()]; ok {
 			diskStats = s
 		}
+		diskUnhealthy := eng.GetDiskUnhealthy()
 		metrics = append(metrics, admission.StoreMetrics{
 			StoreID:                   store.StoreID(),
 			Metrics:                   m.Metrics,
 			WriteStallCount:           m.WriteStallCount,
+			DiskUnhealthy:             diskUnhealthy,
 			DiskStats:                 diskStats,
 			MemTableSizeForStopWrites: memTableSizeForStopWrites,
 		})
 		return nil
 	})
 	return metrics
+}
+
+// GetDiskStats collects the instantaneous disk stats and populates the
+// result into buf.Stats. It implements admission.PebbleMetricsProvider.
+func (pmp *nodePebbleMetricsProvider) GetDiskStats(buf *admission.DiskMetricsBuf) error {
+	clusterProvisionedBandwidth := kvadmission.ProvisionedBandwidth.Get(
+		&pmp.n.storeCfg.Settings.SV)
+	return pmp.diskStatsMap.collectInstantaneous(buf, clusterProvisionedBandwidth)
 }
 
 // Close implements admission.PebbleMetricsProvider.
@@ -1391,30 +1468,6 @@ func (mrp *storeMetricsRegistryProvider) GetMetricsRegistry(
 	storeID roachpb.StoreID,
 ) *metric.Registry {
 	return mrp.n.stores.GetStoreMetricRegistry(storeID)
-}
-
-// GetTenantWeights implements kvserver.TenantWeightProvider.
-func (n *Node) GetTenantWeights() kvadmission.TenantWeights {
-	weights := kvadmission.TenantWeights{
-		Node: make(map[uint64]uint32),
-	}
-	_ = n.stores.VisitStores(func(store *kvserver.Store) error {
-		sw := make(map[uint64]uint32)
-		weights.Stores = append(weights.Stores, kvadmission.TenantWeightsForStore{
-			StoreID: store.StoreID(),
-			Weights: sw,
-		})
-		store.VisitReplicas(func(r *kvserver.Replica) bool {
-			tid, valid := r.TenantID()
-			if valid {
-				weights.Node[tid.ToUint64()]++
-				sw[tid.ToUint64()]++
-			}
-			return true
-		})
-		return nil
-	})
-	return weights
 }
 
 func startGraphiteStatsExporter(
@@ -1435,11 +1488,10 @@ func startGraphiteStatsExporter(
 			case <-stopper.ShouldQuiesce():
 				return
 			case <-timer.C:
-				timer.Read = true
 				endpoint := graphiteEndpoint.Get(&st.SV)
 				if endpoint != "" {
 					if err := recorder.ExportToGraphite(ctx, endpoint, &pm); err != nil {
-						log.Infof(ctx, "error pushing metrics to graphite: %s\n", err)
+						log.Dev.Infof(ctx, "error pushing metrics to graphite: %s\n", err)
 					}
 				}
 			}
@@ -1476,7 +1528,7 @@ func (n *Node) startWriteNodeStatus(frequency time.Duration) error {
 					// the status entry after the decommissioner has removed it.
 					// See Server.Decommission().
 					if err := n.writeNodeStatus(ctx, true /* mustExist */); err != nil {
-						log.Warningf(ctx, "error recording status summaries: %s", err)
+						log.Dev.Warningf(ctx, "error recording status summaries: %s", err)
 					}
 				case <-n.stopper.ShouldQuiesce():
 					return
@@ -1506,16 +1558,16 @@ func (n *Node) writeNodeStatus(ctx context.Context, mustExist bool) error {
 				numNodes++
 				return nil
 			}); err != nil {
-				log.Warningf(ctx, "%v", err)
+				log.Dev.Warningf(ctx, "%v", err)
 			}
 			if numNodes > 1 {
 				// Avoid this warning on single-node clusters, which require special UX.
-				log.Warningf(ctx, "health alerts detected: %+v", result)
+				log.Dev.Warningf(ctx, "health alerts detected: %s", result)
 			}
 			if err := n.storeCfg.Gossip.AddInfoProto(
 				gossip.MakeNodeHealthAlertKey(n.Descriptor.NodeID), &result, 2*base.DefaultMetricsSampleInterval, /* ttl */
 			); err != nil {
-				log.Warningf(ctx, "unable to gossip health alerts: %+v", result)
+				log.Dev.Warningf(ctx, "unable to gossip health alerts: %+v", result)
 			}
 
 			// TODO(tschottdorf): add a metric that we increment every time there are
@@ -1555,9 +1607,15 @@ func (n *Node) recordJoinEvent(ctx context.Context) {
 }
 
 func (n *Node) logStructuredEvent(ctx context.Context, event logpb.EventPayload) {
+	n.logStructuredEventWithSeverity(ctx, event, severity.INFO)
+}
+
+func (n *Node) logStructuredEventWithSeverity(
+	ctx context.Context, event logpb.EventPayload, sev logpb.Severity,
+) {
 	// Ensure that the event goes to log files even if LogRangeAndNodeEvents is
 	// disabled (which means skip the system.eventlog _table_).
-	log.StructuredEvent(ctx, severity.INFO, event)
+	log.StructuredEvent(ctx, sev, event)
 
 	if !n.storeCfg.LogRangeAndNodeEvents {
 		return
@@ -1613,18 +1671,48 @@ func (n *Node) batchInternal(
 		defer log.Event(ctx, "node sending response")
 	}
 
+	var rangeTenantIDForAC roachpb.TenantID
+	// The computation of rangeTenantIDForAC fails open in case of error.
+	if len(args.Requests) > 0 {
+		k, err := keys.Addr(args.Requests[0].GetInner().Header().Key)
+		if err == nil {
+			_, tid, err := keys.DecodeTenantPrefix(roachpb.Key(k))
+			if err == nil {
+				rangeTenantIDForAC = tid
+			}
+		}
+	}
 	tStart := timeutil.Now()
-	handle, err := n.storeCfg.KVAdmissionController.AdmitKVWork(ctx, tenID, args)
+	handle, err := n.storeCfg.KVAdmissionController.AdmitKVWork(ctx, tenID, rangeTenantIDForAC, args)
 	if err != nil {
 		return nil, err
 	}
+	// AnnotateCtx embeds ElasticCPUWorkHandle in the context for use deep in
+	// the storage layer (e.g., mvccExportToWriter).
 	ctx = handle.AnnotateCtx(ctx)
+	// AdmissionInfo is passed explicitly through the call chain to evalAndPropose
+	// for replication flow control.
+	admissionInfo := handle.AdmissionInfo()
 
-	var writeBytes *kvadmission.StoreWriteBytes
+	// Allocate a StoreWorkStats object that is used to track various statistics
+	// about the work done during the course of processing this request.
+	stats := kvserver.NewStoreWorkStats()
 	defer func() {
-		n.storeCfg.KVAdmissionController.AdmittedKVWorkDone(handle, writeBytes)
-		writeBytes.Release()
+		n.storeCfg.KVAdmissionController.AdmittedKVWorkDone(handle, stats.StoreWorkDoneInfo)
+		stats.Release()
 	}()
+
+	// Record the scan stats if tracing is enabled.
+	if sp := tracing.SpanFromContext(ctx); sp.RecordingType() != tracingpb.RecordingOff {
+		defer func() {
+			if ss := stats.ScanStats(); ss.NumGets != 0 || ss.NumScans != 0 || ss.NumReverseScans != 0 {
+				// Only record non-empty ScanStats.
+				ss.NodeID = n.Descriptor.NodeID
+				ss.Region, _ = n.Descriptor.Locality.Find("region")
+				sp.RecordStructured(ss)
+			}
+		}()
+	}
 
 	// If a proxy attempt is requested, we copy the request to prevent evaluation
 	// from modifying the request. There are places on the server that can modify
@@ -1643,7 +1731,7 @@ func (n *Node) batchInternal(
 		originalRequest = args.ShallowCopy()
 	}
 	var pErr *kvpb.Error
-	br, writeBytes, pErr = n.stores.SendWithWriteBytes(ctx, args)
+	br, pErr = n.stores.SendWithWorkStats(ctx, args, stats, admissionInfo)
 	if pErr != nil {
 		if originalRequest != nil {
 			if proxyResponse := n.maybeProxyRequest(ctx, originalRequest, pErr); proxyResponse != nil {
@@ -1694,7 +1782,7 @@ func (n *Node) batchInternal(
 		if sp := tracing.SpanFromContext(ctx); sp != nil {
 			recording := sp.GetConfiguredRecording()
 			if recording.Len() != 0 {
-				log.Infof(ctx, "batch request %s failed with error: %v\ntrace:\n%s", args.String(),
+				log.Dev.Infof(ctx, "batch request %s failed with error: %v\ntrace:\n%s", args.String(),
 					pErr.GoError(), recording)
 			}
 		}
@@ -1767,7 +1855,7 @@ func (n *Node) getLocalityComparison(
 ) roachpb.LocalityComparisonType {
 	gossip := n.storeCfg.Gossip
 	if gossip == nil {
-		log.VInfof(ctx, 2, "gossip is not configured")
+		log.Dev.VInfof(ctx, 2, "gossip is not configured")
 		return roachpb.LocalityComparisonType_UNDEFINED
 	}
 
@@ -1779,7 +1867,7 @@ func (n *Node) getLocalityComparison(
 	}
 	gatewayNodeDesc, err := gossip.GetNodeDescriptor(gatewayNodeID)
 	if err != nil {
-		log.VInfof(ctx, 5,
+		log.Dev.VInfof(ctx, 5,
 			"failed to perform look up for node descriptor %v", err)
 		return roachpb.LocalityComparisonType_UNDEFINED
 	}
@@ -1846,7 +1934,7 @@ func (n *Node) Batch(ctx context.Context, args *kvpb.BatchRequest) (*kvpb.BatchR
 			br = &kvpb.BatchResponse{}
 		}
 		if br.Error != nil {
-			log.Fatalf(
+			log.Dev.Fatalf(
 				ctx, "attempting to return both a plain error (%s) and kvpb.Error (%s)", err, br.Error,
 			)
 		}
@@ -1862,18 +1950,10 @@ func (n *Node) Batch(ctx context.Context, args *kvpb.BatchRequest) (*kvpb.BatchR
 
 // BatchStream implements the kvpb.InternalServer interface.
 func (n *Node) BatchStream(stream kvpb.Internal_BatchStreamServer) error {
-	return n.batchStreamImpl(stream, func(ba *kvpb.BatchRequest) error {
-		return stream.RecvMsg(ba)
-	})
+	return n.batchStreamImpl(stream)
 }
 
-func (n *Node) batchStreamImpl(
-	stream interface {
-		Context() context.Context
-		Send(response *kvpb.BatchResponse) error
-	},
-	recvMsg func(*kvpb.BatchRequest) error,
-) error {
+func (n *Node) batchStreamImpl(stream kvpb.RPCKVBatch_BatchStreamStream) error {
 	ctx := stream.Context()
 	for {
 		argsAlloc := new(struct {
@@ -1883,7 +1963,7 @@ func (n *Node) batchStreamImpl(
 		args := &argsAlloc.args
 		args.Requests = argsAlloc.reqs[:0]
 
-		err := recvMsg(args)
+		err := stream.RecvMsg(args)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -1902,24 +1982,30 @@ func (n *Node) batchStreamImpl(
 	}
 }
 
-func (n *Node) AsDRPCBatchServer() kvpb.DRPCBatchServer {
-	return (*drpcNode)(n)
+type kvBatchServer Node
+
+func (n *Node) AsDRPCKVBatchServer() kvpb.DRPCKVBatchServer {
+	return (*kvBatchServer)(n)
 }
 
-type drpcNode Node
-
-func (n *drpcNode) Batch(
+func (n *kvBatchServer) Batch(
 	ctx context.Context, request *kvpb.BatchRequest,
 ) (*kvpb.BatchResponse, error) {
 	return (*Node)(n).Batch(ctx, request)
 }
 
-func (n *drpcNode) BatchStream(stream kvpb.DRPCBatch_BatchStreamStream) error {
-	return (*Node)(n).batchStreamImpl(stream, func(ba *kvpb.BatchRequest) error {
-		return stream.(interface {
-			RecvMsg(request *kvpb.BatchRequest) error
-		}).RecvMsg(ba)
-	})
+func (n *kvBatchServer) BatchStream(stream kvpb.DRPCKVBatch_BatchStreamStream) error {
+	return (*Node)(n).batchStreamImpl(stream)
+}
+
+type kvRangeFeedServer Node
+
+func (n *Node) AsDRPCRangeFeedServer() kvpb.DRPCRangeFeedServer {
+	return (*kvRangeFeedServer)(n)
+}
+
+func (n *kvRangeFeedServer) MuxRangeFeed(stream kvpb.DRPCRangeFeed_MuxRangeFeedStream) error {
+	return (*Node)(n).muxRangeFeed(stream)
 }
 
 // spanForRequest is the retval of setupSpanForIncomingRPC. It groups together a
@@ -1993,12 +2079,20 @@ func setupSpanForIncomingRPC(
 ) (context.Context, spanForRequest) {
 	var newSpan *tracing.Span
 	remoteParent := !ba.TraceInfo.Empty()
+	// DRPC server interceptors inject the method name into the context
+	// because DRPC uses different method names (/cockroach.roachpb.KVBatch/Batch).
+	// For gRPC and local requests, we fall back to tracingutil.BatchMethodName
+	// (/cockroach.roachpb.Internal/Batch), so gRPC interceptors don't need to inject it.
+	methodName := tracingutil.BatchMethodName
+	if drpcinterceptor.IsDRPCRequest(ctx) {
+		methodName = tracingutil.KVBatchMethodName
+	}
 	if !remoteParent {
 		// This is either a local request which circumvented gRPC, or a remote
 		// request that didn't specify tracing information. We make a child span
 		// if the incoming request would like to be traced.
 		ctx, newSpan = tracing.ChildSpan(ctx,
-			grpcinterceptor.BatchMethodName, tracing.WithServerSpanKind)
+			methodName, tracing.WithServerSpanKind)
 	} else {
 		// Non-local call. Tracing information comes from the request proto.
 
@@ -2006,11 +2100,11 @@ func setupSpanForIncomingRPC(
 		// one, it'd be unclear what needRecordingCollection should be set to.
 		parentSpan := tracing.SpanFromContext(ctx)
 		if parentSpan != nil {
-			log.Fatalf(ctx, "unexpected span found in non-local RPC: %s", parentSpan)
+			log.Dev.Fatalf(ctx, "unexpected span found in non-local RPC: %s", parentSpan)
 		}
 
 		ctx, newSpan = tr.StartSpanCtx(
-			ctx, grpcinterceptor.BatchMethodName,
+			ctx, methodName,
 			tracing.WithRemoteParentFromTraceInfo(ba.TraceInfo),
 			tracing.WithServerSpanKind)
 	}
@@ -2062,7 +2156,6 @@ func filterRangeLookupResponseForTenant(
 	return truncated
 }
 
-// RangeLookup implements the kvpb.InternalServer interface.
 func (n *Node) RangeLookup(
 	ctx context.Context, req *kvpb.RangeLookupRequest,
 ) (*kvpb.RangeLookupResponse, error) {
@@ -2097,15 +2190,34 @@ func (n *Node) RangeLookup(
 // MuxRangeFeedServer (default grpc.Stream) is not safe for concurrent calls to
 // Send.
 type lockedMuxStream struct {
-	wrapped kvpb.Internal_MuxRangeFeedServer
+	wrapped kvpb.RPCInternal_MuxRangeFeedStream
 	sendMu  syncutil.Mutex
+	metrics *rangefeed.LockedMuxStreamMetrics
 }
 
 func (s *lockedMuxStream) SendIsThreadSafe() {}
 
 func (s *lockedMuxStream) Send(e *kvpb.MuxRangeFeedEvent) error {
+	// The threshold of 10s was borrowed from `slowDistSenderReplicaThreshold`
+	// in `dist_sender`, where it was deemed to be a reasonable latency
+	// threshold for an RPC to a single replica (as is the case here).
+	const slowMuxStreamSendThreshold = 10 * time.Second
+
 	s.sendMu.Lock()
 	defer s.sendMu.Unlock()
+
+	// Our intent is to provide observability into a slow client from the server node.
+	// So, we don't include the lock acquisition time, as it is confounded by other
+	// factors, e.g., the number of rangefeeds contending for the lockedMuxStream.
+	start := crtime.NowMono()
+	defer func() {
+		dur := start.Elapsed()
+		if dur > slowMuxStreamSendThreshold {
+			s.metrics.SlowSends.Inc(1)
+			log.Dev.Infof(s.wrapped.Context(), "slow send on stream %d for r%d took %s", e.StreamID, e.RangeID, dur)
+		}
+	}()
+
 	return s.wrapped.Send(e)
 }
 
@@ -2173,7 +2285,14 @@ func (n *Node) defaultRangefeedConsumerID() int64 {
 
 // MuxRangeFeed implements the roachpb.InternalServer interface.
 func (n *Node) MuxRangeFeed(muxStream kvpb.Internal_MuxRangeFeedServer) error {
-	lockedMuxStream := &lockedMuxStream{wrapped: muxStream}
+	return n.muxRangeFeed(muxStream)
+}
+
+func (n *Node) muxRangeFeed(muxStream kvpb.RPCInternal_MuxRangeFeedStream) error {
+	lockedMuxStream := &lockedMuxStream{
+		wrapped: muxStream,
+		metrics: n.metrics.LockedMuxStreamMetrics,
+	}
 
 	// All context created below should derive from this context, which is
 	// cancelled once MuxRangeFeed exits.
@@ -2182,10 +2301,13 @@ func (n *Node) MuxRangeFeed(muxStream kvpb.Internal_MuxRangeFeedServer) error {
 
 	sm := &rangefeed.StreamManager{}
 	if kvserver.RangefeedUseBufferedSender.Get(&n.storeCfg.Settings.SV) {
-		sm = rangefeed.NewStreamManager(rangefeed.NewBufferedSender(lockedMuxStream, n.metrics.BufferedSenderMetrics),
+		sm = rangefeed.NewStreamManager(
+			rangefeed.NewBufferedSender(lockedMuxStream, n.storeCfg.Settings, n.metrics.BufferedSenderMetrics),
 			n.metrics.StreamManagerMetrics)
 	} else {
-		sm = rangefeed.NewStreamManager(rangefeed.NewUnbufferedSender(lockedMuxStream), n.metrics.StreamManagerMetrics)
+		sm = rangefeed.NewStreamManager(
+			rangefeed.NewUnbufferedSender(lockedMuxStream),
+			n.metrics.StreamManagerMetrics)
 	}
 
 	if err := sm.Start(ctx, n.stopper); err != nil {
@@ -2221,14 +2343,14 @@ func (n *Node) MuxRangeFeed(muxStream kvpb.Internal_MuxRangeFeedServer) error {
 				continue
 			}
 
-			tags := &logtags.Buffer{}
-			tags = tags.Add("r", req.RangeID)
-			tags = tags.Add("sm", req.Replica.StoreID)
-			tags = tags.Add("sid", req.StreamID)
+			tags := logtags.BuildBuffer()
+			tags.Add("r", req.RangeID)
+			tags.Add("sm", req.Replica.StoreID)
+			tags.Add("sid", req.StreamID)
 			if req.ConsumerID != 0 {
-				tags = tags.Add("cid", req.ConsumerID)
+				tags.Add("cid", req.ConsumerID)
 			}
-			streamCtx := logtags.AddTags(ctx, tags)
+			streamCtx := logtags.AddTags(ctx, tags.Finish())
 
 			streamSink := sm.NewStream(req.StreamID, req.RangeID)
 
@@ -2244,7 +2366,7 @@ func (n *Node) MuxRangeFeed(muxStream kvpb.Internal_MuxRangeFeedServer) error {
 					consumerID = req.ConsumerID
 				}
 				if req.ConsumerID != 0 && consumerID != req.ConsumerID {
-					log.Warningf(ctx, "ignoring previously unseen consumer ID %d, using %d",
+					log.Dev.Warningf(ctx, "ignoring previously unseen consumer ID %d, using %d",
 						req.ConsumerID, consumerID)
 				}
 
@@ -2260,7 +2382,10 @@ func (n *Node) MuxRangeFeed(muxStream kvpb.Internal_MuxRangeFeedServer) error {
 			// Disconnector returned can be used to shut down rangefeed from the
 			// stream manager. If rangefeed disconnects with an error after being
 			// successfully registered, it calls streamSink.SendError.
+			sm.RegisteringStream(req.StreamID)
 			if disconnector, err := n.stores.RangeFeed(streamCtx, req, streamSink, limiter); err != nil {
+				// The rangefeed was not registered, so it should be safe to send this
+				// error directly to the stream rather than via the registration.
 				streamSink.SendError(kvpb.NewError(err))
 			} else {
 				sm.AddStream(req.StreamID, disconnector)
@@ -2280,7 +2405,7 @@ func (n *Node) ResetQuorum(
 	if err := n.storeCfg.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
 		txnTries++
 		if txnTries > 1 {
-			log.Infof(ctx, "failed to retrieve range descriptor for r%d, retrying...", req.RangeID)
+			log.Dev.Infof(ctx, "failed to retrieve range descriptor for r%d, retrying...", req.RangeID)
 		}
 		kvs, err := kvclient.ScanMetaKVs(ctx, txn, roachpb.Span{
 			Key:    roachpb.KeyMin,
@@ -2301,10 +2426,10 @@ func (n *Node) ResetQuorum(
 		}
 		return errors.Errorf("r%d not found", req.RangeID)
 	}); err != nil {
-		log.Errorf(ctx, "range descriptor for r%d could not be read: %v", req.RangeID, err)
+		log.Dev.Errorf(ctx, "range descriptor for r%d could not be read: %v", req.RangeID, err)
 		return nil, err
 	}
-	log.Infof(ctx, "retrieved original range descriptor %s", desc)
+	log.Dev.Infof(ctx, "retrieved original range descriptor %s", desc)
 
 	// Check that we've actually lost quorum.
 	available := desc.Replicas().CanMakeProgress(func(rDesc roachpb.ReplicaDescriptor) bool {
@@ -2341,7 +2466,7 @@ func (n *Node) ResetQuorum(
 	// Increment the generation so that the various caches will recognize this descriptor as newer.
 	desc.IncrementGeneration()
 
-	log.Infof(ctx, "initiating recovery process using %s", desc)
+	log.Dev.Infof(ctx, "initiating recovery process using %s", desc)
 
 	// Update the meta2 entry. Note that we're intentionally
 	// eschewing updateRangeAddressing since the copy of the
@@ -2350,10 +2475,10 @@ func (n *Node) ResetQuorum(
 	if err := n.storeCfg.DB.CPut(ctx, metaKey, &desc, expValue.TagAndDataBytes()); err != nil {
 		return nil, err
 	}
-	log.Infof(ctx, "updated meta2 entry for r%d", desc.RangeID)
+	log.Dev.Infof(ctx, "updated meta2 entry for r%d", desc.RangeID)
 
 	// Set up connection to self. Use rpc.SystemClass to avoid throttling.
-	conn, err := n.storeCfg.NodeDialer.Dial(ctx, n.Descriptor.NodeID, rpc.SystemClass)
+	client, err := kvserver.DialMultiRaftClient(n.storeCfg.NodeDialer, ctx, n.Descriptor.NodeID, rpcbase.SystemClass)
 	if err != nil {
 		return nil, err
 	}
@@ -2366,14 +2491,14 @@ func (n *Node) ResetQuorum(
 		n.clusterID.Get(),
 		n.storeCfg.Settings,
 		n.storeCfg.Tracer(),
-		conn,
+		client,
 		n.storeCfg.Clock.Now(),
 		desc,
 		toReplicaDescriptor,
 	); err != nil {
 		return nil, err
 	}
-	log.Infof(ctx, "sent empty snapshot to %s", toReplicaDescriptor)
+	log.Dev.Infof(ctx, "sent empty snapshot to %s", toReplicaDescriptor)
 
 	return &kvpb.ResetQuorumResponse{}, nil
 }
@@ -2381,6 +2506,12 @@ func (n *Node) ResetQuorum(
 // GossipSubscription implements the kvpb.InternalServer interface.
 func (n *Node) GossipSubscription(
 	args *kvpb.GossipSubscriptionRequest, stream kvpb.Internal_GossipSubscriptionServer,
+) error {
+	return n.gossipSubscription(args, stream)
+}
+
+func (n *Node) gossipSubscription(
+	args *kvpb.GossipSubscriptionRequest, stream kvpb.RPCInternal_GossipSubscriptionStream,
 ) error {
 	ctx := n.storeCfg.AmbientCtx.AnnotateCtx(stream.Context())
 	ctxDone := ctx.Done()
@@ -2402,7 +2533,7 @@ func (n *Node) GossipSubscription(
 			// This case must remain as a no-op until we entirely remove
 			// gossip.KeyDeprecatedSystemConfig.
 		default:
-			callback := func(key string, content roachpb.Value) {
+			callback := func(key string, content roachpb.Value, _ int64) {
 				callbackMu.Lock()
 				defer callbackMu.Unlock()
 				if entCClosed {
@@ -2427,8 +2558,7 @@ func (n *Node) GossipSubscription(
 				}
 			}
 			unregister := n.storeCfg.Gossip.RegisterCallback(pattern, callback)
-			//nolint:deferloop TODO(#137605)
-			defer unregister()
+			defer unregister() //nolint:deferloop
 		}
 	}
 	for {
@@ -2438,8 +2568,12 @@ func (n *Node) GossipSubscription(
 				// The consumer was not keeping up with gossip updates, so its
 				// subscription was terminated to avoid blocking gossip.
 				err := kvpb.NewErrorf("subscription terminated due to slow consumption")
-				log.Warningf(ctx, "%v", err)
+				log.Dev.Warningf(ctx, "%v", err)
 				e = &kvpb.GossipSubscriptionEvent{Error: err}
+				if err := stream.Send(e); err != nil {
+					return err
+				}
+				return nil
 			}
 			if err := stream.Send(e); err != nil {
 				return err
@@ -2472,6 +2606,12 @@ func (n *Node) waitForTenantWatcherReadiness(
 func (n *Node) TenantSettings(
 	args *kvpb.TenantSettingsRequest, stream kvpb.Internal_TenantSettingsServer,
 ) error {
+	return n.tenantSettings(args, stream)
+}
+
+func (n *Node) tenantSettings(
+	args *kvpb.TenantSettingsRequest, stream kvpb.RPCTenantService_TenantSettingsStream,
+) error {
 	ctx := n.storeCfg.AmbientCtx.AnnotateCtx(stream.Context())
 	ctxDone := ctx.Done()
 
@@ -2491,7 +2631,7 @@ func (n *Node) TenantSettings(
 	}
 
 	sendSettings := func(precedence kvpb.TenantSettingsEvent_Precedence, overrides []kvpb.TenantSetting, incremental bool) error {
-		log.VInfof(ctx, 1, "sending precedence %d (incremental=%v): %v", precedence, overrides, incremental)
+		log.Dev.VInfof(ctx, 1, "sending precedence %d (incremental=%v): %v", precedence, overrides, incremental)
 		return stream.Send(&kvpb.TenantSettingsEvent{
 			EventType:   kvpb.TenantSettingsEvent_SETTING_EVENT,
 			Precedence:  precedence,
@@ -2504,7 +2644,7 @@ func (n *Node) TenantSettings(
 		fakePrecedence kvpb.TenantSettingsEvent_Precedence,
 		tInfo tenantcapabilities.Entry,
 	) error {
-		log.VInfof(ctx, 1, "sending tenant info: %+v", tInfo)
+		log.Dev.VInfof(ctx, 1, "sending tenant info: %+v", tInfo)
 		// Note: we are piggy-backing on the TenantSetting streaming RPC
 		// to send non-setting data. This must be careful to work on
 		// SQL servers running previous versions of the CockroachDB code.
@@ -2731,7 +2871,7 @@ func (n *Node) Join(
 		return nil, err
 	}
 
-	log.Infof(ctx, "allocated IDs: n%d, s%d", nodeID, storeID)
+	log.Dev.Infof(ctx, "allocated IDs: n%d, s%d", nodeID, storeID)
 
 	return &kvpb.JoinNodeResponse{
 		ClusterID:     n.clusterID.Get().GetBytes(),
@@ -2878,6 +3018,12 @@ func (n *Node) SpanConfigConformance(
 func (n *Node) GetRangeDescriptors(
 	args *kvpb.GetRangeDescriptorsRequest, stream kvpb.Internal_GetRangeDescriptorsServer,
 ) error {
+	return n.getRangeDescriptors(args, stream)
+}
+
+func (n *Node) getRangeDescriptors(
+	args *kvpb.GetRangeDescriptorsRequest, stream kvpb.RPCTenantService_GetRangeDescriptorsStream,
+) error {
 
 	iter, err := n.execCfg.RangeDescIteratorFactory.NewLazyIterator(stream.Context(), args.Span, int(args.BatchSize))
 	if err != nil {
@@ -2903,4 +3049,38 @@ func (n *Node) GetRangeDescriptors(
 	return stream.Send(&kvpb.GetRangeDescriptorsResponse{
 		RangeDescriptors: rangeDescriptors,
 	})
+}
+
+type tenantServiceServer Node
+
+func (n *Node) AsDRPCTenantServiceServer() kvpb.DRPCTenantServiceServer {
+	return (*tenantServiceServer)(n)
+}
+
+// GossipSubscription implements the kvpb.DRPCTenantServiceServer interface.
+func (n *tenantServiceServer) GossipSubscription(
+	args *kvpb.GossipSubscriptionRequest, stream kvpb.DRPCTenantService_GossipSubscriptionStream,
+) error {
+	return (*Node)(n).gossipSubscription(args, stream)
+}
+
+// TenantSettings implements the kvpb.DRPCTenantServiceServer interface.
+func (n *tenantServiceServer) TenantSettings(
+	args *kvpb.TenantSettingsRequest, stream kvpb.DRPCTenantService_TenantSettingsStream,
+) error {
+	return (*Node)(n).tenantSettings(args, stream)
+}
+
+// RangeLookup implements the kvpb.DRPCTenantServiceServer interface.
+func (n *tenantServiceServer) RangeLookup(
+	ctx context.Context, req *kvpb.RangeLookupRequest,
+) (*kvpb.RangeLookupResponse, error) {
+	return (*Node)(n).RangeLookup(ctx, req)
+}
+
+// GetRangeDescriptors implements the kvpb.DRPCTenantServiceServer interface.
+func (n *tenantServiceServer) GetRangeDescriptors(
+	args *kvpb.GetRangeDescriptorsRequest, stream kvpb.DRPCTenantService_GetRangeDescriptorsStream,
+) error {
+	return (*Node)(n).getRangeDescriptors(args, stream)
 }

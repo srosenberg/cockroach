@@ -6,7 +6,6 @@
 package span
 
 import (
-	"container/heap"
 	"fmt"
 	"iter"
 	"strings"
@@ -17,38 +16,65 @@ import (
 	_ "github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
+	"github.com/cockroachdb/cockroach/pkg/util/container/heap"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/interval"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/errors"
 )
 
+// ForwardResult describes what changed as a result of a Forward call.
+// The values are ordered such that ForwardResolvedTime > ForwardSpan
+// implies that a span was also forwarded.
+type ForwardResult int
+
+const (
+	// ForwardNoChange indicates no span was forwarded, i.e. a no-op.
+	ForwardNoChange ForwardResult = iota
+	// ForwardSpan indicates that a sub span of the frontier was forwarded
+	// but not the frontier.
+	ForwardSpan
+	// ForwardResolvedTime indicates the frontier was forwarded.
+	ForwardResolvedTime
+)
+
+// FrontierForwarded returns true if the overall frontier timestamp advanced.
+func (r ForwardResult) FrontierForwarded() bool { return r == ForwardResolvedTime }
+
+// SpanForwarded returns true if at least one span's timestamp was forwarded.
+func (r ForwardResult) SpanForwarded() bool { return r >= ForwardSpan }
+
 // Frontier tracks the minimum timestamp of a set of spans.
 // Frontier is not safe for concurrent modification, but MakeConcurrentFrontier
 // can be used to make thread safe frontier.
 type Frontier interface {
+	ReadOnlyFrontier
+
 	// AddSpansAt adds the provided spans to the frontier at the provided timestamp.
 	// If the span overlaps any spans already tracked by the frontier, the tree is adjusted
 	// to hold union of the span and the overlaps, with all entries assigned startAt starting
 	// timestamp.
 	AddSpansAt(startAt hlc.Timestamp, spans ...roachpb.Span) error
 
-	// Frontier returns the minimum timestamp being tracked.
-	Frontier() hlc.Timestamp
-
-	// PeekFrontierSpan returns one of the spans at the Frontier.
-	PeekFrontierSpan() roachpb.Span
-
-	// Forward advances the timestamp for a span. Any part of the span that doesn't
-	// overlap the tracked span set will be ignored. True is returned if the
-	// frontier advanced as a result.
-	Forward(span roachpb.Span, ts hlc.Timestamp) (bool, error)
+	// Forward advances the timestamp for a span. Any part of the span that
+	// doesn't overlap the tracked span set will be ignored.
+	Forward(span roachpb.Span, ts hlc.Timestamp) (ForwardResult, error)
 
 	// Release removes all items from the frontier. In doing so, it allows memory
 	// held by the frontier to be recycled. Failure to call this method before
 	// letting a frontier be GCed is safe in that it won't cause a memory leak,
 	// but it will prevent frontier nodes from being efficiently re-used.
 	Release()
+}
+
+// ReadOnlyFrontier is a subset of Frontier with only the methods
+// that are read-only.
+type ReadOnlyFrontier interface {
+	// Frontier returns the minimum timestamp being tracked.
+	Frontier() hlc.Timestamp
+
+	// PeekFrontierSpan returns one of the spans at the Frontier.
+	PeekFrontierSpan() roachpb.Span
 
 	// Entries returns an iterator over the entries in the frontier.
 	// Updates to the frontier are restricted until iteration is stopped.
@@ -74,6 +100,9 @@ type Frontier interface {
 	// tracked by this frontier.
 	// Updates to the frontier are restricted until iteration is stopped.
 	SpanEntries(span roachpb.Span) iter.Seq2[roachpb.Span, hlc.Timestamp]
+
+	// Copy returns a copy of all frontier entries as a new Frontier.
+	Copy() Frontier
 
 	// Len returns the number of spans tracked by the frontier.
 	Len() int
@@ -134,6 +163,8 @@ type btreeFrontier struct {
 	// will panic under the test or return an error.
 	disallowMutationWhileIterating atomic.Bool
 }
+
+var _ Frontier = (*btreeFrontier)(nil)
 
 // btreeFrontierEntry represents a timestamped span. It is used as the nodes in both
 // the tree and heap needed to keep the Frontier.
@@ -200,7 +231,7 @@ func (f *btreeFrontier) AddSpansAt(startAt hlc.Timestamp, spans ...roachpb.Span)
 				return err
 			}
 		}
-		if err := f.forward(toAdd, startAt); err != nil {
+		if _, err := f.forward(toAdd, startAt); err != nil {
 			return err
 		}
 	}
@@ -236,8 +267,7 @@ func (f *btreeFrontier) PeekFrontierSpan() roachpb.Span {
 }
 
 // Forward advances the timestamp for a span. Any part of the span that doesn't
-// overlap the tracked span set will be ignored. True is returned if the
-// frontier advanced as a result.
+// overlap the tracked span set will be ignored.
 //
 // Note that internally, it may be necessary to use multiple entries to
 // represent this timestamped span (e.g. if it overlaps with the tracked span
@@ -248,14 +278,14 @@ func (f *btreeFrontier) PeekFrontierSpan() roachpb.Span {
 // call returns.
 func (f *btreeFrontier) Forward(
 	span roachpb.Span, ts hlc.Timestamp,
-) (forwarded bool, retErr error) {
+) (result ForwardResult, retErr error) {
 	if err := f.checkDisallowedMutation(); err != nil {
-		return false, err
+		return ForwardNoChange, err
 	}
 
 	// Validate caller provided span.
 	if err := checkSpan(span); err != nil {
-		return false, err
+		return ForwardNoChange, err
 	}
 
 	if expensiveChecksEnabled() {
@@ -267,10 +297,17 @@ func (f *btreeFrontier) Forward(
 	}
 
 	prevFrontier := f.Frontier()
-	if err := f.forward(span, ts); err != nil {
-		return false, err
+	spanForwarded, err := f.forward(span, ts)
+	if err != nil {
+		return ForwardNoChange, err
 	}
-	return prevFrontier.Less(f.Frontier()), nil
+	if prevFrontier.Less(f.Frontier()) {
+		return ForwardResolvedTime, nil
+	}
+	if spanForwarded {
+		return ForwardSpan, nil
+	}
+	return ForwardNoChange, nil
 }
 
 // clone augments generated iterStack code to support cloning.
@@ -427,7 +464,10 @@ func (f *btreeFrontier) setEndKey(e *btreeFrontierEntry, endKey roachpb.Key) {
 
 // forward is the work horse of the btreeFrontier.  It forwards the timestamp
 // for the specified span, splitting, and merging btreeFrontierEntries as needed.
-func (f *btreeFrontier) forward(span roachpb.Span, insertTS hlc.Timestamp) error {
+// Returns true if any span's timestamp was actually forwarded.
+func (f *btreeFrontier) forward(
+	span roachpb.Span, insertTS hlc.Timestamp,
+) (spanForwarded bool, _ error) {
 	todoEntry := newSearchKey(span.Key, span.EndKey)
 	defer putFrontierEntry(todoEntry)
 
@@ -436,6 +476,7 @@ func (f *btreeFrontier) forward(span roachpb.Span, insertTS hlc.Timestamp) error
 	// NB: passed in entry and any existing iterators should be considered invalid
 	// after this call.
 	forwardEntryTimestamp := func(e *btreeFrontierEntry) (*btreeFrontierEntry, error) {
+		spanForwarded = true
 		e.ts = insertTS
 		heap.Fix(&f.minHeap, e.heapIdx)
 		return f.mergeEntries(e)
@@ -444,7 +485,7 @@ func (f *btreeFrontier) forward(span roachpb.Span, insertTS hlc.Timestamp) error
 	for !todoEntry.isEmptyRange() { // Keep going as long as there is work to be done.
 		if expensiveChecksEnabled() {
 			if err := checkSpan(todoEntry.span()); err != nil {
-				return err
+				return false, err
 			}
 		}
 
@@ -479,7 +520,7 @@ func (f *btreeFrontier) forward(span roachpb.Span, insertTS hlc.Timestamp) error
 		// update overlap timestamp and be done.
 		if overlap.span().Equal(todoEntry.span()) {
 			if _, err := forwardEntryTimestamp(overlap); err != nil {
-				return err
+				return false, err
 			}
 			break
 		}
@@ -497,14 +538,14 @@ func (f *btreeFrontier) forward(span roachpb.Span, insertTS hlc.Timestamp) error
 			// part starts at todoEntry.Start.
 			_, _, err := f.splitEntryAt(overlap, todoEntry.Start)
 			if err != nil {
-				return err
+				return false, err
 			}
 			continue
 		}
 
 		// NB: overlap.Start must be equal to todoEntry.Start (established by Invariant (a) and (b) above).
 		if expensiveChecksEnabled() && !overlap.Start.Equal(todoEntry.Start) {
-			return errors.AssertionFailedf("expected overlap %s to start at %s", overlap, todoEntry)
+			return false, errors.AssertionFailedf("expected overlap %s to start at %s", overlap, todoEntry)
 		}
 
 		switch cmp := todoEntry.End.Compare(overlap.End); {
@@ -515,24 +556,24 @@ func (f *btreeFrontier) forward(span roachpb.Span, insertTS hlc.Timestamp) error
 			// Left entry can reuse overlap with insertTS.
 			left, right, err := f.splitEntryAt(overlap, todoEntry.End)
 			if err != nil {
-				return err
+				return false, err
 			}
 			todoEntry.Start = right.End
 			// The left part advances its timestamp.
 			if _, err := forwardEntryTimestamp(left); err != nil {
-				return err
+				return false, err
 			}
 		case cmp >= 0:
 			// todoEntry ends at or beyond overlap.  Regardless, we can simply update overlap
 			// and if needed, continue matching remaining todoEntry (if any).
 			fwd, err := forwardEntryTimestamp(overlap)
 			if err != nil {
-				return err
+				return false, err
 			}
 			todoEntry.Start = fwd.End
 		}
 	}
-	return nil
+	return spanForwarded, nil
 }
 
 func (f *btreeFrontier) disallowMutations() func() {
@@ -601,6 +642,16 @@ func (f *btreeFrontier) String() string {
 	return buf.String()
 }
 
+// Copy implements Frontier.
+func (f *btreeFrontier) Copy() Frontier {
+	copy := newFrontier()
+	it := f.tree.MakeIter()
+	for it.First(); it.Valid(); it.Next() {
+		_ = copy.AddSpansAt(it.Cur().ts, it.Cur().span())
+	}
+	return copy
+}
+
 // Len implements Frontier.
 func (f *btreeFrontier) Len() int {
 	return f.tree.Len()
@@ -652,6 +703,8 @@ func (e *btreeFrontierEntry) isEmptyRange() bool {
 // of the heap.
 type frontierHeap []*btreeFrontierEntry
 
+var _ heap.Interface[*btreeFrontierEntry] = (*frontierHeap)(nil)
+
 // Len implements heap.Interface.
 func (h frontierHeap) Len() int { return len(h) }
 
@@ -670,15 +723,14 @@ func (h frontierHeap) Swap(i, j int) {
 }
 
 // Push implements heap.Interface.
-func (h *frontierHeap) Push(x interface{}) {
+func (h *frontierHeap) Push(x *btreeFrontierEntry) {
 	n := len(*h)
-	entry := x.(*btreeFrontierEntry)
-	entry.heapIdx = n
-	*h = append(*h, entry)
+	x.heapIdx = n
+	*h = append(*h, x)
 }
 
 // Pop implements heap.Interface.
-func (h *frontierHeap) Pop() interface{} {
+func (h *frontierHeap) Pop() *btreeFrontierEntry {
 	old := *h
 	n := len(old)
 	entry := old[n-1]
@@ -820,7 +872,7 @@ func (f *concurrentFrontier) PeekFrontierSpan() roachpb.Span {
 }
 
 // Forward implements Frontier.
-func (f *concurrentFrontier) Forward(span roachpb.Span, ts hlc.Timestamp) (bool, error) {
+func (f *concurrentFrontier) Forward(span roachpb.Span, ts hlc.Timestamp) (ForwardResult, error) {
 	f.Lock()
 	defer f.Unlock()
 	return f.f.Forward(span, ts)
@@ -857,6 +909,13 @@ func (f *concurrentFrontier) SpanEntries(span roachpb.Span) iter.Seq2[roachpb.Sp
 			}
 		}
 	}
+}
+
+// Copy implements Frontier.
+func (f *concurrentFrontier) Copy() Frontier {
+	f.Lock()
+	defer f.Unlock()
+	return f.f.Copy()
 }
 
 // Len implements Frontier.

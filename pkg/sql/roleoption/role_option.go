@@ -9,15 +9,14 @@ import (
 	"context"
 	"strings"
 
-	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/cli/cliflags"
 	"github.com/cockroachdb/cockroach/pkg/security/distinguishedname"
+	"github.com/cockroachdb/cockroach/pkg/security/provisioning"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
-	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/errors"
 )
 
@@ -77,7 +76,25 @@ const (
 	SUBJECT
 	BYPASSRLS
 	NOBYPASSRLS
+	PROVISIONSRC
 )
+
+// NonAdminInheritedOptions contains the role options that are not implicitly
+// applied to all admin roles.
+var NonAdminInheritedOptions = []Option{
+	NOCREATEROLE,
+	NOCONTROLJOB,
+	NOCREATEDB,
+	NOVIEWACTIVITY,
+	NOCANCELQUERY,
+	NOMODIFYCLUSTERSETTING,
+	NOVIEWACTIVITYREDACTED,
+	NOREPLICATION,
+	NOVIEWCLUSTERSETTING,
+	SUBJECT,
+	NOBYPASSRLS,
+	PROVISIONSRC,
+}
 
 // ControlChangefeedDeprecationNoticeMsg is a user friendly notice which should be shown when CONTROLCHANGEFEED is used
 //
@@ -117,10 +134,13 @@ var toSQLStmts = map[Option]string{
 	VIEWCLUSTERSETTING:     `INSERT INTO system.role_options (username, option, user_id) VALUES ($1, 'VIEWCLUSTERSETTING', $2) ON CONFLICT DO NOTHING`,
 	NOVIEWCLUSTERSETTING:   `DELETE FROM system.role_options WHERE username = $1 AND user_id = $2 AND option = 'VIEWCLUSTERSETTING'`,
 	SUBJECT:                `UPSERT INTO system.role_options (username, option, value, user_id) VALUES ($1, 'SUBJECT', $2::string, $3)`,
+	BYPASSRLS:              `INSERT INTO system.role_options (username, option, user_id) VALUES ($1, 'BYPASSRLS', $2) ON CONFLICT DO NOTHING`,
+	NOBYPASSRLS:            `DELETE FROM system.role_options WHERE username = $1 AND user_id = $2 AND option = 'BYPASSRLS'`,
+	PROVISIONSRC:           `UPSERT INTO system.role_options (username, option, value, user_id) VALUES ($1, 'PROVISIONSRC', $2::string, $3)`,
 }
 
 // Mask returns the bitmask for a given role option.
-func (o Option) Mask() uint32 {
+func (o Option) Mask() uint64 {
 	return 1 << o
 }
 
@@ -157,6 +177,7 @@ var ByName = map[string]Option{
 	"SUBJECT":                SUBJECT,
 	"BYPASSRLS":              BYPASSRLS,
 	"NOBYPASSRLS":            NOBYPASSRLS,
+	"PROVISIONSRC":           PROVISIONSRC,
 }
 
 // ToOption takes a string and returns the corresponding Option.
@@ -214,9 +235,6 @@ func MakeListFromKVOptions(
 		switch option {
 		case SUBJECT:
 			roleOptions[i].Validate = func(settings *cluster.Settings, u username.SQLUsername, s string) error {
-				if err := base.CheckEnterpriseEnabled(settings, "SUBJECT role option"); err != nil {
-					return err
-				}
 				if u.IsRootUser() {
 					return errors.WithDetailf(
 						pgerror.Newf(pgcode.InvalidParameterValue, "role %q cannot have a SUBJECT", u),
@@ -226,6 +244,16 @@ func MakeListFromKVOptions(
 				}
 				if err := distinguishedname.ValidateDN(s); err != nil {
 					return pgerror.WithCandidateCode(err, pgcode.InvalidParameterValue)
+				}
+				return nil
+			}
+		case PROVISIONSRC:
+			roleOptions[i].Validate = func(settings *cluster.Settings, u username.SQLUsername, s string) error {
+				if u.IsRootUser() {
+					return pgerror.Newf(pgcode.InvalidParameterValue, "role %q cannot have a PROVISIONSRC", u)
+				}
+				if validationErr := provisioning.ValidateSource(s); validationErr != nil {
+					return pgerror.WithCandidateCode(validationErr, pgcode.InvalidParameterValue)
 				}
 				return nil
 			}
@@ -261,10 +289,6 @@ func (rol List) GetSQLStmts(onRoleOption func(Option)) (map[string]*RoleOption, 
 		if ro.Option == PASSWORD {
 			continue
 		}
-		if ro.Option == BYPASSRLS || ro.Option == NOBYPASSRLS {
-			return nil, unimplemented.NewWithIssuef(
-				136910, "the BYPASSRLS and NOBYPASSRLS options for roles are not currently supported")
-		}
 
 		stmt := toSQLStmts[ro.Option]
 		stmts[stmt] = ro
@@ -275,8 +299,8 @@ func (rol List) GetSQLStmts(onRoleOption func(Option)) (map[string]*RoleOption, 
 
 // ToBitField returns the bitfield representation of
 // a list of role options.
-func (rol List) ToBitField() (uint32, error) {
-	var ret uint32
+func (rol List) ToBitField() (uint64, error) {
+	var ret uint64
 	for _, p := range rol {
 		if ret&p.Option.Mask() != 0 {
 			return 0, pgerror.Newf(pgcode.Syntax, "redundant role options")
@@ -330,7 +354,11 @@ func (rol List) CheckRoleOptionConflicts() error {
 		(roleOptionBits&VIEWCLUSTERSETTING.Mask() != 0 &&
 			roleOptionBits&NOVIEWCLUSTERSETTING.Mask() != 0) ||
 		(roleOptionBits&REPLICATION.Mask() != 0 &&
-			roleOptionBits&NOREPLICATION.Mask() != 0) {
+			roleOptionBits&NOREPLICATION.Mask() != 0) ||
+		(roleOptionBits&BYPASSRLS.Mask() != 0 &&
+			roleOptionBits&NOBYPASSRLS.Mask() != 0) ||
+		(roleOptionBits&PROVISIONSRC.Mask() != 0 &&
+			roleOptionBits&NOSQLLOGIN.Mask() != 0) {
 		return pgerror.Newf(pgcode.Syntax, "conflicting role options")
 	}
 	return nil

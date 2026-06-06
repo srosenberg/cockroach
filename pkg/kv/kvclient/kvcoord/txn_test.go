@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,18 +27,35 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/tscache"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
+	"github.com/cockroachdb/cockroach/pkg/storage"
 	"github.com/cockroachdb/cockroach/pkg/storage/enginepb"
+	"github.com/cockroachdb/cockroach/pkg/storage/mvccencoding"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/kvclientutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/localtestcluster"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
+	"github.com/cockroachdb/cockroach/pkg/testutils/testcluster"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/randutil"
+	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing"
+	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb"
+	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 )
+
+func checkGetResults(t *testing.T, expected map[string][]byte, results ...kv.Result) {
+	for _, result := range results {
+		require.Equal(t, 1, len(result.Rows))
+		require.Equal(t, expected[string(result.Rows[0].Key)], result.Rows[0].ValueBytes())
+	}
+	require.Len(t, expected, len(results))
+}
 
 // TestTxnDBBasics verifies that a simple transaction can be run and
 // either committed or aborted. On commit, mutations are visible; on
@@ -1033,19 +1052,76 @@ func TestTxnCommitTimestampAdvancedByRefresh(t *testing.T) {
 func TestTxnContinueAfterCputError(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
-	ctx := context.Background()
-	s := createTestDB(t)
-	defer s.Stop()
 
-	txn := s.DB.NewTxn(ctx, "test txn")
-	// Note: Since we're expecting the CPut to fail, the massaging done by
-	// StrToCPutExistingValue() is not actually necessary.
-	expVal := kvclientutils.StrToCPutExistingValue("dummy")
-	err := txn.CPut(ctx, "a", "val", expVal)
-	require.IsType(t, &kvpb.ConditionFailedError{}, err)
+	testutils.RunTrueAndFalse(t, "bufferedWritesEnabled", func(t *testing.T, bufferedWritesEnabled bool) {
+		ctx := context.Background()
+		s := createTestDB(t)
+		defer s.Stop()
+		kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
 
-	require.NoError(t, txn.Put(ctx, "a", "b'"))
-	require.NoError(t, txn.Commit(ctx))
+		txn := s.DB.NewTxn(ctx, "test txn")
+
+		if bufferedWritesEnabled {
+			txn.SetBufferedWritesEnabled(true)
+		}
+
+		// Note: Since we're expecting the CPut to fail, the massaging done by
+		// StrToCPutExistingValue() is not actually necessary.
+		expVal := kvclientutils.StrToCPutExistingValue("dummy")
+		err := txn.CPut(ctx, "a", "val", expVal)
+		require.IsType(t, &kvpb.ConditionFailedError{}, err)
+
+		// Write to a different key.
+		require.NoError(t, txn.Put(ctx, "b", "b'"))
+		require.NoError(t, txn.Commit(ctx))
+
+		// We've successfully commited the transaction. The write to key "b"
+		// should be visible whereas the write to keyA shouldn't.
+		val, err := s.DB.Get(ctx, "a")
+		require.NoError(t, err)
+		require.False(t, val.Exists())
+
+		val, err = s.DB.Get(ctx, "b")
+		require.NoError(t, err)
+		require.Equal(t, "b'", string(val.ValueBytes()))
+	})
+}
+
+// TestTxnDeleteResponse verifies that the Delete response correctly includes
+// the keys that were deleted. Underneath the hood, this relies on
+// DeleteResponse.FoundKeys to be set correctly.
+func TestTxnDeleteResponse(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	testutils.RunTrueAndFalse(t, "bufferedWritesEnabled", func(t *testing.T, bufferedWritesEnabled bool) {
+		ctx := context.Background()
+		s := createTestDB(t)
+		defer s.Stop()
+		kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
+
+		txn := s.DB.NewTxn(ctx, "test txn")
+
+		if bufferedWritesEnabled {
+			txn.SetBufferedWritesEnabled(true)
+		}
+
+		err := txn.Put(ctx, "a", "val")
+		require.NoError(t, err)
+
+		// Delete the key that we just wrote.
+		deleted, err := txn.Del(ctx, "a")
+		require.NoError(t, err)
+		require.Len(t, deleted, 1)
+		require.Equal(t, roachpb.Key("a"), deleted[0])
+
+		// Delete a virgin key.
+		deleted, err = txn.Del(ctx, "b")
+		require.NoError(t, err)
+		require.Empty(t, deleted)
+
+		require.NoError(t, txn.Commit(ctx))
+	})
 }
 
 // Test that a transaction can be used after a locking request returns a
@@ -1536,6 +1612,7 @@ func TestTxnBasicBufferedWrites(t *testing.T) {
 	defer log.Scope(t).Close(t)
 	s := createTestDB(t)
 	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
 
 	testutils.RunTrueAndFalse(t, "commit", func(t *testing.T, commit bool) {
 		ctx := context.Background()
@@ -1551,13 +1628,13 @@ func TestTxnBasicBufferedWrites(t *testing.T) {
 		// doReadTryLeaf is a helper that calls readFn on the given root txn as
 		// well as a fresh leaf txn.
 		doReadTryLeaf := func(txn *kv.Txn, readFn func(*kv.Txn) error) error {
-			tis, err := txn.GetLeafTxnInputState(ctx)
+			tis, err := txn.GetLeafTxnInputState(ctx, nil /* readsTree */)
 			if err != nil {
 				return err
 			}
 			for _, txnForRead := range []*kv.Txn{
 				txn,
-				kv.NewLeafTxn(ctx, s.DB, 0 /* gatewayNodeID */, tis),
+				kv.NewLeafTxn(ctx, s.DB, 0 /* gatewayNodeID */, tis, nil /* header */),
 			} {
 				if err = readFn(txnForRead); err != nil {
 					return err
@@ -1592,7 +1669,16 @@ func TestTxnBasicBufferedWrites(t *testing.T) {
 		require.NoError(t, txn.Commit(ctx))
 
 		err := s.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			metrics := txn.Sender().(*kvcoord.TxnCoordSender).Metrics()
+			before := metrics.TxnWriteBufferEnabled.Count()
 			txn.SetBufferedWritesEnabled(true)
+			after := metrics.TxnWriteBufferEnabled.Count()
+			require.Equal(t, after-before, int64(1))
+
+			// Ensure that enabling buffered writes after we've already done so
+			// doesn't increment the metric.
+			txn.SetBufferedWritesEnabled(true)
+			require.Equal(t, after, metrics.TxnWriteBufferEnabled.Count())
 
 			// Put transactional value.
 			if err := txn.Put(ctx, keyA, value1); err != nil {
@@ -1708,10 +1794,39 @@ func TestTxnBufferedWritesOverlappingScan(t *testing.T) {
 	defer log.Scope(t).Close(t)
 	s := createTestDB(t)
 	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
+
+	extractKVs := func(rows []roachpb.KeyValue, batchResponses [][]byte) []roachpb.KeyValue {
+		if rows != nil {
+			return rows
+		}
+		var kvs []roachpb.KeyValue
+		err := storage.MVCCScanDecodeKeyValues(batchResponses, func(key storage.MVCCKey, rawBytes []byte) error {
+			kvs = append(kvs, roachpb.KeyValue{Key: key.Key, Value: roachpb.Value{RawBytes: rawBytes}})
+			return nil
+		})
+		require.NoError(t, err)
+		return kvs
+	}
 
 	testutils.RunTrueAndFalse(t, "reverse", func(t *testing.T, reverse bool) {
+		// valueTxn is a special value that indicates that a particular KV has
+		// been modified in the current txn but hasn't been committed yet.
+		valueTxn := []byte("valueTxn")
 		makeKV := func(key []byte, val []byte) roachpb.KeyValue {
-			return roachpb.KeyValue{Key: key, Value: roachpb.Value{RawBytes: val}}
+			var ts hlc.Timestamp
+			if !bytes.Equal(val, valueTxn) {
+				// If we have a value other than valueTxn, it means that the KV
+				// has been committed. As such, it'll have the Timestamp set, so
+				// we simulate that here (this is needed to get the correct
+				// NumBytes estimate). (A particular timestamp doesn't matter,
+				// just that both WallTime and Logical parts are set.)
+				ts = hlc.Timestamp{WallTime: 1, Logical: 1}
+			}
+			var value roachpb.Value
+			value.SetBytes(val)
+			value.Timestamp = ts
+			return roachpb.KeyValue{Key: key, Value: value}
 		}
 
 		ctx := context.Background()
@@ -1719,7 +1834,6 @@ func TestTxnBufferedWritesOverlappingScan(t *testing.T) {
 		valueC := []byte("valueC")
 		valueF := []byte("valueF")
 		valueG := []byte("valueG")
-		valueTxn := []byte("valueTxn")
 
 		keyA := []byte("keyA")
 		keyB := []byte("keyB")
@@ -1799,6 +1913,14 @@ func TestTxnBufferedWritesOverlappingScan(t *testing.T) {
 					},
 				},
 				{
+					// Entirely within the buffer and the server response is empty.
+					key:    keyB,
+					endKey: keyC,
+					expRes: []roachpb.KeyValue{
+						makeKV(keyB, valueTxn),
+					},
+				},
+				{
 					// End key is present in the buffer, but isn't returned because the scan
 					// is exclusive.
 					key:    keyA,
@@ -1834,27 +1956,69 @@ func TestTxnBufferedWritesOverlappingScan(t *testing.T) {
 					},
 				},
 			} {
-				var res []kv.KeyValue
-				var err error
-				if reverse {
-					res, err = txn.ReverseScan(ctx, tc.key, tc.endKey, 0 /* maxRows */)
-					require.NoError(t, err)
-				} else {
-					res, err = txn.Scan(ctx, tc.key, tc.endKey, 0 /* maxRows */)
-					require.NoError(t, err)
-				}
-				if reverse {
-					// Reverse the expected result.
-					sort.Slice(tc.expRes, func(i, j int) bool {
-						return bytes.Compare(tc.expRes[i].Key, tc.expRes[j].Key) > 0
-					})
-				}
-				require.Len(t, res, len(tc.expRes), "failed %d", i)
-				for i, exp := range tc.expRes {
-					require.Equal(t, exp.Key, res[i].Key, "failed %d", i)
-					val, err := res[i].Value.GetBytes()
-					require.NoError(t, err)
-					require.Equal(t, exp.Value.RawBytes, val)
+				for _, sf := range []kvpb.ScanFormat{
+					kvpb.KEY_VALUES,
+					kvpb.BATCH_RESPONSE,
+				} {
+					var req kvpb.Request
+					if reverse {
+						req = &kvpb.ReverseScanRequest{
+							RequestHeader: kvpb.RequestHeader{
+								Key:    tc.key,
+								EndKey: tc.endKey,
+							},
+							ScanFormat: sf,
+						}
+					} else {
+						req = &kvpb.ScanRequest{
+							RequestHeader: kvpb.RequestHeader{
+								Key:    tc.key,
+								EndKey: tc.endKey,
+							},
+							ScanFormat: sf,
+						}
+					}
+					b := txn.NewBatch()
+					b.AddRawRequest(req)
+					require.NoError(t, txn.Run(ctx, b))
+					br := b.RawResponse()
+
+					require.Equal(t, 1, len(br.Responses))
+					var kvs []roachpb.KeyValue
+					var numKeys, numBytes int
+					if reverse {
+						rsr := br.Responses[0].GetInner().(*kvpb.ReverseScanResponse)
+						kvs = extractKVs(rsr.Rows, rsr.BatchResponses)
+						numKeys, numBytes = int(rsr.NumKeys), int(rsr.NumBytes)
+					} else {
+						sr := br.Responses[0].GetInner().(*kvpb.ScanResponse)
+						kvs = extractKVs(sr.Rows, sr.BatchResponses)
+						numKeys, numBytes = int(sr.NumKeys), int(sr.NumBytes)
+					}
+					if reverse {
+						// Reverse the expected result.
+						sort.Slice(tc.expRes, func(i, j int) bool {
+							return bytes.Compare(tc.expRes[i].Key, tc.expRes[j].Key) > 0
+						})
+					}
+					require.Len(t, kvs, len(tc.expRes), "failed %d", i)
+					for i, exp := range tc.expRes {
+						require.Equal(t, exp.Key, kvs[i].Key, "failed %d", i)
+						expVal, err := exp.Value.GetBytes()
+						require.NoError(t, err)
+						val, err := kvs[i].Value.GetBytes()
+						require.NoError(t, err)
+						require.Equal(t, expVal, val)
+					}
+					// Additionally verify NumKeys and NumBytes fields.
+					require.Equal(t, len(tc.expRes), numKeys, "incorrect NumKeys value")
+					var expNumBytes int
+					for _, r := range tc.expRes {
+						// See encKVLength in txn_interceptor_write_buffer.go
+						// for more details on the expected sizing.
+						expNumBytes += 8 + mvccencoding.EncodedMVCCKeyLength(r.Key, r.Value.Timestamp) + len(r.Value.RawBytes)
+					}
+					require.Equal(t, expNumBytes, numBytes, "incorrect NumBytes value")
 				}
 			}
 			return nil
@@ -1871,6 +2035,7 @@ func TestTxnBufferedWritesConditionalPuts(t *testing.T) {
 	defer log.Scope(t).Close(t)
 	s := createTestDB(t)
 	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
 
 	testutils.RunTrueAndFalse(t, "commit", func(t *testing.T, commit bool) {
 		ctx := context.Background()
@@ -1966,4 +2131,393 @@ func TestTxnBufferedWritesConditionalPuts(t *testing.T) {
 			}
 		}
 	})
+}
+
+// TestTxnBufferedWritesRollbackToSavepointAllBuffered is a regression
+// test for a bug encountered during development where the sequence
+// number of a savepoint was not correctly advanced when all writes in
+// a transaction had been buffered.
+func TestTxnBufferedWritesRollbackToSavepointAllBuffered(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	s := createTestDB(t)
+	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
+
+	ctx := context.Background()
+	value1 := []byte("value1")
+	testutils.RunTrueAndFalse(t, "buffered_write", func(t *testing.T, bufferedWritesEnabled bool) {
+		keyA := []byte(fmt.Sprintf("keyA-%v", bufferedWritesEnabled))
+
+		err := s.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			txn.SetBufferedWritesEnabled(bufferedWritesEnabled)
+			// Should not be rolled back because the savepoint is
+			// created after it.
+			if err := txn.Put(ctx, keyA, value1); err != nil {
+				return err
+			}
+			sp, err := txn.CreateSavepoint(ctx)
+			if err != nil {
+				return err
+			}
+			return txn.RollbackToSavepoint(ctx, sp)
+		})
+		require.NoError(t, err)
+		actualA, err := s.DB.Get(ctx, keyA)
+		require.NoError(t, err)
+		require.Equal(t, actualA.ValueBytes(), value1)
+	})
+}
+
+// TestTxnBufferedWriteRetriesCorrectly tests that a stateful retry of a
+// transaction with buffered writes enabled does not encounter errors because of
+// state in the txnWriteBuffer.
+func TestTxnBufferedWriteRetriesCorrectly(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	ctx := context.Background()
+
+	// This filter will force a transaction retry.
+	errKey := roachpb.Key("inject_err")
+	var shouldInject atomic.Bool
+	reqFilter := func(_ context.Context, ba *kvpb.BatchRequest) *kvpb.Error {
+		if !shouldInject.Load() {
+			return nil
+		}
+
+		if g, ok := ba.GetArg(kvpb.Get); ok && g.(*kvpb.GetRequest).Key.Equal(errKey) {
+			txn := ba.Txn.Clone()
+			pErr := kvpb.NewReadWithinUncertaintyIntervalError(
+				txn.ReadTimestamp,
+				hlc.ClockTimestamp{},
+				txn,
+				txn.WriteTimestamp.Add(0, 1),
+				hlc.ClockTimestamp{})
+			return kvpb.NewErrorWithTxn(pErr, txn)
+		}
+		return nil
+	}
+
+	s := createTestDBWithKnobs(t, &kvserver.StoreTestingKnobs{
+		TestingRequestFilter: reqFilter,
+	})
+	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
+
+	rng, _ := randutil.NewTestRand()
+
+	testutils.RunTrueAndFalse(t, "buffered_writes", func(t *testing.T, bwEnabled bool) {
+		testPrefix := fmt.Sprintf("test-bw-%v-", bwEnabled)
+		shouldInject.Swap(true)
+
+		err := s.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			defer func() { _ = shouldInject.Swap(false) }()
+
+			txn.SetBufferedWritesEnabled(bwEnabled)
+			key := fmt.Sprintf("%s-%s", testPrefix, randutil.RandString(rng, 10, randutil.PrintableKeyAlphabet))
+			if err := txn.Put(ctx, roachpb.Key(key), []byte("values")); err != nil {
+				return err
+			}
+			_, err := txn.Get(ctx, errKey)
+			return err
+		})
+		require.NoError(t, err)
+		startKey := roachpb.Key(testPrefix)
+		keys, err := s.DB.Scan(ctx, startKey, startKey.PrefixEnd(), 0)
+		require.NoError(t, err)
+		require.Equal(t, 1, len(keys))
+	})
+}
+
+// TestTxnBufferedWriteReadYourOwnWrites tests that read-your-own-writes are
+// served correctly from the transaction's buffer. We test two cases:
+// 1. The write that needs to be observed was part of an earlier batch.
+// 2. The write that needs to be observed was part of the same batch.
+func TestTxnBufferedWriteReadYourOwnWrites(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	ctx := context.Background()
+
+	s := createTestDB(t)
+	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
+
+	value1 := []byte("value1")
+	value21 := []byte("value21")
+	value22 := []byte("value22")
+	value3 := []byte("value3")
+
+	keyA := []byte("keyA")
+	keyB := []byte("keyB")
+	keyC := []byte("keyC")
+	keyD := []byte("keyD")
+
+	// Before the test begins, write a value to keyC.
+	txn := kv.NewTxn(ctx, s.DB, 0 /* gatewayNodeID */)
+	require.NoError(t, txn.Put(ctx, keyC, value3))
+	require.NoError(t, txn.Commit(ctx))
+
+	for _, tc := range []struct {
+		makeBatch func() *kv.Batch
+		// A map from a result index to the expected results, represented as a map
+		// of keys and values.
+		expected map[int32]map[string][]byte
+	}{
+		// Before any test case runs, we have:
+		//  - keyC <- value3 (from a previous transaction), and
+		//  - keyA <- value1 (from the same transaction).
+		// Then we run the batch from each test case.
+		{
+			makeBatch: func() *kv.Batch {
+				b := txn.NewBatch()
+				b.Get(keyA)
+				b.Get(keyC)
+				return b
+			},
+			// The Get on keyA, should be served from the buffer, and the Get on keyC,
+			// should be served by the server.
+			expected: map[int32]map[string][]byte{
+				0: {"keyA": value1},
+				1: {"keyC": value3},
+			},
+		},
+		{
+			makeBatch: func() *kv.Batch {
+				b := txn.NewBatch()
+				b.Scan(keyA, keyC)
+				b.Scan(keyB, keyD)
+				b.Scan(keyA, keyD)
+				return b
+			},
+			// The first Scan should be served from the buffer, the second Scan should
+			// be served by server, and the third scan should be served by both.
+			expected: map[int32]map[string][]byte{
+				0: {"keyA": value1},
+				1: {"keyC": value3},
+				2: {"keyA": value1, "keyC": value3},
+			},
+		},
+		{
+			makeBatch: func() *kv.Batch {
+				b := txn.NewBatch()
+				b.Get(keyB)
+				b.Put(keyB, value21)
+				b.Get(keyB)
+				b.Put(keyB, value22)
+				b.Get(keyB)
+				return b
+			},
+			// The Gets should see the preceding values written in the same batch.
+			expected: map[int32]map[string][]byte{
+				0: {"keyB": nil},
+				2: {"keyB": value21},
+				4: {"keyB": value22},
+			},
+		},
+		{
+			makeBatch: func() *kv.Batch {
+				b := txn.NewBatch()
+				b.Scan(keyB, keyC)
+				b.Put(keyB, value3)
+				b.Scan(keyB, keyC)
+				return b
+			},
+			// The Scans should see the values written preceding in the same batch.
+			expected: map[int32]map[string][]byte{
+				0: {"keyB": value22},
+				2: {"keyB": value3},
+			},
+		},
+		// TODO(mira): See if we need more test coverage for other request types
+		// (e.g. deletes, reverse scans).
+	} {
+		err := s.DB.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			txn.SetBufferedWritesEnabled(true)
+
+			// Put transactional value at keyA.
+			if err := txn.Put(ctx, keyA, value1); err != nil {
+				return err
+			}
+
+			b := tc.makeBatch()
+			if err := txn.Run(ctx, b); err != nil {
+				return err
+			}
+			for i, expected := range tc.expected {
+				require.Equal(t, len(expected), len(b.Results[i].Rows))
+				for _, row := range b.Results[i].Rows {
+					require.Equal(t, expected[string(row.Key)], row.ValueBytes())
+				}
+			}
+
+			return nil
+		})
+		require.NoError(t, err)
+	}
+}
+
+// TestLeafTransactionAdmissionHeader tests that the admission control header is
+// correctly set for a new leaf txn.
+func TestLeafTransactionAdmissionHeader(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	s := createTestDB(t)
+	defer s.Stop()
+	priorityOptions := []admissionpb.WorkPriority{
+		admissionpb.LowPri,
+		admissionpb.BulkLowPri,
+		admissionpb.UserLowPri,
+		admissionpb.BulkNormalPri,
+		admissionpb.NormalPri,
+		admissionpb.LockingNormalPri,
+		admissionpb.UserHighPri,
+		admissionpb.LockingUserHighPri,
+		admissionpb.HighPri,
+	}
+	rnd, _ := randutil.NewTestRand()
+	priority := priorityOptions[rnd.Intn(len(priorityOptions))]
+
+	ctx := context.Background()
+	rootTxn := kv.NewTxnWithAdmissionControl(
+		ctx, s.DB, 0 /* gatewayNodeID */, kvpb.AdmissionHeader_FROM_SQL, priority)
+	leafInputState, err := rootTxn.GetLeafTxnInputState(ctx, nil /* readsTree */)
+	require.NoError(t, err)
+
+	rootAdmissionHeader := rootTxn.AdmissionHeader()
+	leafTxn := kv.NewLeafTxn(ctx, s.DB, 0 /* gatewayNodeID */, leafInputState, &rootAdmissionHeader)
+	leafHeader := leafTxn.AdmissionHeader()
+	expectedLeafHeader := kvpb.AdmissionHeader{
+		Priority:   int32(priority),
+		CreateTime: rootAdmissionHeader.CreateTime,
+		Source:     kvpb.AdmissionHeader_FROM_SQL,
+	}
+	require.Equal(t, expectedLeafHeader, leafHeader)
+}
+
+// TestTxnBufferedWritesOmitAbortSpanChecks verifies that transactions that use
+// buffered writes do not check the AbortSpan, while still upholding
+// read-your-own-writes semantics.
+func TestTxnBufferedWritesOmitAbortSpanChecks(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	ctx := context.Background()
+
+	var mu struct {
+		syncutil.Mutex
+		txnID uuid.UUID
+	}
+	s := createTestDBWithKnobs(t, &kvserver.StoreTestingKnobs{
+		EvalKnobs: kvserverbase.BatchEvalTestingKnobs{
+			BeforeAbortSpanCheck: func(id uuid.UUID) {
+				mu.Lock()
+				defer mu.Unlock()
+
+				if mu.txnID == id {
+					t.Fatal("transactions using buffered writes should not check the AbortSpan")
+				}
+			},
+		},
+	})
+	defer s.Stop()
+	kvcoord.BufferedWritesMaxBufferSize.Override(context.Background(), s.DB.SettingsValues(), 2<<10 /* 2KiB */)
+
+	value1 := []byte("value1")
+	valueConflict := []byte("conflict")
+
+	keyA := []byte("keyA")
+
+	txn := kv.NewTxn(ctx, s.DB, 0 /* gatewayNodeID */)
+	txn.SetBufferedWritesEnabled(true)
+	mu.Lock()
+	mu.txnID = txn.ID()
+	mu.Unlock()
+
+	// Fix the transaction's commit timestamp.
+	_, err := txn.CommitTimestamp()
+	require.NoError(t, err)
+
+	// Put transactional value at keyA.
+	require.NoError(t, txn.Put(ctx, keyA, value1))
+
+	// Read what we just wrote.
+	b := txn.NewBatch()
+	b.Get(keyA)
+	require.NoError(t, txn.Run(ctx, b))
+	expected := map[string][]byte{
+		"keyA": value1,
+	}
+	checkGetResults(t, expected, b.Results...)
+
+	// Start another transaction that writes to keyA. This prevents us from
+	// committing at our original timestamp. Moreover, had we not been buffering
+	// our writes, this transaction would have resulted in aborting us and
+	// removing our intent.
+	err = s.DB.Txn(context.Background(), func(ctx context.Context, txn *kv.Txn) error {
+		require.NoError(t, txn.SetUserPriority(roachpb.MaxUserPriority))
+		return txn.Put(ctx, keyA, valueConflict)
+	})
+	require.NoError(t, err)
+
+	// Perform another read again. We should still see our previous write, not what
+	// the conflicting transaction wrote.
+	b = txn.NewBatch()
+	b.Get(keyA)
+	require.NoError(t, txn.Run(ctx, b))
+	expected = map[string][]byte{
+		"keyA": value1,
+	}
+	checkGetResults(t, expected, b.Results...)
+
+	// Try to commit the transaction. We should encounter a WriteTooOldError.
+	err = txn.Commit(ctx)
+	require.Error(t, err)
+	require.Regexp(t, "TransactionRetryWithProtoRefreshError: .*WriteTooOldError", err)
+}
+
+// TestTxnTracesSplitQueryIntents verifies that the split out QueryIntent
+// requests are captured in the verbose tracing of a transaction.
+func TestTxnTracesSplitQueryIntents(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	st := cluster.MakeTestingClusterSettings()
+	tc := testcluster.StartTestCluster(t, 1, base.TestClusterArgs{
+		ServerArgs: base.TestServerArgs{
+			Settings: st,
+		},
+	})
+	ctx := context.Background()
+	defer tc.Stopper().Stop(ctx)
+	// NB: Disable buffered writes to ensure writes are pipelined, and therefore
+	// there are QueryIntent requests to split.
+	kvcoord.BufferedWritesEnabled.Override(ctx, &st.SV, false)
+
+	db := tc.Server(0).DB()
+
+	tracer := tracing.NewTracer()
+	traceCtx, sp := tracer.StartSpanCtx(context.Background(), "test-txn", tracing.WithRecording(tracingpb.RecordingVerbose))
+
+	if err := db.Txn(traceCtx, func(ctx context.Context, txn *kv.Txn) error {
+		if err := txn.CPut(ctx, "a", "val", nil); err != nil {
+			return err
+		}
+		if err := txn.Put(ctx, "c", "d"); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	collectedSpans := sp.FinishAndGetRecording(tracingpb.RecordingVerbose)
+	dump := collectedSpans.String()
+	// dump:
+	//    0.275ms      0.171ms    sending split out pre-commit QueryIntent batch
+	found, err := regexp.MatchString(
+		// The (?s) makes "." match \n. This makes the test resilient to other log
+		// lines being interspersed.
+		`.*sending split out pre-commit QueryIntent batch`,
+		dump)
+	require.NoError(t, err)
+	require.True(t, found, "didn't match: %s", dump)
 }

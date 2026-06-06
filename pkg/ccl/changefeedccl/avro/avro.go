@@ -76,7 +76,7 @@ type logicalType struct {
 	Scale       *int       `json:"scale,omitempty"`
 }
 
-type arrayType struct {
+type ArrayType struct {
 	SchemaType SchemaType `json:"type"`
 	Items      SchemaType `json:"items"`
 }
@@ -87,7 +87,7 @@ func unionKey(t SchemaType) string {
 		return s
 	case logicalType:
 		return unionKey(s.SchemaType) + `.` + s.LogicalType
-	case arrayType:
+	case ArrayType:
 		return unionKey(s.SchemaType)
 	case *Record:
 		if s.Namespace == "" {
@@ -339,7 +339,7 @@ func typeToSchema(typ *types.T) (*SchemaField, error) {
 		)
 	case types.BitFamily:
 		setNullable(
-			arrayType{
+			ArrayType{
 				SchemaType: SchemaTypeArray,
 				Items:      SchemaTypeLong,
 			},
@@ -450,7 +450,11 @@ func typeToSchema(typ *types.T) (*SchemaField, error) {
 		setNullable(
 			SchemaTypeString,
 			func(d tree.Datum, _ interface{}) (interface{}, error) {
-				return string(*d.(*tree.DString)), nil
+				s, ok := tree.AsDString(d)
+				if !ok {
+					return nil, errors.Newf("expected string type, got %T", d)
+				}
+				return string(s), nil
 			},
 			func(x interface{}) (tree.Datum, error) {
 				return tree.NewDString(x.(string)), nil
@@ -460,7 +464,11 @@ func typeToSchema(typ *types.T) (*SchemaField, error) {
 		setNullable(
 			SchemaTypeString,
 			func(d tree.Datum, _ interface{}) (interface{}, error) {
-				return d.(*tree.DCollatedString).Contents, nil
+				cs, ok := tree.AsDCollatedString(d)
+				if !ok {
+					return nil, errors.Newf("expected collated string type, got %T", d)
+				}
+				return cs.Contents, nil
 			},
 			func(x interface{}) (tree.Datum, error) {
 				return tree.NewDCollatedString(x.(string), typ.Locale(), &tree.CollationEnvironment{})
@@ -681,6 +689,16 @@ func typeToSchema(typ *types.T) (*SchemaField, error) {
 				return tree.ParseDTSVector(x.(string))
 			},
 		)
+	case types.LTreeFamily:
+		setNullable(
+			SchemaTypeString,
+			func(d tree.Datum, _ interface{}) (interface{}, error) {
+				return d.(*tree.DLTree).LTree.String(), nil
+			},
+			func(x interface{}) (tree.Datum, error) {
+				return tree.ParseDLTree(x.(string))
+			},
+		)
 	// case types.PGVectorFamily:
 	//
 	// We could have easily supported PGVector type via stringification, but it
@@ -710,7 +728,7 @@ func typeToSchema(typ *types.T) (*SchemaField, error) {
 		itemUnionKey := unionKey(itemSchema.SchemaType.([]SchemaType)[1])
 
 		setNullable(
-			arrayType{
+			ArrayType{
 				SchemaType: SchemaTypeArray,
 				Items:      itemSchema.SchemaType,
 			},
@@ -977,7 +995,10 @@ func (r *DataRecord) rowFromNative(native interface{}) (rowenc.EncDatumRow, erro
 		if err != nil {
 			return nil, err
 		}
-		row[r.colIdxByFieldIdx[fieldIdx]] = rowenc.DatumToEncDatum(field.typ, decoded)
+		row[r.colIdxByFieldIdx[fieldIdx]], err = rowenc.DatumToEncDatum(field.typ, decoded)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return row, nil
 }

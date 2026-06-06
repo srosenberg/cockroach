@@ -86,6 +86,7 @@ func init() {
 		scgraph.Precedence,
 		"index", "index-name",
 		func(from, to NodeVars) rel.Clauses {
+			oldIndex := MkNodeVars("old-index")
 			return rel.Clauses{
 				to.Type((*scpb.IndexName)(nil)),
 				from.Type(
@@ -93,7 +94,7 @@ func init() {
 				),
 				JoinOnIndexID(from, to, "table-id", "index-id"),
 				StatusesToPublicOrTransient(from, scpb.Status_VALIDATED, to, scpb.Status_PUBLIC),
-				rel.And(IsPotentialSecondaryIndexSwap("index-id", "table-id")...),
+				rel.And(IsPotentialSecondaryIndexSwapWithNodeVars(oldIndex, from, "index-id", "table-id")...),
 			}
 		},
 	)
@@ -136,8 +137,8 @@ func init() {
 					to, screl.TemporaryIndexID,
 					"temp-index-id",
 				),
-				from.TargetStatus(scpb.Transient),
-				to.TargetStatus(scpb.ToPublic, scpb.Transient),
+				from.TargetStatus(scpb.TransientAbsent),
+				to.TargetStatus(scpb.ToPublic, scpb.TransientAbsent),
 				from.CurrentStatus(scpb.Status_WRITE_ONLY),
 				to.CurrentStatus(scpb.Status_BACKFILLED),
 			}
@@ -164,9 +165,9 @@ func init() {
 					to, screl.IndexID,
 					"temp-index-id",
 				),
-				from.TargetStatus(scpb.ToPublic, scpb.Transient),
+				from.TargetStatus(scpb.ToPublic, scpb.TransientAbsent),
 				from.CurrentStatus(scpb.Status_MERGED),
-				to.TargetStatus(scpb.Transient),
+				to.TargetStatus(scpb.TransientAbsent),
 				to.CurrentStatus(scpb.Status_TRANSIENT_DELETE_ONLY),
 			}
 		},
@@ -187,9 +188,9 @@ func init() {
 					to, screl.TemporaryIndexID,
 					"temp-index-id",
 				),
-				from.TargetStatus(scpb.Transient),
+				from.TargetStatus(scpb.TransientAbsent),
 				from.CurrentStatus(scpb.Status_TRANSIENT_DELETE_ONLY),
-				to.TargetStatus(scpb.ToPublic, scpb.Transient),
+				to.TargetStatus(scpb.ToPublic, scpb.TransientAbsent),
 				to.CurrentStatus(scpb.Status_WRITE_ONLY),
 			}
 		},
@@ -237,6 +238,7 @@ func init() {
 					"primary-index-id",
 				),
 				StatusesToPublicOrTransient(from, scpb.Status_VALIDATED, to, scpb.Status_PUBLIC),
+				to.TargetStatus(scpb.ToPublic),
 			}
 		})
 

@@ -190,7 +190,7 @@ var (
 	// that "violate" a hint like forcing a specific index or join algorithm.
 	// If the final expression has this cost or larger, it means that there was no
 	// plan that could satisfy the hints.
-	hugeCost = memo.Cost{C: 1e100, Flags: memo.CostFlags{HugeCostPenalty: true}}
+	hugeCost = memo.Cost{C: 1e100, Penalties: memo.HugeCostPenalty}
 
 	// SmallDistributeCost is the per-operation cost overhead for scans which may
 	// access remote regions, but the scanned table is unpartitioned with no lease
@@ -217,8 +217,8 @@ var (
 	//               region instead of relying on costing, which may not guarantee
 	//               the correct plan is found?
 	LargeDistributeCostWithHomeRegion = memo.Cost{
-		C:     LargeDistributeCost.C / 2,
-		Flags: memo.CostFlags{HugeCostPenalty: true},
+		C:         LargeDistributeCost.C / 2,
+		Penalties: memo.HugeCostPenalty,
 	}
 )
 
@@ -540,6 +540,9 @@ func (c *coster) ComputeCost(candidate memo.RelExpr, required *physical.Required
 	case opt.ScanOp:
 		cost = c.computeScanCost(candidate.(*memo.ScanExpr), required)
 
+	case opt.PlaceholderScanOp:
+		cost = c.computePlaceholderScanCost(candidate.(*memo.PlaceholderScanExpr), required)
+
 	case opt.SelectOp:
 		cost = c.computeSelectCost(candidate.(*memo.SelectExpr), required)
 
@@ -584,6 +587,9 @@ func (c *coster) ComputeCost(candidate memo.RelExpr, required *physical.Required
 	case opt.LimitOp:
 		cost = c.computeLimitCost(candidate.(*memo.LimitExpr))
 
+	case opt.LockOp:
+		cost = c.computeLockCost(candidate.(*memo.LockExpr), required)
+
 	case opt.OffsetOp:
 		cost = c.computeOffsetCost(candidate.(*memo.OffsetExpr))
 
@@ -622,15 +628,39 @@ func (c *coster) ComputeCost(candidate memo.RelExpr, required *physical.Required
 	// preferable, all else being equal.
 	cost.C += cpuCostFactor
 
+	// Within a locality optimized search, distribution costs are added to the
+	// remote branch, but not the local branch. Scale the remote branch costs by
+	// a factor reflecting the likelihood of executing that branch. Right now
+	// this probability is not estimated, so just use a default probability of
+	// 1/10.
+	// TODO(msirek): Add an estimation of the probability of executing the
+	// remote branch, e.g., compare the size of the limit hint with the expected
+	// row count of the local branch. Is there a better approach?
+	if required.RemoteBranch {
+		cost.C /= 10
+	}
+
+	// Penalize expressions that don't match the PlanGram.
+	if physical.VisibleToPlanGram(candidate.Op()) && !required.PlanGram.Matches(candidate, c.mem.Metadata()) {
+		cost.Penalties |= memo.PlanGramMismatchPenalty
+	}
+
 	// Add a one-time cost for any operator with unbounded cardinality. This
-	// ensures we prefer plans that push limits as far down the tree as possible,
-	// all else being equal.
+	// ensures we prefer plans that push limits as far down the tree as
+	// possible, all else being equal.
 	//
-	// Also add a cost flag for unbounded cardinality.
+	// Also add a penalty if the corresponding session setting is enabled and
+	// increment the unbounded read count for expressions that read from an
+	// index.
 	if candidate.Relational().Cardinality.IsUnbounded() {
 		cost.C += cpuCostFactor
 		if c.evalCtx.SessionData().OptimizerPreferBoundedCardinality {
-			cost.Flags.UnboundedCardinality = true
+			cost.Penalties |= memo.UnboundedCardinalityPenalty
+		}
+		switch candidate.Op() {
+		case opt.ScanOp, opt.PlaceholderScanOp, opt.LookupJoinOp, opt.IndexJoinOp,
+			opt.InvertedJoinOp, opt.ZigzagJoinOp, opt.VectorSearchOp:
+			cost.IncrUnboundedReadCount()
 		}
 	}
 
@@ -890,11 +920,58 @@ func (c *coster) computeScanCost(scan *memo.ScanExpr, required *physical.Require
 	extraCost := c.distributionCost(regionsAccessed)
 	cost.Add(extraCost)
 
-	// Apply a penalty for a full scan if needed.
-	if scan.Flags.AvoidFullScan && isFullScan {
-		cost.Flags.FullScanPenalty = true
+	if isFullScan {
+		cost.IncrFullScanCount()
+		if scan.Flags.AvoidFullScan {
+			// Apply a penalty for a full scan if needed.
+			cost.Penalties |= memo.FullScanPenalty
+		}
 	}
 
+	return cost
+}
+
+// computePlaceholderScanCost computes the cost of a placeholder scan. It mimics
+// the logic in computeScanCost that is relevant for placeholder scans.
+func (c *coster) computePlaceholderScanCost(
+	scan *memo.PlaceholderScanExpr, required *physical.Required,
+) memo.Cost {
+	if !scan.Flags.Empty() {
+		panic(errors.AssertionFailedf("expected empty flags for placeholder scan"))
+	}
+
+	stats := scan.Relational().Statistics()
+	rowCount := stats.RowCount
+	const numSpans = 1 // A placeholder scan always has a single span.
+	baseCost := memo.Cost{C: numSpans * randIOCostFactor}
+
+	// Add the IO cost of retrieving and the CPU cost of emitting the rows. The
+	// row cost depends on the size of the columns scanned.
+	perRowCost := c.rowScanCost(scan.Table, scan.Index, scan.Cols)
+
+	// If this is a virtual scan, add the cost of fetching table descriptors.
+	if c.mem.Metadata().Table(scan.Table).IsVirtualTable() {
+		baseCost.C += virtualScanTableDescriptorFetchCost
+	}
+
+	// Add a penalty if the cardinality exceeds the row count estimate. Adding a
+	// few rows worth of cost helps prevent surprising plans for very small tables
+	// or for when stats are stale.
+	//
+	// Note: we add this to the baseCost rather than the rowCount, so that the
+	// number of index columns does not have an outsized effect on the cost of
+	// the scan. See issue #68556.
+	baseCost.Add(c.largeCardinalityCostPenalty(scan.Relational().Cardinality, rowCount))
+
+	if required.LimitHint != 0 {
+		rowCount = math.Min(rowCount, required.LimitHint)
+	}
+
+	cost := baseCost
+	cost.C += rowCount * (seqIOCostFactor + perRowCost.C)
+
+	// TODO(#148315): Consider adding distribution cost for RBR tables.
+	cost.Add(SmallDistributeCost)
 	return cost
 }
 
@@ -1168,8 +1245,15 @@ func (c *coster) computeIndexLookupJoinCost(
 		perLookupCost.C += 4 * randIOCostFactor
 	}
 	if c.mem.Metadata().Table(table).IsVirtualTable() {
-		// It's expensive to perform a lookup join into a virtual table because
-		// we need to fetch the table descriptors on each lookup.
+		// It's expensive to perform a lookup join into a virtual table because we
+		// need to fetch the table descriptors on each lookup. Note that virtual
+		// tables with incomplete indexes (e.g. pg_class, pg_attribute) may fall
+		// back to a full table scan when the lookup key is not found. The actual
+		// cost can match a full table scan, which is much higher than modeled
+		// here. For now, we rely on @primary index hints in known-problematic
+		// queries to avoid this.
+		// TODO(michae2): differentiate cost for complete vs incomplete virtual
+		// index lookups, so the optimizer naturally avoids the degenerate case.
 		perLookupCost.C += virtualScanTableDescriptorFetchCost
 	}
 	cost := memo.Cost{C: lookupCount * perLookupCost.C}
@@ -1497,6 +1581,28 @@ func (c *coster) computeGroupingCost(grouping memo.RelExpr, required *physical.R
 func (c *coster) computeLimitCost(limit *memo.LimitExpr) memo.Cost {
 	// Add the CPU cost of emitting the rows.
 	cost := memo.Cost{C: limit.Relational().Statistics().RowCount * cpuCostFactor}
+	return cost
+}
+
+func (c *coster) computeLockCost(lock *memo.LockExpr, required *physical.Required) memo.Cost {
+	// The Lock operator is implemented as a lookup join into the primary index,
+	// so its cost resembles that of an index lookup join: a per-lookup cost to
+	// seek into the primary index plus a per-row cost to retrieve the locked
+	// columns. The Lock passes through its input rows, so it locks (and is
+	// costed over) as many rows as flow into it. Crucially, when a limit hint
+	// flows down from above, the Lock only needs to lock that many rows. This
+	// makes plans that push the Lock below a row-reducing operation (so it only
+	// locks ~K rows) cheaper than plans that lock every input row before
+	// discarding all but K above the Lock.
+	rowCount := lock.Relational().Statistics().RowCount
+	if required.LimitHint != 0 {
+		rowCount = math.Min(rowCount, required.LimitHint)
+	}
+
+	cost := memo.Cost{C: rowCount * randIOCostFactor}
+	perRowCost := lookupJoinRetrieveRowCost +
+		c.rowScanCost(lock.Table, cat.PrimaryIndex, lock.LockCols).C
+	cost.C += rowCount * perRowCost
 	return cost
 }
 

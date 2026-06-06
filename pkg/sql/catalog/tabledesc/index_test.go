@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"sync"
 	"testing"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
@@ -31,6 +30,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
+	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
@@ -49,7 +49,9 @@ func TestIndexInterface(t *testing.T) {
 	if _, err := conn.Exec(`CREATE DATABASE d`); err != nil {
 		t.Fatalf("%+v", err)
 	}
-	sqlutils.MakeSQLRunner(conn).Exec(t, `
+	runner := sqlutils.MakeSQLRunner(conn)
+
+	runner.Exec(t, `
 		CREATE TABLE d.t (
 			c1 INT,
 			c2 INT,
@@ -274,7 +276,7 @@ func TestIndexInterface(t *testing.T) {
 	}
 
 	// Check particular index features.
-	require.Equal(t, "c4 = 'x':::STRING", s5.GetPredicate())
+	require.Equal(t, "c4 = 'x':::STRING", string(s5.GetPredicate()))
 	require.Equal(t, "crdb_internal_c5_shard_8", s4.GetShardColumnName())
 	require.Equal(t, int32(2), s6.GetGeoConfig().S2Geography.S2Config.LevelMod)
 	require.Equal(t, int32(3), s7.GetVecConfig().Dims)
@@ -400,7 +402,7 @@ func TestIndexStrictColumnIDs(t *testing.T) {
 	require.NoError(t, err)
 
 	// Retrieve KV trace and check for redundant values.
-	rows, err := conn.Query(`SELECT message FROM [SHOW KV TRACE FOR SESSION] WHERE message LIKE 'CPut%/Table/%/2% ->%'`)
+	rows, err := conn.Query(`SELECT message FROM [SHOW KV TRACE FOR SESSION] WHERE message LIKE '%Put%/Table/%/2% ->%'`)
 	require.NoError(t, err)
 	defer rows.Close()
 	require.True(t, rows.Next())
@@ -411,7 +413,7 @@ func TestIndexStrictColumnIDs(t *testing.T) {
 	if srv.TenantController().StartedDefaultTestTenant() {
 		tenantPrefix = codec.TenantPrefix().String()
 	}
-	expected := fmt.Sprintf(`CPut %s/Table/%d/2/0/0/0/0/0/0 -> /BYTES/0x2300030003000300`, tenantPrefix, mut.GetID())
+	expected := fmt.Sprintf(`Put %s/Table/%d/2/0/0/0/0/0/0 -> /BYTES/0x2300030003000300`, tenantPrefix, mut.GetID())
 	require.Equal(t, expected, msg)
 
 	// Test that with the strict guarantees, this table descriptor would have been
@@ -454,6 +456,8 @@ func TestLatestIndexDescriptorVersionValues(t *testing.T) {
 	tdb := sqlutils.MakeSQLRunner(sqlDB)
 
 	// Test relies on legacy schema changer testing knobs.
+	tdb.Exec(t, "SET create_table_with_schema_locked=false")
+	tdb.Exec(t, "SET CLUSTER SETTING sql.defaults.use_declarative_schema_changer = 'off'")
 	tdb.Exec(t, "SET use_declarative_schema_changer = 'off'")
 	// Populate the test cluster with all manner of indexes and index mutations.
 	tdb.Exec(t, "CREATE SEQUENCE s")
@@ -467,12 +471,11 @@ func TestLatestIndexDescriptorVersionValues(t *testing.T) {
 	)
 	tdb.CheckQueryResultsRetry(t, q, [][]string{{"0"}})
 	// Hang on ALTER PRIMARY KEY finalization.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		tdb.Exec(t, "ALTER TABLE t ALTER PRIMARY KEY USING COLUMNS (d)")
-		wg.Done()
-	}()
+	g := ctxgroup.WithContext(ctx)
+	g.GoCtx(func(ctx context.Context) error {
+		_, err := sqlDB.ExecContext(ctx, "ALTER TABLE t ALTER PRIMARY KEY USING COLUMNS (d)")
+		return err
+	})
 	<-swapNotification
 
 	test := func(desc catalog.TableDescriptor) {
@@ -587,7 +590,7 @@ func TestLatestIndexDescriptorVersionValues(t *testing.T) {
 
 	// Resume pending statement execution.
 	waitBeforeContinuing <- struct{}{}
-	wg.Wait()
+	require.NoError(t, g.Wait())
 }
 
 // TestSecKeyLatestIndexDescriptorVersion tests that the

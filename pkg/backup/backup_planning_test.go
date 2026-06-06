@@ -10,12 +10,14 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backuppb"
+	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,9 +35,10 @@ func TestBackupResolveOptionsForJobDescription(t *testing.T) {
 		EncryptionPassphrase:            tree.NewDString("test expr"),
 		Detached:                        tree.DBoolTrue,
 		EncryptionKMSURI:                []tree.Expr{tree.NewDString("test expr")},
-		IncrementalStorage:              []tree.Expr{tree.NewDString("test expr")},
 		ExecutionLocality:               tree.NewDString("test expr"),
 		UpdatesClusterMonitoringMetrics: tree.NewDString("test expr"),
+		Strict:                          true,
+		RevisionStream:                  true,
 	}
 
 	ensureAllStructFieldsSet := func(s tree.BackupOptions, name string) {
@@ -52,10 +55,30 @@ func TestBackupResolveOptionsForJobDescription(t *testing.T) {
 	}
 
 	ensureAllStructFieldsSet(input, "input")
-	output, err := resolveOptionsForBackupJobDescription(input, []string{"http://example.com"}, []string{"http://example.com"})
+	output, err := resolveOptionsForBackupJobDescription(input, []string{"http://example.com"})
 	require.NoError(t, err)
 	ensureAllStructFieldsSet(output, "output")
 
+}
+
+func TestFastFailMalformedLocalities(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	_, sqlDB, cleanup := backupRestoreTestSetupEmpty(
+		t, singleNode, "", InitManualReplication, base.TestClusterArgs{},
+	)
+	defer cleanup()
+
+	sqlDB.ExpectErr(
+		t,
+		`no default URL provided for partitioned backup`,
+		`BACKUP INTO (
+			'nodelocal://1/backup?COCKROACH_LOCALITY=region%3Dus-east-1',
+			'nodelocal://2/backup?COCKROACH_LOCALITY=region%3Dus-west-1',
+			'nodelocal://3/backup?COCKROACH_LOCALITY=region%3Dus-central-1'
+		) WITH detached`,
+	)
 }
 
 func BenchmarkSpansForAllTableIndexes(b *testing.B) {

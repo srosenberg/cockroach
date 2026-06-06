@@ -13,6 +13,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/catconstants"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/span"
@@ -116,6 +117,10 @@ type subscribeConfig struct {
 	// contain a diff.
 	withDiff bool
 
+	// withMvccOrdering controls whether the producer-side rangefeeds
+	// should emit events in MVCC timestamp order.
+	withMvccOrdering bool
+
 	// batchByteSize requests the producer emit batches up to the specified size.
 	batchByteSize int64
 }
@@ -139,6 +144,14 @@ func WithFiltering(filteringEnabled bool) SubscribeOption {
 func WithDiff(enableDiff bool) SubscribeOption {
 	return func(cfg *subscribeConfig) {
 		cfg.withDiff = enableDiff
+	}
+}
+
+// WithMvccOrdering controls whether the producer-side rangefeeds should emit
+// events in MVCC timestamp order.
+func WithMvccOrdering(ordered bool) SubscribeOption {
+	return func(cfg *subscribeConfig) {
+		cfg.withMvccOrdering = ordered
 	}
 }
 
@@ -258,7 +271,7 @@ func getFirstClient[T any](
 			return clientCandidate, nil
 		}
 		// Note the failure and attempt the next uri
-		log.Warningf(ctx, "failed to connect to uri %s: %s", uri.Redacted(), err.Error())
+		log.Dev.Warningf(ctx, "failed to connect to uri %s: %s", uri.Redacted(), err.Error())
 		combinedError = errors.CombineErrors(combinedError, err)
 	}
 	return zero, errors.Wrap(combinedError, "failed to connect to any connection uri")
@@ -271,11 +284,13 @@ type options struct {
 }
 
 func (o *options) appName() string {
-	const appNameBase = "repstream"
+	// NOTE: use an internal app name prefix so that the sql.*.internal metrics
+	// are used instead of the user facing metrics. The logic responsible for
+	// picking the metric family lives in conn_executor.go:SetupConn.
 	if o.streamID != 0 {
-		return fmt.Sprintf("%s job id=%d", appNameBase, o.streamID)
+		return fmt.Sprintf("%s repstream job id=%d", catconstants.InternalAppNamePrefix, o.streamID)
 	} else {
-		return appNameBase
+		return fmt.Sprintf("%s repstream", catconstants.InternalAppNamePrefix)
 	}
 }
 
@@ -303,10 +318,10 @@ func WithLogical() Option {
 	}
 }
 
-func processOptions(opts []Option) *options {
-	ret := &options{}
+func processOptions(opts []Option) options {
+	ret := options{}
 	for _, o := range opts {
-		o(ret)
+		o(&ret)
 	}
 	return ret
 }

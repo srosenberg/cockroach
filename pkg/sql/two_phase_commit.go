@@ -8,10 +8,10 @@ package sql
 import (
 	"context"
 
-	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
@@ -25,6 +25,18 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+var PreparedTransactionsEnabled = settings.RegisterBoolSetting(
+	settings.ApplicationLevel,
+	"sql.prepared_transactions.unsafe.enabled",
+	"enables PREPARE TRANSACTION statements (two-phase commit). "+
+		"When a transaction is prepared, it holds its locks indefinitely and "+
+		"cannot be pushed. If the coordinator that initiated the prepare fails "+
+		"to follow up with COMMIT PREPARED or ROLLBACK PREPARED, those locks "+
+		"will be held potentially forever, even across restarts, until the "+
+		"transaction is manually resolved. Use with caution.",
+	false,
+	settings.WithUnsafe)
+
 // maxPreparedTxnGlobalIDLen is the maximum length of a prepared transaction's
 // global ID. Taken from Postgres, see GIDSIZE.
 const maxPreparedTxnGlobalIDLen = 200
@@ -37,6 +49,20 @@ func (ex *connExecutor) execPrepareTransactionInOpenState(
 	ctx, sp := tracing.EnsureChildSpan(ctx, ex.server.cfg.AmbientCtx.Tracer, "prepare sql txn")
 	defer sp.Finish()
 
+	if !PreparedTransactionsEnabled.Get(&ex.server.cfg.Settings.SV) {
+		if rbErr := ex.state.mu.txn.Rollback(ctx); rbErr != nil {
+			log.Dev.Warningf(ctx, "txn rollback failed: err=%s", rbErr)
+		}
+		return eventTxnFinishPrepared{}, eventTxnFinishPreparedErrPayload{
+			err: errors.WithHint(
+				pgerror.Newf(pgcode.FeatureNotSupported,
+					"prepared transactions are disabled because the feature is not yet GA"),
+				"Set the cluster setting sql.prepared_transactions.unsafe.enabled "+
+					"to true to enable prepared transactions.",
+			),
+		}
+	}
+
 	// Insert into the system table and prepare the transaction in the KV layer.
 	prepareErr := ex.execPrepareTransactionInOpenStateInternal(ctx, s)
 
@@ -47,7 +73,7 @@ func (ex *connExecutor) execPrepareTransactionInOpenState(
 	// > ROLLBACK: the current transaction is canceled.
 	if prepareErr != nil {
 		if rbErr := ex.state.mu.txn.Rollback(ctx); rbErr != nil {
-			log.Warningf(ctx, "txn rollback failed: err=%s", rbErr)
+			log.Dev.Warningf(ctx, "txn rollback failed: err=%s", rbErr)
 		}
 	}
 
@@ -62,19 +88,13 @@ func (ex *connExecutor) execPrepareTransactionInOpenState(
 func (ex *connExecutor) execPrepareTransactionInOpenStateInternal(
 	ctx context.Context, s *tree.PrepareTransaction,
 ) error {
-	// TODO(nvanbenschoten): Remove this logic when mixed-version support with
-	// v24.3 is no longer necessary.
-	if !ex.planner.EvalContext().Settings.Version.IsActive(ctx, clusterversion.V25_1_PreparedTransactionsTable) {
-		return pgerror.Newf(pgcode.FeatureNotSupported, "PREPARE TRANSACTION unsupported in mixed-version cluster")
-	}
-
 	// TODO(nvanbenschoten): why are these needed here (and in the equivalent
 	// functions for commit and rollback)? Shouldn't they be handled by
 	// connExecutor.resetExtraTxnState?
 	if err := ex.extraTxnState.sqlCursors.closeAll(&ex.planner, cursorCloseForTxnPrepare); err != nil {
 		return err
 	}
-	ex.extraTxnState.prepStmtsNamespace.closeAllPortals(ctx, &ex.extraTxnState.prepStmtsNamespaceMemAcc)
+	ex.extraTxnState.prepStmtsNamespace.closePortals(ctx, &ex.extraTxnState.prepStmtsNamespaceMemAcc)
 
 	// Validate the global ID.
 	globalID := s.Transaction.RawString()
@@ -147,7 +167,7 @@ func (ex *connExecutor) cleanupAfterFailedPrepareTransaction(ctx context.Context
 	// row if we successfully rollback the transaction.
 	err := ex.state.mu.txn.Rollback(ctx)
 	if err != nil {
-		log.Warningf(ctx, "txn rollback failed: err=%s", err)
+		log.Dev.Warningf(ctx, "txn rollback failed: err=%s", err)
 		return
 	}
 	if ctx.Err() != nil {
@@ -164,11 +184,11 @@ func (ex *connExecutor) cleanupAfterFailedPrepareTransaction(ctx context.Context
 	txnKey := txn.Key()
 	txnRecord, err := queryPreparedTransactionRecord(ctx, ex.server.cfg.DB, txnID, txnKey)
 	if err != nil {
-		log.Warningf(ctx, "query prepared transaction record after rollback failed: %s", err)
+		log.Dev.Warningf(ctx, "query prepared transaction record after rollback failed: %s", err)
 		return
 	}
 	if txnRecord.Status != roachpb.ABORTED {
-		log.Errorf(ctx, "prepared transaction %s not aborted after rollback: %v", globalID, txnRecord)
+		log.Dev.Errorf(ctx, "prepared transaction %s not aborted after rollback: %v", globalID, txnRecord)
 		return
 	}
 
@@ -179,7 +199,7 @@ func (ex *connExecutor) cleanupAfterFailedPrepareTransaction(ctx context.Context
 		return deletePreparedTransaction(ctx, sqlTxn, globalID)
 	})
 	if err != nil {
-		log.Warningf(ctx, "cleanup prepared transaction row failed: %s", err)
+		log.Dev.Warningf(ctx, "cleanup prepared transaction row failed: %s", err)
 	}
 }
 
@@ -213,12 +233,6 @@ func (p *planner) endPreparedTxnNode(globalID *tree.StrVal, commit bool) *endPre
 }
 
 func (f *endPreparedTxnNode) startExec(params runParams) error {
-	// TODO(nvanbenschoten): Remove this logic when mixed-version support with
-	// v24.3 is no longer necessary.
-	if !params.EvalContext().Settings.Version.IsActive(params.ctx, clusterversion.V25_1_PreparedTransactionsTable) {
-		return pgerror.Newf(pgcode.FeatureNotSupported, "%s unsupported in mixed-version cluster", f.stmtName())
-	}
-
 	if err := f.checkNoActiveTxn(params); err != nil {
 		return err
 	}

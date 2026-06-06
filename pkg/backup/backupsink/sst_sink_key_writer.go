@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
 	"github.com/cockroachdb/cockroach/pkg/storage"
-	"github.com/cockroachdb/cockroach/pkg/util/admission"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 )
@@ -30,17 +29,22 @@ type SSTSinkKeyWriter struct {
 	// Caching the targetFileSize from the cluster settings to avoid multiple
 	// lookups during writes.
 	targetFileSize int64
+
+	// The FileSSTSink gets its locality information from the ExportedSpan passed to Write.
+	// Since we're doing things more manually here, we need to keep this information ourselves.
+	LocalityKV string
 }
 
 func MakeSSTSinkKeyWriter(
-	conf SSTSinkConf, dest cloud.ExternalStorage, pacer *admission.Pacer,
+	conf SSTSinkConf, dest cloud.ExternalStorage, localityKV string,
 ) (*SSTSinkKeyWriter, error) {
 	if conf.ElideMode == execinfrapb.ElidePrefix_None {
 		return nil, errors.New("KeyWriter does not support ElidePrefix_None")
 	}
 	return &SSTSinkKeyWriter{
-		FileSSTSink:    *MakeFileSSTSink(conf, dest, pacer),
+		FileSSTSink:    *MakeFileSSTSink(conf, dest, nil),
 		targetFileSize: targetFileSize.Get(conf.Settings),
+		LocalityKV:     localityKV,
 	}, nil
 }
 
@@ -48,10 +52,12 @@ func MakeSSTSinkKeyWriter(
 // including the prefix. Reset needs to be called prior to WriteKey whenever
 // writing keys from a new span. Keys must also be written in order.
 //
-// After writing the last key for a span, AssumeNotMidRow must be called to
-// enforce the invariant that BackupManifest_File spans do not end mid-row.
+// Once a key has been written, the caller may safely reuse the underlying
+// memory for the passed in key.
 //
-// Flush should be called before the sink is closed to ensure the SST
+// NOTE: After writing the last key for a span, AssumeNotMidRow must be called
+// to enforce the invariant that BackupManifest_File spans do not end mid-row.
+// Flush should also be called before the sink is closed to ensure the SST
 // is written to the destination.
 func (s *SSTSinkKeyWriter) WriteKey(ctx context.Context, key storage.MVCCKey, value []byte) error {
 	if len(s.flushedFiles) == 0 {
@@ -104,6 +110,11 @@ func (s *SSTSinkKeyWriter) WriteKey(ctx context.Context, key storage.MVCCKey, va
 	return nil
 }
 
+// CompletedSpan manually increments the underlying FileSSTSink completedSpans field.
+func (s *SSTSinkKeyWriter) CompletedSpan() {
+	s.completedSpans += 1
+}
+
 // AssumeNotMidRow marks the last key written as not mid-row. This exists to
 // ensure that the caller explicitly is aware that SSTSinkKeyWriter is unable
 // to determine if the last key written in a span is mid-row and must enforce
@@ -120,6 +131,9 @@ func (s *SSTSinkKeyWriter) AssumeNotMidRow() {
 // and calling AssumeNotMidRow before resetting to enforce this invariant.
 // Any time a new span is being written, Reset MUST be called prior to any
 // WriteKey calls.
+//
+// Once Reset has been called, the caller may safely reuse the underlying memory
+// of the passed in span.
 func (s *SSTSinkKeyWriter) Reset(ctx context.Context, newSpan roachpb.Span) error {
 	log.VEventf(ctx, 2, "resetting sink to span %s", newSpan)
 	if s.midRow {
@@ -133,7 +147,7 @@ func (s *SSTSinkKeyWriter) Reset(ctx context.Context, newSpan roachpb.Span) erro
 			return err
 		}
 	}
-	if s.out == nil {
+	if !s.isOpen {
 		if err := s.open(ctx); err != nil {
 			return err
 		}
@@ -146,7 +160,8 @@ func (s *SSTSinkKeyWriter) Reset(ctx context.Context, newSpan roachpb.Span) erro
 			lastFile.EntryCounts.DataSize < fileSpanByteLimit {
 			log.VEventf(ctx, 2, "extending span %s to %s", lastFile.Span, newSpan)
 			s.stats.spanGrows++
-			lastFile.Span.EndKey = newSpan.EndKey
+			// See reason for Clone() below.
+			lastFile.Span.EndKey = newSpan.EndKey.Clone()
 			return nil
 		}
 	}
@@ -159,8 +174,13 @@ func (s *SSTSinkKeyWriter) Reset(ctx context.Context, newSpan roachpb.Span) erro
 	s.flushedFiles = append(
 		s.flushedFiles,
 		backuppb.BackupManifest_File{
-			Span: newSpan,
-			Path: s.outName,
+			// Because there are situations where the underlying memory for keys of
+			// the span is reused to optimize memory usage, we need to clone the keys
+			// to ensure that the BackupManifest_File's span is not unintentionally
+			// mutated outside of the SSTSinkKeyWriter.
+			Span:       newSpan.Clone(),
+			Path:       s.outName,
+			LocalityKV: s.LocalityKV,
 		},
 	)
 	s.prevKey = nil
@@ -215,7 +235,9 @@ func (s *SSTSinkKeyWriter) maybeDoSizeFlush(ctx context.Context, nextKey roachpb
 		EndKey: lastFile.Span.EndKey,
 	}
 	if lastFile.Span.ContainsKey(newSpan.Key) {
-		lastFile.Span.EndKey = newSpan.Key
+		// Clone to prevent lastFile.Span.EndKey from aliasing the caller's key
+		// memory, which may be reused after WriteKey returns.
+		lastFile.Span.EndKey = newSpan.Key.Clone()
 	}
 	if hardFlush {
 		if err := s.doSSTSizeFlush(ctx); err != nil {

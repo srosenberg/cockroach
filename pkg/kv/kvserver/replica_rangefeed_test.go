@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/liveness"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/storeliveness"
 	slpb "github.com/cockroachdb/cockroach/pkg/kv/kvserver/storeliveness/storelivenesspb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvtestutils"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/server"
@@ -547,7 +548,7 @@ func TestReplicaRangefeed(t *testing.T) {
 	ba := &kvpb.BatchRequest{}
 	ba.RangeID = rangeID
 	ba.Add(gcReq)
-	if _, pErr := firstStore.Send(ctx, ba); pErr != nil {
+	if _, pErr := kvserver.ToSenderForTesting(firstStore).Send(ctx, ba); pErr != nil {
 		t.Fatal(pErr)
 	}
 
@@ -774,35 +775,6 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		return tc, rangeID
 	}
 
-	waitForInitialCheckpointAcrossSpan := func(
-		t *testing.T, stream *testStream, streamErrC <-chan error, span roachpb.Span,
-	) {
-		t.Helper()
-		var events []*kvpb.RangeFeedEvent
-		testutils.SucceedsSoon(t, func() error {
-			if len(streamErrC) > 0 {
-				// Break if the error channel is already populated.
-				return nil
-			}
-			events = stream.Events()
-			if len(events) < 1 {
-				return errors.Errorf("too few events: %v", events)
-			}
-			return nil
-		})
-		if len(streamErrC) > 0 {
-			t.Fatalf("unexpected error from stream: %v", <-streamErrC)
-		}
-
-		var lastTS hlc.Timestamp
-		for _, evt := range events {
-			require.NotNil(t, evt.Checkpoint, "expected only checkpoint events")
-			require.Equal(t, span, evt.Checkpoint.Span)
-			require.True(t, evt.Checkpoint.ResolvedTS.After(lastTS) || evt.Checkpoint.ResolvedTS.Equal(lastTS), "unexpected resolved timestamp regression")
-			lastTS = evt.Checkpoint.ResolvedTS
-		}
-	}
-
 	assertRangefeedRetryErr := func(
 		t *testing.T, pErr error, expReason kvpb.RangeFeedRetryError_Reason,
 	) {
@@ -818,6 +790,35 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		if rfErr.Reason != expReason {
 			t.Fatalf("got incorrect RangeFeedRetryError reason for RangeFeed: %v; expecting %v",
 				rfErr.Reason, expReason)
+		}
+	}
+
+	waitForInitialCheckpointAcrossSpan := func(
+		t *testing.T, stream *testStream, streamErrC <-chan error, span roachpb.Span, allowedError *kvpb.RangeFeedRetryError_Reason,
+	) {
+		t.Helper()
+		var events []*kvpb.RangeFeedEvent
+		testutils.SucceedsSoon(t, func() error {
+			if len(streamErrC) > 0 {
+				if allowedError == nil {
+					t.Fatalf("unexpected error from stream: %v", <-streamErrC)
+				}
+				streamErr := <-streamErrC
+				assertRangefeedRetryErr(t, streamErr, *allowedError)
+			}
+			events = stream.Events()
+			if len(events) < 1 {
+				return errors.Errorf("too few events: %v", events)
+			}
+			return nil
+		})
+
+		var lastTS hlc.Timestamp
+		for _, evt := range events {
+			require.NotNil(t, evt.Checkpoint, "expected only checkpoint events")
+			require.Equal(t, span, evt.Checkpoint.Span)
+			require.True(t, evt.Checkpoint.ResolvedTS.After(lastTS) || evt.Checkpoint.ResolvedTS.Equal(lastTS), "unexpected resolved timestamp regression")
+			lastTS = evt.Checkpoint.ResolvedTS
 		}
 	}
 
@@ -848,7 +849,7 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		}()
 
 		// Wait for the first checkpoint event.
-		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan)
+		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan, nil)
 
 		// Remove the replica from the range.
 		tc.RemoveVotersOrFatal(t, startKey, tc.Target(removeStore))
@@ -883,7 +884,7 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		}()
 
 		// Wait for the first checkpoint event.
-		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan)
+		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan, nil)
 
 		// Split the range.
 		tc.SplitRangeOrFatal(t, mkKey("m"))
@@ -944,8 +945,8 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		}()
 
 		// Wait for the first checkpoint event on each stream.
-		waitForInitialCheckpointAcrossSpan(t, streamLeft, streamLeftErrC, rangefeedLeftSpan)
-		waitForInitialCheckpointAcrossSpan(t, streamRight, streamRightErrC, rangefeedRightSpan)
+		waitForInitialCheckpointAcrossSpan(t, streamLeft, streamLeftErrC, rangefeedLeftSpan, nil)
+		waitForInitialCheckpointAcrossSpan(t, streamRight, streamRightErrC, rangefeedRightSpan, nil)
 
 		// Merge the ranges back together
 		mergeArgs := adminMergeArgs(startKey)
@@ -1002,7 +1003,7 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		}()
 
 		// Wait for the first checkpoint event.
-		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan)
+		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan, nil)
 
 		// Force the leader off the replica on partitionedStore. If it's the
 		// leader, this test will fall over when it cuts the replica off from
@@ -1023,8 +1024,8 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		})
 
 		// Partition the replica from the rest of its range.
-		partitionStore.Transport().ListenIncomingRaftMessages(partitionStore.Ident.StoreID, &unreliableRaftHandler{
-			rangeID:                    rangeID,
+		partitionStore.Transport().ListenIncomingRaftMessages(partitionStore.Ident.StoreID, &kvtestutils.UnreliableRaftHandler{
+			RangeID:                    rangeID,
 			IncomingRaftMessageHandler: partitionStore,
 		})
 
@@ -1058,11 +1059,11 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		}
 
 		// Remove the partition. Snapshot should follow.
-		partitionStore.Transport().ListenIncomingRaftMessages(partitionStore.Ident.StoreID, &unreliableRaftHandler{
-			rangeID:                    rangeID,
+		partitionStore.Transport().ListenIncomingRaftMessages(partitionStore.Ident.StoreID, &kvtestutils.UnreliableRaftHandler{
+			RangeID:                    rangeID,
 			IncomingRaftMessageHandler: partitionStore,
-			unreliableRaftHandlerFuncs: unreliableRaftHandlerFuncs{
-				dropReq: func(req *kvserverpb.RaftMessageRequest) bool {
+			UnreliableRaftHandlerFuncs: kvtestutils.UnreliableRaftHandlerFuncs{
+				DropReq: func(req *kvserverpb.RaftMessageRequest) bool {
 					// Make sure that even going forward no MsgApp for what we just truncated can
 					// make it through. The Raft transport is asynchronous so this is necessary
 					// to make the test pass reliably.
@@ -1070,8 +1071,8 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 					// entries in the MsgApp, so filter where msg.Index < index, not <= index.
 					return req.Message.Type == raftpb.MsgApp && kvpb.RaftIndex(req.Message.Index) < index
 				},
-				dropHB:   func(*kvserverpb.RaftHeartbeat) bool { return false },
-				dropResp: func(*kvserverpb.RaftMessageResponse) bool { return false },
+				DropHB:   func(*kvserverpb.RaftHeartbeat) bool { return false },
+				DropResp: func(*kvserverpb.RaftMessageResponse) bool { return false },
 			},
 		})
 
@@ -1104,9 +1105,12 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Split the range so that the RHS is not a system range and thus will
-		// respect the rangefeed_enabled cluster setting.
+		// Split off a small range to ensure it's not a system range and thus will
+		// respect the rangefeed_enabled cluster setting. It also helps ensure no
+		// one else writes to it.
 		tc.SplitRangeOrFatal(t, startKey)
+		endKey := startKey.Next()
+		tc.SplitRangeOrFatal(t, endKey)
 
 		rightRangeID := store.LookupReplica(roachpb.RKey(startKey)).RangeID
 
@@ -1114,7 +1118,6 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		stream := newTestStream()
 		streamErrC := make(chan error, 1)
 
-		endKey := keys.ScratchRangeMax
 		rangefeedSpan := roachpb.Span{Key: startKey, EndKey: endKey}
 		go func() {
 			req := kvpb.RangeFeedRequest{
@@ -1129,16 +1132,20 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 			streamErrC <- waitRangeFeed(t, store, &req, stream)
 		}()
 
-		// Wait for the first checkpoint event.
-		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan)
+		// Wait for the first checkpoint event. It's possible to get a
+		// REASON_LOGICAL_OPS_MISSING error here if an earlier proposal raced in
+		// with enabling the rangefeed. See the comment in
+		// handleLogicalOpLogRaftMuLocked.
+		allowedError := kvpb.RangeFeedRetryError_REASON_LOGICAL_OPS_MISSING
+		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan, &allowedError)
 
 		// Disable rangefeeds, which stops logical op logs from being provided
 		// with Raft commands.
 		kvserver.RangefeedEnabled.Override(ctx, &store.ClusterSettings().SV, false)
 
-		// Perform a write on the range.
-		writeKey := mkKey("c")
-		pArgs := putArgs(writeKey, []byte("val2"))
+		// Perform a write on the range. This will be proposed without a logical
+		// op log, which should trigger the rangefeed to disconnect.
+		pArgs := putArgs(startKey, []byte("val"))
 		if _, pErr := kv.SendWrapped(ctx, store.TestSender(), pArgs); pErr != nil {
 			t.Fatal(pErr)
 		}
@@ -1225,7 +1232,7 @@ func TestReplicaRangefeedErrors(t *testing.T) {
 		}()
 
 		// Wait for the first checkpoint event.
-		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan)
+		waitForInitialCheckpointAcrossSpan(t, stream, streamErrC, rangefeedSpan, nil)
 	})
 	t.Run("multiple-origin-ids", func(t *testing.T) {
 		tc, rangeID := setup(t, base.TestingKnobs{})
@@ -1484,7 +1491,7 @@ func TestRangefeedCheckpointsRecoverFromLeaseExpiration(t *testing.T) {
 					if ba.IsSingleRequestLeaseRequest() && (nudged == 1) {
 						return nil
 					}
-					log.Infof(ctx, "test rejecting request: %s", ba)
+					log.KvDistribution.Infof(ctx, "test rejecting request: %s", ba)
 					return kvpb.NewErrorf("test injected error")
 				},
 				StoreLivenessKnobs: &storeliveness.TestingKnobs{
@@ -1580,7 +1587,7 @@ func TestRangefeedCheckpointsRecoverFromLeaseExpiration(t *testing.T) {
 	if firstLease.Type() == roachpb.LeaseEpoch {
 		// Expire the lease. Given that the Raft leadership is on n2, only n2 will be
 		// eligible to acquire a new lease.
-		log.Infof(ctx, "test expiring lease")
+		log.KvDistribution.Infof(ctx, "test expiring lease")
 		nl2 := n2.NodeLiveness().(*liveness.NodeLiveness)
 		resumeHeartbeats := nl2.PauseAllHeartbeatsForTest()
 		n2Liveness, ok := nl2.Self()
@@ -1628,7 +1635,7 @@ func TestRangefeedCheckpointsRecoverFromLeaseExpiration(t *testing.T) {
 	}
 
 	// Wait for another RangeFeed checkpoint after the lease expired.
-	log.Infof(ctx, "test waiting for another checkpoint")
+	log.KvDistribution.Infof(ctx, "test waiting for another checkpoint")
 	ts2 := n1.Clock().Now()
 	waitForCheckpoint(ts2)
 	testutils.SucceedsSoon(t, func() error {
@@ -1724,14 +1731,14 @@ func TestNewRangefeedForceLeaseRetry(t *testing.T) {
 							timeoutSimulated = true
 							return kvpb.NewError(mockTimeout)
 						}
-						log.Infof(ctx, "lease succeeds this time")
+						log.KvDistribution.Infof(ctx, "lease succeeds this time")
 						return nil
 					}
 					nudged := atomic.LoadInt64(&nudgeSeen)
 					if ba.IsSingleRequestLeaseRequest() && (nudged == 1) {
 						return nil
 					}
-					log.Infof(ctx, "test rejecting request: %s", ba)
+					log.KvDistribution.Infof(ctx, "test rejecting request: %s", ba)
 					return kvpb.NewErrorf("test injected error")
 				},
 			},
@@ -1802,7 +1809,7 @@ func TestNewRangefeedForceLeaseRetry(t *testing.T) {
 
 	// Expire the lease. Given that the Raft leadership is on n2, only n2 will be
 	// eligible to acquire a new lease.
-	log.Infof(ctx, "test expiring lease")
+	log.KvDistribution.Infof(ctx, "test expiring lease")
 	nl2 := n2.NodeLiveness().(*liveness.NodeLiveness)
 	resumeHeartbeats := nl2.PauseAllHeartbeatsForTest()
 	n2Liveness, ok := nl2.Self()
@@ -1828,7 +1835,7 @@ func TestNewRangefeedForceLeaseRetry(t *testing.T) {
 	go startRangefeed()
 
 	// Wait for a RangeFeed checkpoint after the lease expired.
-	log.Infof(ctx, "test waiting for another checkpoint")
+	log.KvDistribution.Infof(ctx, "test waiting for another checkpoint")
 	ts2 := n1.Clock().Now()
 	waitForCheckpoint(ts2)
 	nudged := atomic.LoadInt64(&nudgeSeen)

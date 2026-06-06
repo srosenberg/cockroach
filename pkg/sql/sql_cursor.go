@@ -58,18 +58,23 @@ func (p *planner) DeclareCursor(ctx context.Context, s *tree.DeclareCursor) (pla
 			ie := MakeInternalExecutor(ief.server, ief.memMetrics, ief.monitor)
 			ie.SetSessionData(sd)
 			ie.extraTxnState = &extraTxnState{
-				txn:                p.Txn(),
-				descCollection:     p.Descriptors(),
-				jobs:               p.extendedEvalCtx.jobs,
-				schemaChangerState: p.extendedEvalCtx.SchemaChangerState,
+				txn:                 p.Txn(),
+				descCollection:      p.Descriptors(),
+				jobs:                p.extendedEvalCtx.jobs,
+				schemaChangerState:  p.extendedEvalCtx.SchemaChangerState,
+				advisoryLockManager: p.extendedEvalCtx.advisoryLockManager,
 			}
 			if err := p.checkIfCursorExists(s.Name); err != nil {
 				return nil, err
 			}
 
 			// Try to plan the cursor query to make sure that it's valid.
-			stmt := makeStatement(statements.Statement[tree.Statement]{AST: s.Select}, clusterunique.ID{},
-				tree.FmtFlags(queryFormattingForFingerprintsMask.Get(&p.execCfg.Settings.SV)))
+			stmt := makeStatement(
+				ctx, statements.Statement[tree.Statement]{AST: s.Select}, clusterunique.ID{},
+				tree.FmtFlags(tree.QueryFormattingForFingerprintsMask.Get(&p.execCfg.Settings.SV)),
+				nil, /* statementHintsCache */
+				"",  /* currentDB */
+			)
 			pt := planTop{}
 			pt.init(&stmt, &p.instrumentation)
 			opc := &p.optPlanningCtx
@@ -146,37 +151,78 @@ func (p *planner) checkIfCursorExists(name tree.Name) error {
 
 var errBackwardScan = pgerror.Newf(pgcode.ObjectNotInPrerequisiteState, "cursor can only scan forward")
 
-// FetchCursor implements the FETCH and MOVE statements.
+// FetchCursor implements the FETCH statement.
 // See https://www.postgresql.org/docs/current/sql-fetch.html for details.
 func (p *planner) FetchCursor(_ context.Context, s *tree.CursorStmt) (planNode, error) {
-	return p.newFetchNode(s)
+	var fetch fetchNode
+	if err := fetch.init(p, s); err != nil {
+		return nil, err
+	}
+	return &fetch, nil
 }
 
-// newFetchNode creates a new fetchNode, which implements FETCH and MOVE
-// statements.
-func (p *planner) newFetchNode(s *tree.CursorStmt) (*fetchNode, error) {
-	cursor := p.sqlCursors.getCursor(s.Name)
-	if cursor == nil {
-		return nil, pgerror.Newf(
-			pgcode.InvalidCursorName, "cursor %q does not exist", s.Name,
-		)
+// MoveCursor implements the MOVE statement.
+// See https://www.postgresql.org/docs/current/sql-fetch.html for details.
+func (p *planner) MoveCursor(_ context.Context, s *tree.CursorStmt) (planNode, error) {
+	var move moveNode
+	if err := move.init(p, s); err != nil {
+		return nil, err
 	}
-	if s.Count < 0 || s.FetchType == tree.FetchBackwardAll {
-		return nil, errBackwardScan
-	}
-	node := &fetchNode{
-		n:         s.Count,
-		fetchType: s.FetchType,
-		cursor:    cursor,
-	}
-	if s.FetchType != tree.FetchNormal {
-		node.n = 0
-		node.offset = s.Count
-	}
-	return node, nil
+	return &move, nil
 }
 
 type fetchNode struct {
+	fetchMoveNodeBase
+}
+
+func (f *fetchNode) startExec(_ runParams) error {
+	return f.startInternal()
+}
+
+func (f *fetchNode) Next(params runParams) (bool, error) {
+	return f.nextInternal(params.ctx)
+}
+
+func (f *fetchNode) Values() tree.Datums {
+	return f.cursor.Cur()
+}
+
+func (f *fetchNode) Close(ctx context.Context) {
+	f.close(ctx)
+}
+
+type moveNode struct {
+	fetchMoveNodeBase
+	rowsAffectedOutputHelper
+}
+
+func (m *moveNode) startExec(params runParams) error {
+	if err := m.startInternal(); err != nil {
+		return err
+	}
+	// Execute the move to completion, keeping track of the affected row count.
+	for {
+		next, err := m.nextInternal(params.ctx)
+		if !next || err != nil {
+			return err
+		}
+		m.incAffectedRows()
+	}
+}
+
+func (m *moveNode) Next(_ runParams) (bool, error) {
+	return m.next(), nil
+}
+
+func (m *moveNode) Values() tree.Datums {
+	return m.values()
+}
+
+func (m *moveNode) Close(ctx context.Context) {
+	m.close(ctx)
+}
+
+type fetchMoveNodeBase struct {
 	zeroInputPlanNode
 	cursor *sqlCursor
 	// n is the number of rows requested.
@@ -193,34 +239,56 @@ type fetchNode struct {
 	origTxnSeqNum enginepb.TxnSeq
 }
 
-func (f *fetchNode) startInternal() error {
-	if !f.cursor.persisted {
+func (b *fetchMoveNodeBase) init(p *planner, s *tree.CursorStmt) error {
+	cursor := p.sqlCursors.getCursor(s.Name)
+	if cursor == nil {
+		return pgerror.Newf(
+			pgcode.InvalidCursorName, "cursor %q does not exist", s.Name,
+		)
+	}
+	if s.Count < 0 || s.FetchType == tree.FetchBackwardAll {
+		return errBackwardScan
+	}
+	*b = fetchMoveNodeBase{
+		n:         s.Count,
+		fetchType: s.FetchType,
+		cursor:    cursor,
+	}
+	if s.FetchType != tree.FetchNormal {
+		b.n = 0
+		b.offset = s.Count
+	}
+	return nil
+}
+
+func (b *fetchMoveNodeBase) startInternal() error {
+	if !b.cursor.persisted {
 		// We need to make sure that we're reading at the same read sequence number
 		// that we had when we created the cursor, to preserve the "sensitivity"
 		// semantics of cursors, which demand that data written after the cursor
 		// was declared is not visible to the cursor.
-		f.origTxnSeqNum = f.cursor.txn.GetReadSeqNum()
-		return f.cursor.txn.SetReadSeqNum(f.cursor.readSeqNum)
+		b.origTxnSeqNum = b.cursor.txn.GetReadSeqNum()
+		return b.cursor.txn.SetReadSeqNum(b.cursor.readSeqNum)
 	}
 	// If persisted is set, the cursor has already been fully read into a row
 	// container, so there is no need to set the read sequence number.
 	return nil
 }
 
-func (f *fetchNode) nextInternal(ctx context.Context) (bool, error) {
-	if f.fetchType == tree.FetchAll {
-		return f.cursor.Next(ctx)
+func (b *fetchMoveNodeBase) nextInternal(ctx context.Context) (bool, error) {
+	if b.fetchType == tree.FetchAll {
+		return b.cursor.Next(ctx)
 	}
 
-	if !f.seeked {
+	if !b.seeked {
 		// FIRST, LAST, ABSOLUTE, and RELATIVE require seeking before returning
 		// values. Do that first.
-		f.seeked = true
-		switch f.fetchType {
+		b.seeked = true
+		switch b.fetchType {
 		case tree.FetchFirst:
-			switch f.cursor.curRow {
+			switch b.cursor.curRow {
 			case 0:
-				_, err := f.cursor.Next(ctx)
+				_, err := b.cursor.Next(ctx)
 				return true, err
 			case 1:
 				return true, nil
@@ -229,23 +297,23 @@ func (f *fetchNode) nextInternal(ctx context.Context) (bool, error) {
 		case tree.FetchLast:
 			return false, errBackwardScan
 		case tree.FetchAbsolute:
-			if f.cursor.curRow > f.offset {
+			if b.cursor.curRow > b.offset {
 				return false, errBackwardScan
 			}
-			if f.offset == 0 {
+			if b.offset == 0 {
 				// ABSOLUTE 0 is positioned before the first row.
 				return false, nil
 			}
-			for f.cursor.curRow < f.offset {
-				more, err := f.cursor.Next(ctx)
+			for b.cursor.curRow < b.offset {
+				more, err := b.cursor.Next(ctx)
 				if !more || err != nil {
 					return more, err
 				}
 			}
 			return true, nil
 		case tree.FetchRelative:
-			for i := int64(0); i < f.offset; i++ {
-				more, err := f.cursor.Next(ctx)
+			for i := int64(0); i < b.offset; i++ {
+				more, err := b.cursor.Next(ctx)
 				if !more || err != nil {
 					return more, err
 				}
@@ -253,34 +321,22 @@ func (f *fetchNode) nextInternal(ctx context.Context) (bool, error) {
 			return true, nil
 		}
 	}
-	if f.n <= 0 {
+	if b.n <= 0 {
 		return false, nil
 	}
-	f.n--
-	return f.cursor.Next(ctx)
+	b.n--
+	return b.cursor.Next(ctx)
 }
 
-func (f *fetchNode) startExec(params runParams) error {
-	return f.startInternal()
-}
-
-func (f *fetchNode) Next(params runParams) (bool, error) {
-	return f.nextInternal(params.ctx)
-}
-
-func (f fetchNode) Values() tree.Datums {
-	return f.cursor.Cur()
-}
-
-func (f fetchNode) Close(ctx context.Context) {
+func (b *fetchMoveNodeBase) close(ctx context.Context) {
 	// We explicitly do not pass through the Close to our Rows, because
 	// running FETCH on a CURSOR does not close it.
-	if !f.cursor.persisted {
+	if !b.cursor.persisted {
 		// Reset the transaction's read sequence number to what it was before the
 		// fetch began, so that subsequent reads in the transaction can still see
 		// writes from that transaction.
-		if err := f.cursor.txn.SetReadSeqNum(f.origTxnSeqNum); err != nil {
-			log.Warningf(ctx, "error resetting transaction read seq num after CURSOR operation: %v", err)
+		if err := b.cursor.txn.SetReadSeqNum(b.origTxnSeqNum); err != nil {
+			log.Dev.Warningf(ctx, "error resetting transaction read seq num after CURSOR operation: %v", err)
 		}
 	}
 }
@@ -320,18 +376,18 @@ func (p *planner) PLpgSQLCloseCursor(cursorName tree.Name) error {
 func (p *planner) PLpgSQLFetchCursor(
 	ctx context.Context, cursorStmt *tree.CursorStmt,
 ) (res tree.Datums, err error) {
-	cursor, err := p.newFetchNode(cursorStmt)
-	if err != nil {
+	var cursor fetchMoveNodeBase
+	if err = cursor.init(p, cursorStmt); err != nil {
 		return nil, err
 	}
 	if err = cursor.startInternal(); err != nil {
 		return nil, err
 	}
-	defer cursor.Close(ctx)
+	defer cursor.close(ctx)
 	var hasNext bool
 	hasNext, err = cursor.nextInternal(ctx)
 	for err == nil && hasNext {
-		res = cursor.Values()
+		res = cursor.cursor.Cur()
 		hasNext, err = cursor.nextInternal(ctx)
 	}
 	return res, err
@@ -365,7 +421,7 @@ type sqlCursor struct {
 // Next implements the Rows interface.
 func (s *sqlCursor) Next(ctx context.Context) (bool, error) {
 	more, err := s.Rows.Next(ctx)
-	if err == nil {
+	if more && err == nil {
 		s.curRow++
 	}
 	return more, err
@@ -445,54 +501,67 @@ const (
 )
 
 func (c *cursorMap) closeAll(p *planner, reason cursorCloseReason) error {
-	for n, curs := range c.cursors {
-		switch reason {
-		case cursorCloseForTxnCommit:
-			if curs.withHold {
-				// Cursors declared using WITH HOLD are not closed at transaction
-				// commit, and become the responsibility of the session.
-				curs.committed = true
-				if !curs.persisted {
-					// Execute the cursor's query to completion and persist the result so
-					// that it can survive the transaction's commit.
-					if err := persistCursor(p, curs); err != nil {
-						return err
-					}
+	if reason == cursorCloseForTxnCommit {
+		for _, curs := range c.cursors {
+			if curs.withHold && !curs.persisted {
+				// Execute the cursor's query to completion and persist the result so
+				// that it can survive the transaction's commit. The cursor will become
+				// the responsibility of the session.
+				if err := persistCursor(p, curs); err != nil {
+					return errors.CombineErrors(err, c.closeAll(p, cursorCloseForTxnRollback))
 				}
-				continue
-			}
-		case cursorCloseForTxnRollback:
-			if curs.committed {
-				// Transaction rollback should only remove cursors that were created in
-				// the current transaction.
-				continue
-			}
-		case cursorCloseForTxnPrepare:
-			if curs.withHold && !curs.committed {
-				// Disallow preparing a transaction that has created a cursor WITH HOLD.
-				// It's fine for previous transactions to have created holdable cursors.
-				// NOTE: Postgres also disallows this.
-				//
-				// Make sure to close all cursors before returning the error.
-				err := c.closeAll(p, cursorCloseForTxnRollback)
-				return errors.CombineErrors(
-					pgerror.New(pgcode.FeatureNotSupported,
-						"cannot PREPARE a transaction that has created a cursor WITH HOLD"),
-					err,
-				)
 			}
 		}
-		if err := curs.Close(); err != nil {
-			return err
-		}
-		delete(c.cursors, n)
 	}
+	// Close the cursor iterators/containers. Make sure to continue closing even
+	// if one of them fails.
+	var retErr error
+	for _, curs := range c.cursors {
+		if reason != cursorCloseForExplicitClose && curs.committed {
+			// A holdable cursor from a previously committed transaction should remain
+			// open, except for a session close.
+			continue
+		}
+		if reason == cursorCloseForTxnCommit && curs.withHold {
+			// A holdable cursor remains open after transaction commit.
+			continue
+		}
+		if reason == cursorCloseForTxnPrepare && curs.withHold && !curs.committed {
+			// Disallow preparing a transaction that has created a cursor WITH HOLD.
+			// It's fine for previous transactions to have created holdable cursors.
+			// NOTE: Postgres also disallows this.
+			//
+			// Make sure to close all cursors before returning the error.
+			err := c.closeAll(p, cursorCloseForTxnRollback)
+			return errors.CombineErrors(
+				pgerror.New(pgcode.FeatureNotSupported,
+					"cannot PREPARE a transaction that has created a cursor WITH HOLD"),
+				err,
+			)
+		}
+		retErr = errors.CombineErrors(retErr, curs.Close())
+	}
+	if reason == cursorCloseForTxnCommit && retErr != nil {
+		return errors.CombineErrors(retErr, c.closeAll(p, cursorCloseForTxnRollback))
+	}
+	// Remove closed cursors from the map. Mark holdable cursors as committed
+	// for a transaction commit.
 	if reason == cursorCloseForExplicitClose {
 		// All cursors are closed for explicit close, so we can lose the reference
 		// to the map.
 		c.cursors = nil
+	} else {
+		for n, curs := range c.cursors {
+			if reason == cursorCloseForTxnCommit && curs.withHold {
+				curs.committed = true
+			}
+			if curs.committed {
+				continue
+			}
+			delete(c.cursors, n)
+		}
 	}
-	return nil
+	return retErr
 }
 
 func (c *cursorMap) closeCursor(s tree.Name) error {
@@ -583,7 +652,7 @@ func (p *planner) checkNoConflictingCursors(stmt tree.Statement) error {
 
 // persistCursor runs the given cursor to completion and stores the result in a
 // row container that can outlive the cursor's transaction.
-func persistCursor(p *planner, cursor *sqlCursor) error {
+func persistCursor(p *planner, cursor *sqlCursor) (retErr error) {
 	// Use context.Background() because the cursor can outlive the context in
 	// which it was created.
 	helper := persistedCursorHelper{
@@ -602,6 +671,12 @@ func persistCursor(p *planner, cursor *sqlCursor) error {
 		p.ExtendedEvalContextCopy(),
 		"persisted_cursor", /* opName */
 	)
+	defer func() {
+		if retErr != nil {
+			// Close the container if we encountered an error.
+			helper.container.Close(helper.ctx)
+		}
+	}()
 	for {
 		ok, err := cursor.Next(helper.ctx)
 		if err != nil {
@@ -619,6 +694,7 @@ func persistCursor(p *planner, cursor *sqlCursor) error {
 		return err
 	}
 	cursor.Rows = &helper
+	cursor.persisted = true
 	return nil
 }
 

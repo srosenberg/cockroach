@@ -44,23 +44,6 @@ func executeBackfillOps(ctx context.Context, deps Dependencies, execute []scop.O
 		if errors.HasType(err, (*kvpb.InsufficientSpaceError)(nil)) {
 			return jobs.MarkPauseRequestError(errors.UnwrapAll(err))
 		}
-		if errors.HasType(err, (*kvpb.BatchTimestampBeforeGCError)(nil)) {
-			// We will not ever move the timestamp forward so this will fail forever.
-			// Mark as a permanent error.
-			if scerrors.HasSchemaChangerUserError(err) {
-				// We need to unwrap this so that the PermanentJobError is marked
-				// at the correct level.
-				err = scerrors.UnwrapSchemaChangerUserError(err)
-			}
-			return scerrors.SchemaChangerUserError(
-				jobs.MarkAsPermanentJobError(
-					errors.Wrap(
-						err,
-						"unable to retry backfill since fixed timestamp is before the GC timestamp",
-					),
-				),
-			)
-		}
 		return err
 	}
 	return nil
@@ -334,7 +317,7 @@ func runBackfiller(
 ) error {
 	if deps.GetTestingKnobs() != nil &&
 		deps.GetTestingKnobs().RunBeforeBackfill != nil {
-		err := deps.GetTestingKnobs().RunBeforeBackfill()
+		err := deps.GetTestingKnobs().RunBeforeBackfill(backfillProgresses)
 		if err != nil {
 			return err
 		}
@@ -359,12 +342,15 @@ func runBackfiller(
 			pgCode == pgcode.NotNullViolation ||
 			pgCode == pgcode.IntegrityConstraintViolation {
 			deps.Telemetry().IncrementSchemaChangeErrorType("constraint_violation")
-		} else {
-			// We ran into an  uncategorized schema change error.
-			deps.Telemetry().IncrementSchemaChangeErrorType("uncategorized")
+			return scerrors.SchemaChangerUserError(err)
 		}
-		return scerrors.SchemaChangerUserError(err)
+		// We ran into an  uncategorized schema change error.
+		deps.Telemetry().IncrementSchemaChangeErrorType("uncategorized")
+		return err
 	}
+	// Stop the periodic flusher before the final flush to ensure no in-flight
+	// periodic writes can overwrite the final checkpoint state.
+	stop()
 	if err := tracker.FlushFractionCompleted(ctx); err != nil {
 		return err
 	}

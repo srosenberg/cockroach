@@ -8,7 +8,6 @@ package jobs_test
 import (
 	"context"
 	gosql "database/sql"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -39,7 +38,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
-	"github.com/cockroachdb/cockroach/pkg/sql/sqlliveness"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/jobutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
@@ -173,7 +171,7 @@ type registryTestSuite struct {
 	failOrCancelCheckCh chan struct{}
 
 	// beforeUpdate is invoked in the BeforeUpdate testing knob if non-nil.
-	beforeUpdate func(orig, updated jobs.JobMetadata) error
+	beforeUpdate func(orig, updated jobs.DeprecatedJobMetadata) error
 
 	// afterJobStateMachine is invoked in the AfterJobStateMachine testing knob if
 	// non-nil.
@@ -195,7 +193,7 @@ func (rts *registryTestSuite) setUp(t *testing.T) func() {
 	var args base.TestServerArgs
 	{
 		knobs := jobs.NewTestingKnobsWithShortIntervals()
-		knobs.BeforeUpdate = func(orig, updated jobs.JobMetadata) error {
+		knobs.BeforeUpdate = func(orig, updated jobs.DeprecatedJobMetadata) error {
 			if rts.beforeUpdate != nil {
 				return rts.beforeUpdate(orig, updated)
 			}
@@ -232,14 +230,7 @@ func (rts *registryTestSuite) setUp(t *testing.T) func() {
 		t,
 		[]logpb.Channel{logpb.Channel_OPS},
 		[]string{"status_change"},
-		func(entry logpb.Entry) (eventpb.StatusChange, error) {
-			var structuredPayload eventpb.StatusChange
-			err := json.Unmarshal([]byte(entry.Message[entry.StructuredStart:entry.StructuredEnd]), &structuredPayload)
-			if err != nil {
-				return structuredPayload, err
-			}
-			return structuredPayload, nil
-		},
+		logtestutils.FromLogEntry[eventpb.StatusChange],
 	)
 
 	rts.statusChangeLogSpy = spy
@@ -293,7 +284,7 @@ func (rts *registryTestSuite) setUp(t *testing.T) func() {
 					case err := <-rts.resumeCh:
 						return err
 					case <-rts.progressCh:
-						err := job.NoTxn().FractionProgressed(rts.ctx, jobs.FractionUpdater(0))
+						err := job.DeprecatedNoTxn().FractionProgressed(rts.ctx, jobs.FractionUpdater(0))
 						if err != nil {
 							return err
 						}
@@ -385,7 +376,7 @@ func (rts *registryTestSuite) checkStateChangeLog(
 				jobEventsLog.PreviousStatus == string(expectedPrevState) &&
 				jobEventsLog.NewStatus == string(expectedNewState) &&
 				strings.Contains(jobEventsLog.Error, expectedError) {
-				rts.statusChangeLogSpy.SetLastNLogsAsUnread(logpb.Channel_OPS, len(logs)-i+1)
+				rts.statusChangeLogSpy.SetLastNLogsAsUnread(logpb.Channel_OPS, len(logs)-i)
 				return nil
 			}
 		}
@@ -400,6 +391,7 @@ func (rts *registryTestSuite) idb() isql.DB {
 func TestRegistryLifecycle(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
+	skip.WithIssue(t, 152542)
 
 	t.Run("normal success", func(t *testing.T) {
 		rts := registryTestSuite{}
@@ -803,7 +795,7 @@ func TestRegistryLifecycle(t *testing.T) {
 	t.Run("fail marking success and fail OnFailOrCancel", func(t *testing.T) {
 		var triedToMarkSucceeded atomic.Bool
 		var injectFailures atomic.Bool
-		rts := registryTestSuite{beforeUpdate: func(orig, updated jobs.JobMetadata) error {
+		rts := registryTestSuite{beforeUpdate: func(orig, updated jobs.DeprecatedJobMetadata) error {
 			// Fail marking succeeded.
 			if updated.State == jobs.StateSucceeded && injectFailures.Load() {
 				triedToMarkSucceeded.Store(true)
@@ -877,10 +869,17 @@ func TestRegistryLifecycle(t *testing.T) {
 		defer rts.setUp(t)()
 		defer rts.tearDown()
 
+		// Pick an ID so we know which job to mess with.
+		id := rts.registry.MakeJobID()
+		rts.mockJob.JobID = id
+
 		// Inject an error in the update to move the job to "succeeded" one time.
 		var failed atomic.Value
 		failed.Store(false)
-		rts.beforeUpdate = func(orig, updated jobs.JobMetadata) error {
+		rts.beforeUpdate = func(orig, updated jobs.DeprecatedJobMetadata) error {
+			if orig.ID != id {
+				return nil
+			}
 			if updated.State == jobs.StateSucceeded && !failed.Load().(bool) {
 				failed.Store(true)
 				return errors.New("boom")
@@ -921,7 +920,7 @@ func TestRegistryLifecycle(t *testing.T) {
 	t.Run("fail marking failed", func(t *testing.T) {
 		var triedToMarkFailed atomic.Value
 		triedToMarkFailed.Store(false)
-		rts := registryTestSuite{beforeUpdate: func(orig, updated jobs.JobMetadata) error {
+		rts := registryTestSuite{beforeUpdate: func(orig, updated jobs.DeprecatedJobMetadata) error {
 			if triedToMarkFailed.Load().(bool) == true {
 				return nil
 			}
@@ -1187,7 +1186,7 @@ func TestJobLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	var params base.TestServerArgs
-	params.Knobs.JobsTestingKnobs = &jobs.TestingKnobs{DisableRegistryLifecycleManagent: true}
+	params.Knobs.JobsTestingKnobs = &jobs.TestingKnobs{DisableRegistryLifecycleManagement: true}
 	srv, sqlDB, _ := serverutils.StartServer(t, params)
 	defer srv.Stopper().Stop(ctx)
 	s := srv.ApplicationLayer()
@@ -1251,7 +1250,7 @@ func TestJobLifecycle(t *testing.T) {
 			{0.0, 0.0}, {0.5, 0.5}, {0.5, 0.5}, {0.4, 0.4}, {0.8, 0.8}, {1.0, 1.0},
 		}
 		for _, f := range progresses {
-			if err := woodyJob.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(f.actual)); err != nil {
+			if err := woodyJob.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(f.actual)); err != nil {
 				t.Fatal(err)
 			}
 			woodyExp.FractionCompleted = f.expected
@@ -1261,7 +1260,7 @@ func TestJobLifecycle(t *testing.T) {
 		}
 
 		// Test Progressed callbacks.
-		if err := woodyJob.NoTxn().FractionProgressed(ctx, func(_ context.Context, details jobspb.ProgressDetails) float32 {
+		if err := woodyJob.DeprecatedNoTxn().FractionProgressed(ctx, func(_ context.Context, details jobspb.ProgressDetails) float32 {
 			details.(*jobspb.Progress_Restore).Restore.HighWater = roachpb.Key("mariana")
 			return 1.0
 		}); err != nil {
@@ -1308,7 +1307,7 @@ func TestJobLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := buzzJob.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(.42)); err != nil {
+		if err := buzzJob.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(.42)); err != nil {
 			t.Fatal(err)
 		}
 		buzzExp.FractionCompleted = .42
@@ -1462,7 +1461,7 @@ func TestJobLifecycle(t *testing.T) {
 	t.Run("cancelable jobs can be canceled until finished", func(t *testing.T) {
 		{
 			job, exp := createDefaultJob()
-			if err := job.NoTxn().CancelRequested(ctx); err != nil {
+			if err := job.DeprecatedNoTxn().CancelRequested(ctx); err != nil {
 				t.Fatal(err)
 			}
 			if err := exp.verify(job.ID(), jobs.StateCancelRequested); err != nil {
@@ -1585,10 +1584,10 @@ func TestJobLifecycle(t *testing.T) {
 		if err := job.Started(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if err := job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(-0.1)); !testutils.IsError(err, "outside allowable range") {
+		if err := job.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(-0.1)); !testutils.IsError(err, "outside allowable range") {
 			t.Fatalf("expected 'outside allowable range' error, but got %v", err)
 		}
-		if err := job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(1.1)); !testutils.IsError(err, "outside allowable range") {
+		if err := job.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(1.1)); !testutils.IsError(err, "outside allowable range") {
 			t.Fatalf("expected 'outside allowable range' error, but got %v", err)
 		}
 	})
@@ -1598,7 +1597,7 @@ func TestJobLifecycle(t *testing.T) {
 		if err := job.Started(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if err := job.NoTxn().Update(ctx, func(_ isql.Txn, _ jobs.JobMetadata, ju *jobs.JobUpdater) error {
+		if err := job.DeprecatedNoTxn().Update(ctx, func(_ isql.Txn, _ jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 			return errors.Errorf("boom")
 		}); !testutils.IsError(err, "boom") {
 			t.Fatalf("expected 'boom' error, but got %v", err)
@@ -1613,7 +1612,7 @@ func TestJobLifecycle(t *testing.T) {
 		if err := job.Succeeded(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if err := job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.5)); !testutils.IsError(
+		if err := job.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.5)); !testutils.IsError(
 			err, `cannot update progress on succeeded job \(id \d+\)`,
 		) {
 			t.Fatalf("expected 'cannot update progress' error, but got %v", err)
@@ -1625,7 +1624,7 @@ func TestJobLifecycle(t *testing.T) {
 		if err := registry.PauseRequested(ctx, nil, job.ID(), ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.5)); !testutils.IsError(
+		if err := job.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.5)); !testutils.IsError(
 			err, `cannot update progress on pause-requested job`,
 		) {
 			t.Fatalf("expected progress error, but got %v", err)
@@ -1637,7 +1636,7 @@ func TestJobLifecycle(t *testing.T) {
 		if err := registry.CancelRequested(ctx, nil, job.ID()); err != nil {
 			t.Fatal(err)
 		}
-		if err := job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.5)); !testutils.IsError(
+		if err := job.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.5)); !testutils.IsError(
 			err, `cannot update progress on cancel-requested job \(id \d+\)`,
 		) {
 			t.Fatalf("expected progress error, but got %v", err)
@@ -1649,7 +1648,7 @@ func TestJobLifecycle(t *testing.T) {
 		if err := job.Started(ctx); err != nil {
 			t.Fatal(err)
 		}
-		if err := job.NoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.2)); err != nil {
+		if err := job.DeprecatedNoTxn().FractionProgressed(ctx, jobs.FractionUpdater(0.2)); err != nil {
 			t.Fatal(err)
 		}
 		if err := job.Succeeded(ctx); err != nil {
@@ -1669,14 +1668,14 @@ func TestJobLifecycle(t *testing.T) {
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 		newDetails := jobspb.ImportDetails{URIs: []string{"new"}}
 		exp.Record.Details = newDetails
-		require.NoError(t, job.NoTxn().SetDetails(ctx, newDetails))
+		require.NoError(t, job.DeprecatedNoTxn().SetDetails(ctx, newDetails))
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
-		require.NoError(t, job.NoTxn().SetDetails(ctx, newDetails))
+		require.NoError(t, job.DeprecatedNoTxn().SetDetails(ctx, newDetails))
 
 		// Now change job's session id and check that updates are rejected.
 		_, err := exp.DB.Exec(updateClaimStmt, "!@#!@$!$@#", job.ID())
 		require.NoError(t, err)
-		require.Error(t, job.NoTxn().SetDetails(ctx, newDetails))
+		require.Error(t, job.DeprecatedNoTxn().SetDetails(ctx, newDetails))
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 	})
 
@@ -1685,7 +1684,7 @@ func TestJobLifecycle(t *testing.T) {
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 		_, err := exp.DB.Exec(updateStateStmt, jobs.StateCancelRequested, job.ID())
 		require.NoError(t, err)
-		require.Error(t, job.NoTxn().SetDetails(ctx, jobspb.ImportDetails{URIs: []string{"new"}}))
+		require.Error(t, job.DeprecatedNoTxn().SetDetails(ctx, jobspb.ImportDetails{URIs: []string{"new"}}))
 		require.NoError(t, exp.verify(job.ID(), jobs.StateCancelRequested))
 	})
 
@@ -1694,13 +1693,13 @@ func TestJobLifecycle(t *testing.T) {
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 		newProgress := jobspb.ImportProgress{ResumePos: []int64{42}}
 		exp.Record.Progress = newProgress
-		require.NoError(t, job.NoTxn().SetProgress(ctx, newProgress))
+		require.NoError(t, job.DeprecatedNoTxn().SetProgress(ctx, newProgress))
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 
 		// Now change job's session id and check that updates are rejected.
 		_, err := exp.DB.Exec(updateClaimStmt, "!@#!@$!$@#", job.ID())
 		require.NoError(t, err)
-		require.Error(t, job.NoTxn().SetDetails(ctx, newProgress))
+		require.Error(t, job.DeprecatedNoTxn().SetDetails(ctx, newProgress))
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 	})
 
@@ -1709,7 +1708,7 @@ func TestJobLifecycle(t *testing.T) {
 		require.NoError(t, exp.verify(job.ID(), jobs.StateRunning))
 		_, err := exp.DB.Exec(updateStateStmt, jobs.StatePauseRequested, job.ID())
 		require.NoError(t, err)
-		require.Error(t, job.NoTxn().SetProgress(ctx, jobspb.ImportProgress{ResumePos: []int64{42}}))
+		require.Error(t, job.DeprecatedNoTxn().SetProgress(ctx, jobspb.ImportProgress{ResumePos: []int64{42}}))
 		require.NoError(t, exp.verify(job.ID(), jobs.StatePauseRequested))
 	})
 }
@@ -1728,7 +1727,9 @@ func TestShowJobs(t *testing.T) {
 	ctx := context.Background()
 	defer s.Stopper().Stop(ctx)
 
-	session, err := s.SQLLivenessProvider().(sqlliveness.Provider).Session(ctx)
+	al := s.ApplicationLayer()
+	execCfg := al.ExecutorConfig().(sql.ExecutorConfig)
+	session, err := execCfg.SQLLiveness.Session(ctx)
 	require.NoError(t, err)
 
 	// row represents a row returned from crdb_internal.jobs, but
@@ -1745,11 +1746,11 @@ func TestShowJobs(t *testing.T) {
 		modified          time.Time
 		fractionCompleted float32
 		highWater         hlc.Timestamp
-		coordinatorID     roachpb.NodeID
+		coordinatorID     base.SQLInstanceID
 		details           jobspb.Details
 	}
 
-	const instanceID = 7
+	instanceID := al.SQLInstanceID()
 	for _, in := range []row{
 		{
 			id:                42,
@@ -1847,6 +1848,19 @@ func TestShowJobs(t *testing.T) {
 
 			if maybeFractionCompleted != nil {
 				out.fractionCompleted = *maybeFractionCompleted
+			}
+
+			// Confirm SHOW JOBS matches.
+			var shownTyp string
+			var shownTS *apd.Decimal
+			sqlDB.QueryRow(t, `SELECT job_type, resolved_timestamp FROM [SHOW JOBS SELECT $1 WITH RESOLVED TIMESTAMP]`, in.id).Scan(&shownTyp, &shownTS)
+			if shownTyp != out.typ {
+				t.Fatalf("expected SHOW JOBS to return type %s but found %s", in.typ, shownTyp)
+			}
+			if !out.highWater.IsEmpty() {
+				shownHLC, err := hlc.DecimalToHLC(shownTS)
+				require.NoError(t, err)
+				require.True(t, out.highWater.Equal(shownHLC))
 			}
 
 			// details field is not explicitly checked for equality; its value is
@@ -2303,7 +2317,11 @@ func TestStartableJobMixedVersion(t *testing.T) {
 		false, /* initializeVersion */
 	)
 	s, sqlDB, _ := serverutils.StartServer(t, base.TestServerArgs{
-		Settings: st,
+		// This test manipulates cluster version via SET CLUSTER SETTING, which
+		// does not work under a secondary tenant because tenants cannot upgrade
+		// ahead of the storage cluster.
+		DefaultTestTenant: base.TestIsForStuffThatShouldWorkWithSecondaryTenantsButDoesntYet(167929),
+		Settings:          st,
 		Knobs: base.TestingKnobs{
 			Server: &server.TestingKnobs{
 				ClusterVersionOverride:         clusterversion.MinSupported.Version(),
@@ -2875,7 +2893,6 @@ func TestMetrics(t *testing.T) {
 			require.Equal(t, int64(1), importMetrics.CurrentlyRunning.Value())
 			errCh <- nil
 			int64EqSoon(t, importMetrics.FailOrCancelCompleted.Count, 1)
-			int64EqSoon(t, importMetrics.FailOrCancelFailed.Count, 0)
 		}
 	})
 }
@@ -2919,7 +2936,7 @@ func TestLoseLeaseDuringExecution(t *testing.T) {
 					`UPDATE system.jobs SET claim_session_id = NULL WHERE id = $1`,
 					j.ID())
 				assert.NoError(t, err)
-				err = j.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+				err = j.DeprecatedNoTxn().Update(ctx, func(txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 					return nil
 				})
 				resumed <- err
@@ -3201,7 +3218,7 @@ func TestJobTypeMetrics(t *testing.T) {
 	writePTSRecord := func(jobID jobspb.JobID) (uuid.UUID, error) {
 		id := uuid.MakeV4()
 		record := jobsprotectedts.MakeRecord(
-			id, int64(jobID), s.Clock().Now(), nil,
+			id, int64(jobID), s.Clock().Now(),
 			jobsprotectedts.Jobs, ptpb.MakeClusterTarget(),
 		)
 		return id,
@@ -3217,7 +3234,7 @@ func TestJobTypeMetrics(t *testing.T) {
 
 	checkPTSCounts := func(typ jobspb.Type, count int64) {
 		testutils.SucceedsSoon(t, func() error {
-			m := reg.MetricsStruct().JobMetrics[typ]
+			m := reg.MetricsStruct().JobPTSMetrics[typ]
 			if m.NumJobsWithPTS.Value() == count && (count == 0 || m.ProtectedAge.Value() > 0) {
 				return nil
 			}
@@ -3317,4 +3334,67 @@ func TestLoadJobProgress(t *testing.T) {
 	p, err := jobs.LoadJobProgress(ctx, s.InternalDB().(isql.DB), 7)
 	require.NoError(t, err)
 	require.Equal(t, []float32{7.1}, p.GetDetails().(*jobspb.Progress_Import).Import.ReadProgress)
+}
+
+func TestAdoptionDelayAfterJobFailure(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+	defer jobs.ResetConstructors()()
+
+	ctx := context.Background()
+	adoptionCompleted := make(chan struct{})
+	// We disable the adoption loop to prevent adoption attempts from laying a
+	// claim on a failed job before we can verify the behavior.
+	knobs := jobs.NewTestingKnobsWithIntervals(time.Hour, time.Hour, time.Hour, time.Hour)
+
+	var testJobID jobspb.JobID
+	knobs.AfterJobStateMachine = func(id jobspb.JobID) {
+		if id != testJobID {
+			return
+		}
+		close(adoptionCompleted)
+	}
+
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
+		Knobs: base.TestingKnobs{
+			JobsTestingKnobs: knobs,
+		},
+	})
+	defer s.Stopper().Stop(ctx)
+
+	cleanup := jobs.TestingRegisterConstructor(
+		jobspb.TypeRestore,
+		func(job *jobs.Job, settings *cluster.Settings) jobs.Resumer {
+			return jobstest.FakeResumer{
+				OnResume: func(ctx context.Context) error {
+					return errors.New("job failed")
+				},
+				FailOrCancel: func(ctx context.Context) error {
+					return errors.New("job fast-failed reverting")
+				},
+			}
+		},
+		jobs.UsesTenantCostControl,
+	)
+	defer cleanup()
+
+	registry := s.JobRegistry().(*jobs.Registry)
+	rec := jobs.Record{
+		Details:  jobspb.RestoreDetails{},
+		Progress: jobspb.RestoreProgress{},
+		Username: username.TestUserName(),
+	}
+
+	testJobID = registry.MakeJobID()
+	_, err := registry.CreateAdoptableJobWithTxn(ctx, rec, testJobID, nil /* txn */)
+	require.NoError(t, err)
+	registry.TestingNudgeAdoptionQueue()
+
+	<-adoptionCompleted
+	var claimID gosql.NullInt64
+	err = db.QueryRow(
+		"SELECT claim_instance_id FROM system.jobs WHERE id = $1", testJobID,
+	).Scan(&claimID)
+	require.NoError(t, err)
+	require.True(t, claimID.Valid, "expected job to still have a claim_instance_id after failure")
 }

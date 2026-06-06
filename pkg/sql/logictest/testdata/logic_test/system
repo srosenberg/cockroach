@@ -6,7 +6,6 @@ postgres   root  NULL  NULL  {}  NULL
 system     node  NULL  NULL  {}  NULL
 test       root  NULL  NULL  {}  NULL
 
-skipif config local-mixed-24.3
 query TTTTT
 SELECT schema_name, table_name, type, owner, locality FROM [SHOW TABLES FROM system] 
 where table_name IN ('descriptor_id_seq', 'comments', 'locations', 'span_configurations')
@@ -17,11 +16,31 @@ public  descriptor_id_seq    sequence  node  NULL
 public  locations            table     node  NULL
 public  span_configurations  table     node  NULL
 
-skipif config local-mixed-24.3
+skipif config local-mixed-25.4
+skipif config local-mixed-26.1
+skipif config local-mixed-26.2
 query I rowsort
 SELECT count(id) FROM system.descriptor
 ----
-69
+80
+
+onlyif config local-mixed-26.2
+query I rowsort
+SELECT count(id) FROM system.descriptor
+----
+76
+
+onlyif config local-mixed-26.1
+query I rowsort
+SELECT count(id) FROM system.descriptor
+----
+74
+
+onlyif config local-mixed-25.4
+query I rowsort
+SELECT count(id) FROM system.descriptor
+----
+73
 
 # Verify we can read ID on its own (see #58614).
 query I
@@ -50,10 +69,11 @@ descriptor  BYTES  true   NULL  ·  {primary}  false
 query TTBTTTB rowsort
 SHOW COLUMNS FROM system.users
 ----
-username        STRING  false  NULL   ·  {primary,users_user_id_idx}  false
-hashedPassword  BYTES   true   NULL   ·  {primary}                    false
-isRole          BOOL    false  false  ·  {primary}                    false
-user_id         OID     false  NULL   ·  {primary,users_user_id_idx}  false
+username                   STRING       false  NULL   ·  {primary,users_user_id_idx}  false
+hashedPassword             BYTES        true   NULL   ·  {primary}                    false
+isRole                     BOOL         false  false  ·  {primary}                    false
+user_id                    OID          false  NULL   ·  {primary,users_user_id_idx}  false
+estimated_last_login_time  TIMESTAMPTZ  true   NULL   ·  {primary}                    false
 
 query TTBTTTB rowsort
 SHOW COLUMNS FROM system.zones
@@ -80,16 +100,16 @@ session_id       BYTES  false  NULL  ·  {primary}  false
 crdb_region      BYTES  false  NULL  ·  {primary}  false
 
 
-
 query TTBTTTB rowsort
 SHOW COLUMNS FROM system.eventlog
 ----
-timestamp    TIMESTAMP  false  NULL       ·  {primary}  false
-eventType    STRING     false  NULL       ·  {primary}  false
-targetID     INT8       false  NULL       ·  {primary}  false
-reportingID  INT8       false  NULL       ·  {primary}  false
-info         STRING     true   NULL       ·  {primary}  false
-uniqueID     BYTES      false  uuid_v4()  ·  {primary}  false
+timestamp    TIMESTAMP  false  NULL       ·  {event_type_idx,primary}  false
+eventType    STRING     false  NULL       ·  {event_type_idx,primary}  false
+targetID     INT8       false  NULL       ·  {primary}                 false
+reportingID  INT8       false  NULL       ·  {primary}                 false
+info         STRING     true   NULL       ·  {primary}                 false
+uniqueID     BYTES      false  uuid_v4()  ·  {event_type_idx,primary}  false
+payload      JSONB      true   NULL       ·  {primary}                 false
 
 query TTBTTTB rowsort
 SHOW COLUMNS FROM system.rangelog
@@ -109,7 +129,6 @@ key          STRING     false  NULL  ·  {primary}  false
 value        BYTES      true   NULL  ·  {primary}  false
 lastUpdated  TIMESTAMP  false  NULL  ·  {primary}  false
 
-skipif config local-mixed-24.3
 query TTBTTTB rowsort
 SHOW COLUMNS FROM system.jobs
 ----
@@ -154,7 +173,6 @@ SHOW GRANTS ON DATABASE system
 system  admin  CONNECT  true
 system  root   CONNECT  true
 
-skipif config local-mixed-24.3
 query TTTTTB rowsort
 WITH grants AS (SHOW GRANTS ON system.*) SELECT * FROM grants WHERE
   table_name IN ('comments', 'locations', 'tenants')
@@ -314,6 +332,7 @@ ORDER BY name
 cluster.secret
 diagnostics.reporting.enabled
 sql.crdb_internal.table_row_statistics.as_of_time
+sql.vecindex.deterministic_fixups.enabled
 version
 
 onlyif config 3node-tenant-default-configs
@@ -330,6 +349,7 @@ ORDER BY name
 cluster.secret
 diagnostics.reporting.enabled
 sql.crdb_internal.table_row_statistics.as_of_time
+sql.vecindex.deterministic_fixups.enabled
 version
 
 statement ok
@@ -352,6 +372,7 @@ ORDER BY name
 diagnostics.reporting.enabled                      true
 somesetting                                        somevalue
 sql.crdb_internal.table_row_statistics.as_of_time  -1µs
+sql.vecindex.deterministic_fixups.enabled          true
 
 onlyif config 3node-tenant-default-configs
 query TT
@@ -368,6 +389,7 @@ ORDER BY name
 diagnostics.reporting.enabled                      true
 somesetting                                        somevalue
 sql.crdb_internal.table_row_statistics.as_of_time  -1µs
+sql.vecindex.deterministic_fixups.enabled          true
 
 user testuser
 
@@ -465,3 +487,65 @@ user testuser
 
 statement ok
 RESET vectorize
+
+user root
+
+subtest statement_hints_table
+
+skipif config local-mixed-25.4 local-mixed-26.1
+query IITTTTTBT
+SELECT hash, row_id, fingerprint, hint, created_at, hint_type, hint_name, enabled, database
+FROM system.statement_hints ORDER BY row_id
+----
+
+skipif config local-mixed-25.4 local-mixed-26.1
+statement ok
+INSERT INTO system.statement_hints (row_id, fingerprint, hint, created_at, hint_type, hint_name, database)
+(VALUES
+  (100, 'foo', 'DEADBEEF', '2018-01-01 1:00:00.00000+00:00', 'rewrite_inline_hints', 'foo_hint', 'test'),
+  (200, 'bar', 'BEEFDEAD', '2018-01-02 1:00:00.00000+00:00', 'pin_plan', 'bar_hint', NULL),
+  (300, 'baz', 'BEADFEED', '2018-01-03 1:00:00.00000+00:00', 'rewrite_inline_hints', NULL, 'defaultdb')
+)
+
+skipif config local-mixed-25.4 local-mixed-26.1
+query IITTTTTBT
+SELECT hash, row_id, fingerprint, hint, created_at, hint_type, hint_name, enabled, database
+FROM system.statement_hints ORDER BY row_id
+----
+-2824945433545984717  100  foo  DEADBEEF  2018-01-01 01:00:00 +0000 UTC  rewrite_inline_hints  foo_hint  true  test
+-2821042167266592640  200  bar  BEEFDEAD  2018-01-02 01:00:00 +0000 UTC  pin_plan              bar_hint  true  NULL
+-2821042167266592632  300  baz  BEADFEED  2018-01-03 01:00:00 +0000 UTC  rewrite_inline_hints  NULL      true  defaultdb
+
+skipif config local-mixed-25.4 local-mixed-26.1
+query ITTTTTBT
+SELECT row_id, fingerprint, hint, created_at, hint_type, hint_name, enabled, database
+FROM system.statement_hints WHERE fingerprint = 'foo' ORDER BY row_id
+----
+100  foo  DEADBEEF  2018-01-01 01:00:00 +0000 UTC  rewrite_inline_hints  foo_hint  true  test
+
+skipif config local-mixed-25.4 local-mixed-26.1
+query ITTTTTBT
+SELECT row_id, fingerprint, hint, created_at, hint_type, hint_name, enabled, database
+FROM system.statement_hints WHERE fingerprint = 'bar' ORDER BY row_id
+----
+200  bar  BEEFDEAD  2018-01-02 01:00:00 +0000 UTC  pin_plan  bar_hint  true  NULL
+
+skipif config local-mixed-25.4 local-mixed-26.1
+query ITTT
+SELECT row_id, fingerprint, hint, created_at FROM system.statement_hints WHERE fingerprint = 'baz' ORDER BY row_id
+----
+300  baz  BEADFEED  2018-01-03 01:00:00 +0000 UTC
+
+skipif config local-mixed-25.4 local-mixed-26.1
+statement count 1
+DELETE FROM system.statement_hints WHERE fingerprint = 'foo'
+
+skipif config local-mixed-25.4 local-mixed-26.1
+query ITTTTTBT
+SELECT row_id, fingerprint, hint, created_at, hint_type, hint_name, enabled, database
+FROM system.statement_hints ORDER BY row_id
+----
+200  bar  BEEFDEAD  2018-01-02 01:00:00 +0000 UTC  pin_plan              bar_hint  true  NULL
+300  baz  BEADFEED  2018-01-03 01:00:00 +0000 UTC  rewrite_inline_hints  NULL      true  defaultdb
+
+subtest end

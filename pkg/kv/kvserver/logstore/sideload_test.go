@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -87,7 +86,7 @@ func newTestingSideloadStorage(eng storage.Engine) *DiskSideloadStorage {
 	return NewDiskSideloadStorage(
 		cluster.MakeTestingClusterSettings(), 1,
 		filepath.Join(eng.GetAuxiliaryDir(), "fake", "testing", "dir"),
-		rate.NewLimiter(rate.Inf, math.MaxInt64), eng)
+		rate.NewLimiter(rate.Inf, math.MaxInt64), eng.Env())
 }
 
 // TODO(pavelkalinnikov): give these tests a good refactor.
@@ -97,7 +96,7 @@ func testSideloadingSideloadedStorage(t *testing.T, eng storage.Engine) {
 
 	assertExists := func(exists bool) {
 		t.Helper()
-		_, err := ss.eng.Env().Stat(ss.dir)
+		_, err := ss.fs.Stat(ss.dir)
 		if !exists {
 			require.True(t, oserror.IsNotExist(err), err)
 		} else {
@@ -361,24 +360,86 @@ func testSideloadingSideloadedStorage(t *testing.T, eng storage.Engine) {
 	}
 }
 
+// TestSideloadStorageTruncation tests TruncateAfter and TruncateTo on a
+// storage with sideloaded files.
+func TestSideloadStorageTruncation(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	const term = kvpb.RaftTerm(1)
+	allIndexes := []kvpb.RaftIndex{5, 10, 15}
+	tests := []struct {
+		op        string // "from" or "to"
+		index     kvpb.RaftIndex
+		wantFiles []kvpb.RaftIndex
+	}{
+		{op: "to", index: 3, wantFiles: []kvpb.RaftIndex{5, 10, 15}},
+		{op: "to", index: 5, wantFiles: []kvpb.RaftIndex{10, 15}},
+		{op: "to", index: 7, wantFiles: []kvpb.RaftIndex{10, 15}},
+		{op: "to", index: 10, wantFiles: []kvpb.RaftIndex{15}},
+		{op: "to", index: 15, wantFiles: nil},
+		{op: "to", index: 100, wantFiles: nil},
+		{op: "after", index: 2, wantFiles: nil},
+		{op: "after", index: 4, wantFiles: nil},
+		{op: "after", index: 6, wantFiles: []kvpb.RaftIndex{5}},
+		{op: "after", index: 9, wantFiles: []kvpb.RaftIndex{5}},
+		{op: "after", index: 14, wantFiles: []kvpb.RaftIndex{5, 10}},
+		{op: "after", index: 100, wantFiles: []kvpb.RaftIndex{5, 10, 15}},
+	}
+
+	for _, tc := range tests {
+		t.Run("", func(t *testing.T) {
+			ctx := context.Background()
+			eng := storage.NewDefaultInMemForTesting()
+			defer eng.Close()
+			ss := newTestingSideloadStorage(eng)
+			// Populate files at indexes 5, 10, 15.
+			for _, i := range allIndexes {
+				require.NoError(t, ss.Put(ctx, i, term, []byte("data")))
+			}
+
+			// Run the truncation.
+			switch tc.op {
+			case "to":
+				require.NoError(t, ss.TruncateTo(ctx, tc.index))
+			case "after":
+				require.NoError(t, ss.TruncateAfter(ctx, tc.index))
+			default:
+				t.Fatalf("unknown op: %s", tc.op)
+			}
+
+			// Check which files remain.
+			wantRemaining := make(map[kvpb.RaftIndex]struct{})
+			for _, i := range tc.wantFiles {
+				wantRemaining[i] = struct{}{}
+			}
+			for _, i := range allIndexes {
+				_, err := ss.Get(ctx, i, term)
+				if _, ok := wantRemaining[i]; ok {
+					require.NoErrorf(t, err, "index %d should be present", i)
+				} else {
+					require.ErrorIs(t, err, errSideloadedFileNotFound,
+						"index %d should be deleted", i)
+				}
+			}
+
+			// Check directory existence.
+			_, err := ss.fs.Stat(ss.dir)
+			if tc.wantFiles == nil {
+				require.True(t, oserror.IsNotExist(err), "dir should be removed")
+			} else {
+				require.NoError(t, err, "dir should still exist")
+			}
+		})
+	}
+}
+
 func TestRaftSSTableSideloadingInline(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
 	v1, v2 := raftlog.EntryEncodingStandardWithAC, raftlog.EntryEncodingSideloadedWithAC
 	rangeID := roachpb.RangeID(1)
-
-	type testCase struct {
-		// Entry passed into maybeInlineSideloadedRaftCommand and the entry
-		// after having (perhaps) been modified.
-		thin, fat raftpb.Entry
-		// Populate the raft entry cache and sideload storage before running the test.
-		setup func(*raftentry.Cache, SideloadStorage)
-		// If nonempty, the error expected from maybeInlineSideloadedRaftCommand.
-		expErr string
-		// If nonempty, a regex that the recorded trace span must match.
-		expTrace string
-	}
 
 	sstFat := kvserverpb.ReplicatedEvalResult_AddSSTable{
 		Data:  []byte("foo"),
@@ -388,91 +449,84 @@ func TestRaftSSTableSideloadingInline(t *testing.T) {
 		CRC32: 0, // not checked
 	}
 
-	putOnDisk := func(ec *raftentry.Cache, ss SideloadStorage) {
-		if err := ss.Put(context.Background(), 5, 6, sstFat.Data); err != nil {
-			t.Fatal(err)
-		}
+	putOnDisk := func(_ *raftentry.Cache, ss SideloadStorage) {
+		require.NoError(t, ss.Put(context.Background(), 5, 6, sstFat.Data))
 	}
 
-	testCases := map[string]testCase{
+	for _, test := range []struct {
+		name string
+		// Entry passed into maybeInlineSideloadedRaftCommand and the entry
+		// after having (perhaps) been modified.
+		thin, fat raftpb.Entry
+		// Populate the raft entry cache and sideload storage before running the test.
+		setup func(*raftentry.Cache, SideloadStorage)
+		// If nonempty, the error expected from maybeInlineSideloadedRaftCommand.
+		expErr string
+		// If nonempty, a regex that the recorded trace span must match.
+		expTrace string
+	}{
 		// Plain old v1 Raft command without payload. Don't touch.
-		"v1-no-payload": {thin: mkEnt(v1, 5, 6, &sstThin), fat: mkEnt(v1, 5, 6, &sstThin)},
+		{name: "v1-no-payload", thin: mkEnt(v1, 5, 6, &sstThin), fat: mkEnt(v1, 5, 6, &sstThin)},
 		// With payload, but command is v1. Don't touch. Note that the
 		// first of the two shouldn't happen in practice or we have a
 		// huge problem once we try to apply this entry.
-		"v1-slim-with-payload": {thin: mkEnt(v1, 5, 6, &sstThin), fat: mkEnt(v1, 5, 6, &sstThin)},
-		"v1-with-payload":      {thin: mkEnt(v1, 5, 6, &sstFat), fat: mkEnt(v1, 5, 6, &sstFat)},
+		{name: "v1-slim-with-payload", thin: mkEnt(v1, 5, 6, &sstThin), fat: mkEnt(v1, 5, 6, &sstThin)},
+		{name: "v1-with-payload", thin: mkEnt(v1, 5, 6, &sstFat), fat: mkEnt(v1, 5, 6, &sstFat)},
 		// v2 with payload, but payload is AWOL. This would be fatal in practice.
-		"v2-with-payload-missing-file": {
+		{
+			name: "v2-with-payload-missing-file",
 			thin: mkEnt(v2, 5, 6, &sstThin), fat: mkEnt(v2, 5, 6, &sstThin),
 			expErr: "not found",
 		},
 		// v2 with payload that's actually there. The request we'll see in
 		// practice.
-		"v2-with-payload-with-file-no-cache": {
+		{
+			name: "v2-with-payload-with-file-no-cache",
 			thin: mkEnt(v2, 5, 6, &sstThin), fat: mkEnt(v2, 5, 6, &sstFat),
 			setup: putOnDisk, expTrace: "inlined entry not cached",
 		},
-		"v2-with-payload-with-file-with-cache": {
+		{
+			name: "v2-with-payload-with-file-with-cache",
 			thin: mkEnt(v2, 5, 6, &sstThin), fat: mkEnt(v2, 5, 6, &sstFat),
 			setup: func(ec *raftentry.Cache, ss SideloadStorage) {
 				putOnDisk(ec, ss)
 				ec.Add(rangeID, []raftpb.Entry{mkEnt(v2, 5, 6, &sstFat)}, true)
 			}, expTrace: "using cache hit",
 		},
-		"v2-fat-without-file": {
+		{
+			name: "v2-fat-without-file",
 			thin: mkEnt(v2, 5, 6, &sstFat), fat: mkEnt(v2, 5, 6, &sstFat),
 			setup:    func(ec *raftentry.Cache, ss SideloadStorage) {},
 			expTrace: "already inlined",
 		},
-	}
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, getRecAndFinish := tracing.ContextWithRecordingSpan(
+				context.Background(), tracing.NewTracer(), "test-recording")
+			defer getRecAndFinish()
 
-	runOne := func(k string, test testCase) {
-		ctx, getRecAndFinish := tracing.ContextWithRecordingSpan(
-			context.Background(), tracing.NewTracer(), "test-recording")
-		defer getRecAndFinish()
-
-		eng := storage.NewDefaultInMemForTesting()
-		defer eng.Close()
-		ss := newTestingSideloadStorage(eng)
-		ec := raftentry.NewCache(1024) // large enough
-		if test.setup != nil {
-			test.setup(ec, ss)
-		}
-
-		thinCopy := *(protoutil.Clone(&test.thin).(*raftpb.Entry))
-		newEnt, err := MaybeInlineSideloadedRaftCommand(ctx, rangeID, thinCopy, ss, ec)
-		if err != nil {
-			if test.expErr == "" || !testutils.IsError(err, test.expErr) {
-				t.Fatalf("%s: %+v", k, err)
+			eng := storage.NewDefaultInMemForTesting()
+			defer eng.Close()
+			ss := newTestingSideloadStorage(eng)
+			ec := raftentry.NewCache(1024) // large enough
+			if test.setup != nil {
+				test.setup(ec, ss)
 			}
-		} else if test.expErr != "" {
-			t.Fatalf("%s: success, but expected error: %s", k, test.expErr)
-		} else {
-			mustEntryEq(t, thinCopy, test.thin)
-		}
 
-		if newEnt == nil {
-			newEnt = &thinCopy
-		}
-		mustEntryEq(t, *newEnt, test.fat)
-
-		if dump := getRecAndFinish().String(); test.expTrace != "" {
-			if ok, err := regexp.MatchString(test.expTrace, dump); err != nil {
-				t.Fatalf("%s: %+v", k, err)
-			} else if !ok {
-				t.Fatalf("%s: expected trace matching:\n%s\n\nbut got\n%s", k, test.expTrace, dump)
+			thinCopy := *(protoutil.Clone(&test.thin).(*raftpb.Entry))
+			newEnt, err := MaybeInlineSideloadedRaftCommand(ctx, rangeID, thinCopy, ss, ec)
+			if want := test.expErr; want != "" {
+				require.ErrorContains(t, err, want)
+			} else {
+				require.NoError(t, err)
+				mustEntryEq(t, thinCopy, test.thin)
 			}
-		}
-	}
+			mustEntryEq(t, newEnt, test.fat)
 
-	keys := make([]string, 0, len(testCases))
-	for k := range testCases {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		runOne(k, testCases[k])
+			if want := test.expTrace; want != "" {
+				require.Contains(t, getRecAndFinish().String(), want)
+			}
+		})
 	}
 }
 
@@ -540,24 +594,24 @@ func TestRaftSSTableSideloadingSideload(t *testing.T) {
 			eng := storage.NewDefaultInMemForTesting()
 			defer eng.Close()
 			sideloaded := newTestingSideloadStorage(eng)
-			postEnts, numSideloaded, size, nonSideloadedSize, err := MaybeSideloadEntries(ctx, test.preEnts, sideloaded)
+			postEnts, stats, err := MaybeSideloadEntries(ctx, test.preEnts, sideloaded)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if len(addSST.Data) == 0 {
 				t.Fatal("invocation mutated original AddSSTable struct in memory")
 			}
-			require.Equal(t, test.nonSideloadedSize, nonSideloadedSize)
+			require.Equal(t, test.nonSideloadedSize, stats.RegularBytes)
 			var expNumSideloaded int
 			if test.size > 0 {
 				expNumSideloaded = 1
 			}
-			require.Equal(t, expNumSideloaded, numSideloaded)
+			require.Equal(t, expNumSideloaded, stats.SideloadedEntries)
 			require.Equal(t, test.postEnts, postEnts)
-			if test.size != size {
-				t.Fatalf("expected %d sideloadedSize, but found %d", test.size, size)
+			if test.size != stats.SideloadedBytes {
+				t.Fatalf("expected %d sideloadedSize, but found %d", test.size, stats.SideloadedBytes)
 			}
-			actKeys, err := sideloaded.eng.Env().List(sideloaded.Dir())
+			actKeys, err := sideloaded.fs.List(sideloaded.Dir())
 			if oserror.IsNotExist(err) {
 				t.Log("swallowing IsNotExist")
 				err = nil
@@ -595,9 +649,12 @@ func TestSideloadStorageSync(t *testing.T) {
 		// able to emulate crash restart by rolling it back to last synced state.
 		ctx := context.Background()
 		memFS := vfs.NewCrashableMem()
-		env, err := fs.InitEnv(ctx, memFS, "", fs.EnvConfig{}, nil /* statsCollector */)
+		settings := cluster.MakeTestingClusterSettings()
+		env, err := fs.InitEnv(ctx, memFS, "", fs.EnvConfig{
+			Version: settings.Version,
+		}, nil /* statsCollector */)
 		require.NoError(t, err)
-		eng, err := storage.Open(ctx, env, cluster.MakeTestingClusterSettings(), storage.ForTesting)
+		eng, err := storage.Open(ctx, env, settings, storage.ForTesting)
 		require.NoError(t, err)
 		ss := newTestingSideloadStorage(eng)
 
@@ -615,9 +672,11 @@ func TestSideloadStorageSync(t *testing.T) {
 		// Reset filesystem to the last synced state.
 
 		// Emulate process restart. Load from the last synced state.
-		env, err = fs.InitEnv(ctx, crashFS, "", fs.EnvConfig{}, nil /* statsCollector */)
+		env, err = fs.InitEnv(ctx, crashFS, "", fs.EnvConfig{
+			Version: settings.Version,
+		}, nil /* statsCollector */)
 		require.NoError(t, err)
-		eng, err = storage.Open(ctx, env, cluster.MakeTestingClusterSettings(), storage.ForTesting)
+		eng, err = storage.Open(ctx, env, settings, storage.ForTesting)
 		require.NoError(t, err)
 		defer eng.Close()
 		ss = newTestingSideloadStorage(eng)

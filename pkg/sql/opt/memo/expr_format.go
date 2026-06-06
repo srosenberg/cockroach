@@ -166,9 +166,13 @@ type ExprFmtCtx struct {
 	// with the session variable `save_tables_prefix` set to the same value.
 	nameGen *ExprNameGenerator
 
-	// seenUDFs is used to ensure that formatting of recursive UDFs does not
-	// infinitely recurse.
+	// seenUDFs is used to ensure that formatting of repetitive UDF calls does
+	// not grow the output exponentially.
 	seenUDFs map[*UDFDefinition]struct{}
+
+	// withinUDFs is used to track within invocations of which UDFs we are when
+	// formatting.
+	withinUDFs map[*UDFDefinition]struct{}
 
 	// tailCalls allows for quick lookup of all the routines in tail-call position
 	// when the last body statement of a routine is formatted.
@@ -214,6 +218,7 @@ func MakeExprFmtCtxBuffer(
 		Catalog:          catalog,
 		nameGen:          nameGen,
 		seenUDFs:         make(map[*UDFDefinition]struct{}),
+		withinUDFs:       make(map[*UDFDefinition]struct{}),
 	}
 }
 
@@ -747,6 +752,13 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 
 	case *VectorSearchExpr:
 		tp.Childf("target nearest neighbors: %d", t.TargetNeighborCount)
+		if t.PrefixConstraint != nil {
+			n := tp.Childf("prefix constraint: %s", t.PrefixConstraint.Columns.String())
+			for i := 0; i < t.PrefixConstraint.Spans.Count(); i++ {
+				spanString := t.PrefixConstraint.Spans.Get(i).String()
+				n.Child(cat.MaybeMarkRedactable(spanString, f.RedactableValues))
+			}
+		}
 
 	case *VectorMutationSearchExpr:
 		if t.IsIndexPut {
@@ -788,7 +800,7 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 			f.formatCol(col.Alias, col.ID, opt.ColSet{} /* notNullCols */)
 		}
 		tp.Child(f.Buffer.String())
-		f.formatDependencies(tp, t.Deps, t.TypeDeps)
+		f.formatDependencies(tp, t.Deps, t.TypeDeps, t.FuncDeps)
 
 	case *CreateFunctionExpr:
 		fmtFlags := tree.FmtSimple
@@ -796,11 +808,11 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 			fmtFlags = tree.FmtMarkRedactionNode | tree.FmtOmitNameRedaction
 		}
 		tp.Child(tree.AsStringWithFlags(t.Syntax, fmtFlags))
-		f.formatDependencies(tp, t.Deps, t.TypeDeps)
+		f.formatDependencies(tp, t.Deps, t.TypeDeps, t.FuncDeps)
 
 	case *CreateTriggerExpr:
 		tp.Child(t.Syntax.String())
-		f.formatDependencies(tp, t.Deps, t.TypeDeps)
+		f.formatDependencies(tp, t.Deps, t.TypeDeps, t.FuncDeps)
 
 	case *CreateStatisticsExpr:
 		tp.Child(t.Syntax.String())
@@ -878,11 +890,19 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 		if relational.HasPlaceholder {
 			writeFlag("has-placeholder")
 		}
+		if p, ok := e.Private().(*JoinPrivate); ok {
+			if !p.ParameterizedCols.Empty() {
+				tp.Childf("parameterized columns: %s", p.ParameterizedCols)
+			}
+		}
 		if lookupJoin, ok := e.(*LookupJoinExpr); ok {
 			// For lookup joins, indicate whether reverse scans are required to
 			// satisfy the ordering.
 			if lookupJoinMustUseReverseScans(md, lookupJoin, &required.Ordering) {
 				writeFlag("reverse-scans")
+			}
+			if !lookupJoin.ParameterizedCols.Empty() {
+				tp.Childf("parameterized columns: %s", lookupJoin.ParameterizedCols)
 			}
 		}
 
@@ -904,16 +924,19 @@ func (f *ExprFmtCtx) formatRelational(e RelExpr, tp treeprinter.Node) {
 		if cost.C != 0 {
 			tp.Childf("cost: %.9g", cost.C)
 		}
-		if !cost.Flags.Empty() {
+		if cost.Penalties != NoPenalties {
 			var b strings.Builder
 			b.WriteString("cost-flags:")
-			if cost.Flags.FullScanPenalty {
+			if cost.Penalties&FullScanPenalty != 0 {
 				b.WriteString(" full-scan-penalty")
 			}
-			if cost.Flags.HugeCostPenalty {
+			if cost.Penalties&HugeCostPenalty != 0 {
 				b.WriteString(" huge-cost-penalty")
 			}
-			if cost.Flags.UnboundedCardinality {
+			if cost.Penalties&PlanGramMismatchPenalty != 0 {
+				b.WriteString(" plangram-mismatch")
+			}
+			if cost.Penalties&UnboundedCardinalityPenalty != 0 {
 				b.WriteString(" unbounded-cardinality")
 			}
 			tp.Child(b.String())
@@ -1052,30 +1075,53 @@ func (f *ExprFmtCtx) formatScalarWithLabel(
 ) {
 	formatUDFDefinition := func(def *UDFDefinition, tp treeprinter.Node) {
 		if _, seen := f.seenUDFs[def]; !seen {
-			// Ensure that the definition of the UDF is not printed out again if it
-			// is recursively called.
+			// Ensure that the definition of the UDF is not printed out again if
+			// it has already been seen.
 			f.seenUDFs[def] = struct{}{}
+			f.withinUDFs[def] = struct{}{}
 			if len(def.Params) > 0 {
 				f.formatColList(tp, "params:", def.Params, opt.ColSet{} /* notNullCols */)
 			}
-			n := tp.Child("body")
-			for i := range def.Body {
-				stmtNode := n
-				if i == 0 && def.CursorDeclaration != nil {
-					// The first statement is opening a cursor.
-					stmtNode = n.Child("open-cursor")
+			if def.Body != nil {
+				n := tp.Child("body")
+				for i := range def.Body {
+					stmtNode := n
+					if i == 0 {
+						if def.FirstStmtOutput.CursorDeclaration != nil {
+							// The first statement is opening a cursor.
+							stmtNode = n.Child("open-cursor")
+						} else if def.FirstStmtOutput.TargetBufferID != 0 {
+							// The first statement is writing to a target buffer.
+							stmtNode = n.Child("add-to-srf-result")
+						}
+					}
+					prevTailCalls := f.tailCalls
+
+					// Routine calls in the last body statement may be tail calls if
+					// ResultBufferID is unset. If it is set, the result of the last
+					// body statement is not directly used as the result of the UDF
+					// call, so it cannot contain tail calls.
+					if i == len(def.Body)-1 && def.ResultBufferID == 0 {
+						f.tailCalls = make(map[opt.ScalarExpr]struct{})
+						ExtractTailCalls(def.Body[i], f.tailCalls)
+					}
+					f.formatExpr(def.Body[i], stmtNode)
+					f.tailCalls = prevTailCalls
 				}
-				prevTailCalls := f.tailCalls
-				if i == len(def.Body)-1 {
-					f.tailCalls = make(map[opt.ScalarExpr]struct{})
-					ExtractTailCalls(def.Body[i], f.tailCalls)
+			} else {
+				// Deferred-build routine: body is not yet built. Show ASTs.
+				n := tp.Child("body (deferred)")
+				for i, ast := range def.BodyASTs {
+					if ast != nil {
+						n.Childf("stmt%d: %s", i+1, tree.AsString(ast))
+					}
 				}
-				f.formatExpr(def.Body[i], stmtNode)
-				f.tailCalls = prevTailCalls
 			}
-			delete(f.seenUDFs, def)
-		} else {
+			delete(f.withinUDFs, def)
+		} else if _, recursive := f.withinUDFs[def]; recursive {
 			tp.Child("recursive-call")
+		} else {
+			tp.Child("repetitive-call")
 		}
 		if def.ExceptionBlock != nil {
 			n := tp.Child("exception-handler")
@@ -1819,9 +1865,12 @@ func (f *ExprFmtCtx) formatLockingWithPrefix(
 
 // formatDependencies adds a new treeprinter child for schema dependencies.
 func (f *ExprFmtCtx) formatDependencies(
-	tp treeprinter.Node, deps opt.SchemaDeps, typeDeps opt.SchemaTypeDeps,
+	tp treeprinter.Node,
+	deps opt.SchemaDeps,
+	typeDeps opt.SchemaTypeDeps,
+	funcDeps opt.SchemaFunctionDeps,
 ) {
-	if len(deps) == 0 && typeDeps.Empty() {
+	if len(deps) == 0 && typeDeps.Empty() && funcDeps.Empty() {
 		tp.Child("no dependencies")
 		return
 	}
@@ -1851,6 +1900,11 @@ func (f *ExprFmtCtx) formatDependencies(
 			n.Child(typ.Name())
 		}
 	}
+	funcDeps.ForEach(func(routineID int) {
+		// TODO(drewk): format using the routine name.
+		ref := tree.FunctionOID{OID: catid.FuncIDToOID(catid.DescID(routineID))}
+		n.Child(ref.String())
+	})
 }
 
 // ScanIsReverseFn is a callback that is used to figure out if a scan needs to
@@ -1885,6 +1939,9 @@ func FormatPrivate(f *ExprFmtCtx, private interface{}, physProps *physical.Requi
 		fmt.Fprintf(f.Buffer, " %s", seq.Name())
 
 	case *MutationPrivate:
+		if t.Swap {
+			fmt.Fprint(f.Buffer, " (swap)")
+		}
 		f.formatIndex(t.Table, cat.PrimaryIndex, false /* reverse */)
 
 	case *LockPrivate:

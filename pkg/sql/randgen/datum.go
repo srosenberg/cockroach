@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/geo"
 	"github.com/cockroachdb/cockroach/pkg/geo/geogen"
 	"github.com/cockroachdb/cockroach/pkg/geo/geopb"
+	"github.com/cockroachdb/cockroach/pkg/sql/oidext"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgrepl/lsn"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
@@ -27,9 +28,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/duration"
 	"github.com/cockroachdb/cockroach/pkg/util/ipaddr"
 	"github.com/cockroachdb/cockroach/pkg/util/json"
-	// TODO(normanchenn): temporarily import the parser here to ensure that
-	// init() is called.
-	_ "github.com/cockroachdb/cockroach/pkg/util/jsonpath/parser"
+	jsonpathparser "github.com/cockroachdb/cockroach/pkg/util/jsonpath/parser"
+	"github.com/cockroachdb/cockroach/pkg/util/ltree"
 	"github.com/cockroachdb/cockroach/pkg/util/timeofday"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil/pgdate"
@@ -233,22 +233,22 @@ func RandDatumWithNullChance(
 		}
 		return &tree.DJSON{JSON: j}
 	case types.JsonpathFamily:
-		jsonpath := randJsonpath(rng)
-		return tree.NewDJsonpath(jsonpath)
+		jp, err := jsonpathparser.Parse(randJsonpath(rng))
+		if err != nil {
+			return nil
+		}
+		return tree.NewDJsonpath(*jp.AST)
 	case types.TupleFamily:
-		tuple := tree.DTuple{D: make(tree.Datums, len(typ.TupleContents()))}
 		if nullChance == 0 {
 			nullChance = 10
 		}
+		datums := make([]tree.Datum, len(typ.TupleContents()))
 		for i := range typ.TupleContents() {
-			tuple.D[i] = RandDatumWithNullChance(
+			datums[i] = RandDatumWithNullChance(
 				rng, typ.TupleContents()[i], nullChance, favorCommonData, targetColumnIsUnique,
 			)
 		}
-		// Calling ResolvedType causes the internal TupleContents types to be
-		// populated.
-		tuple.ResolvedType()
-		return &tuple
+		return tree.NewDTuple(typ, datums...)
 	case types.BitFamily:
 		width := typ.Width()
 		if width == 0 {
@@ -274,6 +274,29 @@ func RandDatumWithNullChance(
 		if typ.Oid() == oid.T_bpchar {
 			return tree.NewDString(strings.TrimRight(string(p), " "))
 		}
+		if typ.Oid() == oid.T_aclitem {
+			// Generate a valid aclitem string: grantee=privchars/grantor.
+			// Use only alphanumeric chars for the grantee to avoid special
+			// characters (=, /, ") that break the aclitem format.
+			const alphanums = "abcdefghijklmnopqrstuvwxyz0123456789"
+			granteeLen := 1 + rng.Intn(6)
+			grantee := make([]byte, granteeLen)
+			for i := range grantee {
+				grantee[i] = alphanums[rng.Intn(len(alphanums))]
+			}
+			const validPrivChars = "arwdDxtXUCTcsAm"
+			numPrivs := 1 + rng.Intn(4)
+			privs := make([]byte, numPrivs)
+			for i := range privs {
+				privs[i] = validPrivChars[rng.Intn(len(validPrivChars))]
+			}
+			s := tree.DString(string(grantee) + "=" + string(privs) + "/")
+			d, err := tree.NewDACLItemFromDString(&s)
+			if err != nil {
+				panic(errors.NewAssertionErrorWithWrappedErrf(err, "generated invalid aclitem %q", string(s)))
+			}
+			return d
+		}
 		return tree.NewDString(string(p))
 	case types.BytesFamily:
 		p := make([]byte, rng.Intn(10))
@@ -298,13 +321,22 @@ func RandDatumWithNullChance(
 			}
 			buf.WriteRune(r)
 		}
-		d, err := tree.NewDCollatedString(buf.String(), typ.Locale(), &tree.CollationEnvironment{})
+		var d tree.Datum
+		var err error
+		switch typ.Oid() {
+		case oidext.T_citext:
+			d, err = tree.NewDCIText(buf.String(), &tree.CollationEnvironment{})
+		default:
+			d, err = tree.NewDCollatedString(buf.String(), typ.Locale(), &tree.CollationEnvironment{})
+		}
 		if err != nil {
 			panic(err)
 		}
 		return d
 	case types.OidFamily:
 		return tree.NewDOidWithType(oid.Oid(rng.Uint32()), typ)
+	case types.LTreeFamily:
+		return tree.NewDLTree(ltree.RandLTree(rng))
 	case types.UnknownFamily:
 		return tree.DNull
 	case types.ArrayFamily:
@@ -369,6 +401,9 @@ func RandArrayWithCommonDataChance(
 		contents = RandArrayContentsType(rng)
 	}
 	arr := tree.NewDArray(contents)
+	if err := arr.MaybeSetCustomOid(typ); err != nil {
+		panic(err)
+	}
 	for i := 0; i < rng.Intn(10); i++ {
 		if err :=
 			arr.Append(
@@ -436,9 +471,21 @@ func adjustDatum(datum tree.Datum, typ *types.T) tree.Datum {
 	case types.StringFamily:
 		if typ.Oid() == oid.T_name {
 			datum = tree.NewDName(string(*datum.(*tree.DString)))
+		} else if typ.Oid() == oid.T_aclitem {
+			// Return a fixed valid aclitem rather than trying to adapt
+			// the generic string datum, since special characters like
+			// quotes break the aclitem parser.
+			s := tree.DString("=r/")
+			d, err := tree.NewDACLItemFromDString(&s)
+			if err != nil {
+				panic(errors.NewAssertionErrorWithWrappedErrf(err, "generated invalid aclitem"))
+			}
+			datum = d
 		}
 		return datum
 
+	case types.OidFamily:
+		return tree.NewDOidWithType(datum.(*tree.DOid).Oid, typ)
 	default:
 		return datum
 	}
@@ -582,7 +629,7 @@ func randJSONSimpleDepth(rng *rand.Rand, depth int) json.JSON {
 
 const charSet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-// TODO(normanchenn): Add support for more complex jsonpath queries.
+// TODO(#22513): Add support for more complex jsonpath queries.
 func randJsonpath(rng *rand.Rand) string {
 	var parts []string
 	depth := 1 + rng.Intn(20)
@@ -876,6 +923,24 @@ func getRandInterestingDatums(typ types.Family) ([]tree.Datum, bool) {
 					1<<63 - 1,
 				} {
 					d, err := tree.NewDBitArrayFromInt(i, 64)
+					if err != nil {
+						panic(err)
+					}
+					res = append(res, d)
+				}
+				return res
+			}(),
+			types.LTreeFamily: func() []tree.Datum {
+				var res []tree.Datum
+				for _, s := range []string{
+					"",
+					"foo",
+					"foo.bar",
+					"foo.bar.baz",
+					"foo_bar.baz",
+					"foo-bar.baz",
+				} {
+					d, err := tree.ParseDLTree(s)
 					if err != nil {
 						panic(err)
 					}

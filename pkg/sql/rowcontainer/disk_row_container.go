@@ -186,6 +186,30 @@ func (d *DiskRowContainer) Len() int {
 	return int(d.rowID)
 }
 
+// Writing extremely large keys to pebble can lead to undefined behavior
+// (overflows and / or OOMs), so we'll prohibit keys larger than 1.5 GiB.
+const maxPebbleKeySize = 1536 << 20 /* 1.5 GiB */
+
+var maxPebbleKeySizeExceededErr = pgerror.Newf(pgcode.OutOfMemory, "temporary storage doesn't support keys larger than 1.5 GiB")
+
+// resetScratch prepares the scratch space for reuse. If the slice is too large
+// to keep, it's lost and the memory account is updated accordingly.
+func (d *DiskRowContainer) resetScratch(ctx context.Context) {
+	// Do not keep very large scratch space across rows (we're trying to
+	// minimize RAM usage after all since we've spilled to disk).
+	const maxKeptSize = 1 << 20 /* 1 MiB */
+	if cap(d.scratchKey) > maxKeptSize {
+		d.memAcc.Shrink(ctx, int64(cap(d.scratchKey)))
+		d.scratchKey = nil
+	}
+	if cap(d.scratchVal) > maxKeptSize {
+		d.memAcc.Shrink(ctx, int64(cap(d.scratchVal)))
+		d.scratchVal = nil
+	}
+	d.scratchKey = d.scratchKey[:0]
+	d.scratchVal = d.scratchVal[:0]
+}
+
 // AddRow is part of the SortableRowContainer interface.
 //
 // It is additionally used in de-duping mode by DiskBackedRowContainer when
@@ -200,7 +224,13 @@ func (d *DiskRowContainer) AddRow(ctx context.Context, row rowenc.EncDatumRow) e
 	if err := d.encodeRow(ctx, row); err != nil {
 		return err
 	}
+	defer d.resetScratch(ctx)
+	if len(d.scratchKey) > maxPebbleKeySize {
+		return maxPebbleKeySizeExceededErr
+	}
 	if err := d.diskAcc.Grow(ctx, int64(len(d.scratchKey)+len(d.scratchVal))); err != nil {
+		// TODO(yuzefovich): this error wrapping is redundant - err should be
+		// produced by the disk monitor.
 		return pgerror.Wrapf(err, pgcode.OutOfMemory,
 			"this query requires additional disk space")
 	}
@@ -211,7 +241,7 @@ func (d *DiskRowContainer) AddRow(ctx context.Context, row rowenc.EncDatumRow) e
 	// rows -- we need to track these in the de-dup cache so that later
 	// calls to AddRowWithDeDup() de-duplicate wrt this cache.
 	if d.deDuplicate {
-		if d.bufferedRows.NumPutsSinceFlush() == 0 {
+		if d.bufferedRows.NumMutationsSinceFlush() == 0 {
 			d.clearDeDupCache(ctx)
 		} else {
 			if err := d.memAcc.Grow(ctx, int64(len(d.scratchKey))); err != nil {
@@ -222,8 +252,6 @@ func (d *DiskRowContainer) AddRow(ctx context.Context, row rowenc.EncDatumRow) e
 		}
 	}
 	d.totalEncodedRowBytes += uint64(len(d.scratchKey) + len(d.scratchVal))
-	d.scratchKey = d.scratchKey[:0]
-	d.scratchVal = d.scratchVal[:0]
 	d.rowID++
 	return nil
 }
@@ -235,10 +263,7 @@ func (d *DiskRowContainer) AddRowWithDeDup(
 	if err := d.encodeRow(ctx, row); err != nil {
 		return 0, err
 	}
-	defer func() {
-		d.scratchKey = d.scratchKey[:0]
-		d.scratchVal = d.scratchVal[:0]
-	}()
+	defer d.resetScratch(ctx)
 	// First use the cache to de-dup.
 	entry, ok := d.deDupCache[string(d.scratchKey)]
 	if ok {
@@ -269,14 +294,19 @@ func (d *DiskRowContainer) AddRowWithDeDup(
 		}
 		return int(idx), nil
 	}
+	if len(d.scratchKey) > maxPebbleKeySize {
+		return 0, maxPebbleKeySizeExceededErr
+	}
 	if err := d.diskAcc.Grow(ctx, int64(len(d.scratchKey)+len(d.scratchVal))); err != nil {
+		// TODO(yuzefovich): this error wrapping is redundant - err should be
+		// produced by the disk monitor.
 		return 0, pgerror.Wrapf(err, pgcode.OutOfMemory,
 			"this query requires additional disk space")
 	}
 	if err := d.bufferedRows.Put(d.scratchKey, d.scratchVal); err != nil {
 		return 0, err
 	}
-	if d.bufferedRows.NumPutsSinceFlush() == 0 {
+	if d.bufferedRows.NumMutationsSinceFlush() == 0 {
 		d.clearDeDupCache(ctx)
 	} else {
 		if err = d.memAcc.Grow(ctx, int64(len(d.scratchKey))); err != nil {
@@ -301,14 +331,16 @@ func (d *DiskRowContainer) clearDeDupCache(ctx context.Context) {
 
 func (d *DiskRowContainer) testingFlushBuffer(ctx context.Context) {
 	if err := d.bufferedRows.Flush(); err != nil {
-		log.Fatalf(ctx, "%v", err)
+		log.Dev.Fatalf(ctx, "%v", err)
 	}
 	d.clearDeDupCache(ctx)
 }
 
+// encodeRow encodes the given row into scratchKey and scratchVal fields. The
+// memory account is updated according to the new capacity of these slices.
 func (d *DiskRowContainer) encodeRow(ctx context.Context, row rowenc.EncDatumRow) (retErr error) {
 	if len(row) != len(d.types) {
-		log.Fatalf(ctx, "invalid row length %d, expected %d", len(row), len(d.types))
+		log.Dev.Fatalf(ctx, "invalid row length %d, expected %d", len(row), len(d.types))
 	}
 	oldScratchMemUse := int64(cap(d.scratchKey) + cap(d.scratchVal))
 	defer func() {
@@ -457,7 +489,7 @@ var _ RowIterator = &diskRowIterator{}
 
 func (d *DiskRowContainer) newIterator(ctx context.Context) diskRowIterator {
 	if err := d.bufferedRows.Flush(); err != nil {
-		log.Fatalf(ctx, "%v", err)
+		log.Dev.Fatalf(ctx, "%v", err)
 	}
 	return diskRowIterator{
 		rowContainer:          d,
@@ -491,8 +523,12 @@ func (r *diskRowIterator) EncRow() (rowenc.EncDatumRow, error) {
 	// directly into the EncDatum, so we need to make a copy here. We cannot
 	// reuse the same byte slice across EncRow() calls because it would lead to
 	// modification of the EncDatums (which is not allowed).
-	r.rowBuf, k = r.rowBuf.Copy(k, len(v))
-	r.rowBuf, v = r.rowBuf.Copy(v, 0 /* extraCap */)
+	var buf []byte
+	r.rowBuf, buf = r.rowBuf.Alloc(len(k) + len(v))
+	copy(buf, k)
+	k, buf = buf[:len(k):len(k)], buf[len(k):]
+	copy(buf, v)
+	v = buf
 
 	for i, orderInfo := range r.rowContainer.ordering {
 		// Types with composite key encodings are decoded from the value.

@@ -101,6 +101,8 @@ func TestCollectInfoFromOnlineCluster(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
+	skip.UnderRace(t, "slow under race")
+
 	ctx := context.Background()
 	dir, cleanupFn := testutils.TempDir(t)
 	defer cleanupFn()
@@ -135,8 +137,8 @@ func TestCollectInfoFromOnlineCluster(t *testing.T) {
 		"recover",
 		"collect-info",
 		"--insecure",
-		"--host",
-		tc.Server(2).AdvRPCAddr(),
+		"--host", tc.Server(2).AdvRPCAddr(),
+		"--cluster-name", tc.ClusterName(),
 		replicaInfoFileName,
 	})
 
@@ -153,7 +155,11 @@ func TestCollectInfoFromOnlineCluster(t *testing.T) {
 	require.Equal(t, 2, len(stores), "collected replicas from stores")
 	require.Equal(t, 2, len(replicas.LocalInfo), "collected info is not split by node")
 	require.Equal(t, totalRanges*2, totalReplicas, "number of collected replicas")
-	require.Equal(t, totalRanges, len(replicas.Descriptors),
+	// The number of range descriptors is counted by iterating over meta2 keys.
+	// Since meta1 and meta2 ranges are split, the number of range descriptors
+	// is going to be one less than the number of ranges as meta1 is a range but
+	// its descriptor isn't stored in meta2.
+	require.Equal(t, totalRanges-1, len(replicas.Descriptors),
 		"number of collected descriptors from metadata")
 	require.Equal(t, clusterversion.Latest.Version(), replicas.Version,
 		"collected version info from stores")
@@ -167,8 +173,7 @@ func TestLossOfQuorumRecovery(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
-	skip.UnderDeadlock(t, "slow under deadlock")
-	skip.UnderStress(t, "slow under stress")
+	skip.UnderDuress(t, "slow test")
 
 	ctx := context.Background()
 	dir, cleanupFn := testutils.TempDir(t)
@@ -277,32 +282,41 @@ func TestLossOfQuorumRecovery(t *testing.T) {
 
 	require.NoError(t, runDecommissionNodeImpl(
 		ctx, adminClient, nodeDecommissionWaitNone, nodeDecommissionChecksSkip, false,
-		[]roachpb.NodeID{roachpb.NodeID(2), roachpb.NodeID(3)}, tcAfter.Server(0).NodeID()),
-		"Failed to decommission removed nodes")
+		[]roachpb.NodeID{roachpb.NodeID(2), roachpb.NodeID(3)}, tcAfter.Server(0).NodeID(),
+	))
 
 	for i := 0; i < len(tcAfter.Servers); i++ {
-		require.NoError(t, tcAfter.Servers[i].GetStores().(*kvserver.Stores).VisitStores(func(store *kvserver.Store) error {
-			store.TestingSetReplicateQueueActive(true)
+		require.NoError(t, tcAfter.Servers[i].GetStores().(*kvserver.Stores).VisitStores(func(s *kvserver.Store) error {
+			s.TestingSetReplicateQueueActive(true)
 			return nil
-		}), "Failed to activate replication queue")
+		}))
 	}
-	require.NoError(t, tcAfter.WaitForZoneConfigPropagation(),
-		"Failed to ensure zone configs are propagated")
-	require.NoError(t, tcAfter.WaitForFullReplication(), "Failed to perform full replication")
+	require.NoError(t, tcAfter.WaitForZoneConfigPropagation())
+	require.NoError(t, tcAfter.WaitForFullReplication())
+
+	// Wait until all ranges have moved to the new nodes.
+	const wantReplicas = "{1,4,5}"
+	s = sqlutils.MakeSQLRunner(tcAfter.Conns[0])
+	testutils.SucceedsWithin(t, func() error {
+		rows := s.Query(t, "select range_id, replicas from crdb_internal.ranges")
+		defer rows.Close()
+		for rows.Next() {
+			var rangeID int
+			var replicas string
+			if err := rows.Scan(&rangeID, &replicas); err != nil {
+				return err
+			} else if replicas != wantReplicas {
+				return errors.Errorf("r%d not reconfigured, replicas: %s", rangeID, replicas)
+			}
+		}
+		return rows.Err()
+	}, testutils.SucceedsSoonDuration()*2)
 
 	for i := 0; i < len(tcAfter.Servers); i++ {
 		require.NoError(t, tcAfter.Servers[i].GetStores().(*kvserver.Stores).VisitStores(func(store *kvserver.Store) error {
 			return store.ForceConsistencyQueueProcess()
 		}), "Failed to force replicas to consistency queue")
 	}
-
-	// As a validation step we will just pick one range and get its replicas to see
-	// if they were up-replicated to the new nodes.
-	s = sqlutils.MakeSQLRunner(tcAfter.Conns[0])
-	r := s.QueryRow(t, "select replicas from crdb_internal.ranges limit 1")
-	var replicas string
-	r.Scan(&replicas)
-	require.Equal(t, "{1,4,5}", replicas, "Replicas after loss of quorum recovery")
 
 	// Validate that rangelog is updated by recovery records after cluster restarts.
 	testutils.SucceedsSoon(t, func() error {
@@ -480,7 +494,7 @@ func TestHalfOnlineLossOfQuorumRecovery(t *testing.T) {
 				},
 				LOQRecovery: &loqrecovery.TestingKnobs{
 					MetadataScanTimeout: 15 * time.Second,
-					ForwardReplicaFilter: func(
+					MaybeInjectError: func(
 						response *serverpb.RecoveryCollectLocalReplicaInfoResponse,
 					) error {
 						// Artificially add an error that would cause the server to retry
@@ -548,6 +562,7 @@ func TestHalfOnlineLossOfQuorumRecovery(t *testing.T) {
 			"--confirm=y",
 			"--certs-dir=test_certs",
 			"--host=" + tc.Server(0).AdvRPCAddr(),
+			"--cluster-name=" + tc.ClusterName(),
 			"--plan=" + planFile,
 		})
 	require.NoError(t, err, "failed to run make-plan")
@@ -571,6 +586,7 @@ func TestHalfOnlineLossOfQuorumRecovery(t *testing.T) {
 			"debug", "recover", "apply-plan",
 			"--certs-dir=test_certs",
 			"--host=" + tc.Server(0).AdvRPCAddr(),
+			"--cluster-name=" + tc.ClusterName(),
 			"--confirm=y", planFile,
 		})
 	require.NoError(t, err, "failed to run apply plan")
@@ -586,6 +602,7 @@ func TestHalfOnlineLossOfQuorumRecovery(t *testing.T) {
 			"debug", "recover", "verify",
 			"--certs-dir=test_certs",
 			"--host=" + tc.Server(0).AdvRPCAddr(),
+			"--cluster-name=" + tc.ClusterName(),
 			planFile,
 		})
 	require.NoError(t, err, "failed to run verify plan")
@@ -635,6 +652,7 @@ func TestHalfOnlineLossOfQuorumRecovery(t *testing.T) {
 			"debug", "recover", "verify",
 			"--certs-dir=test_certs",
 			"--host=" + tc.Server(0).AdvRPCAddr(),
+			"--cluster-name=" + tc.ClusterName(),
 			planFile,
 		})
 	require.NoError(t, err, "failed to run verify plan")

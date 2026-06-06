@@ -27,7 +27,7 @@ import (
 // on all the supplied spans. It fatals if this doesn't happen in time.
 func TestingWaitForProtectedTimestampToExistOnSpans(
 	ctx context.Context,
-	t *testing.T,
+	t testutils.TestFataler,
 	srv serverutils.TestServerInterface,
 	ptsReader spanconfig.ProtectedTSReader,
 	protectedTimestamp hlc.Timestamp,
@@ -65,4 +65,15 @@ func GetPTSTarget(t *testing.T, db *sqlutils.SQLRunner, ptsID *uuid.UUID) *ptpb.
 		t.Fatal(err)
 	}
 	return ret
+}
+
+func GetPTSTimestamp(t *testing.T, db *sqlutils.SQLRunner, ptsRecordID uuid.UUID) hlc.Timestamp {
+	var tsStr string
+	tsQuery := `SELECT ts FROM system.protected_ts_records WHERE id = $1`
+	db.QueryRow(t, tsQuery, ptsRecordID).Scan(&tsStr)
+	ts, err := hlc.ParseHLC(tsStr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ts
 }

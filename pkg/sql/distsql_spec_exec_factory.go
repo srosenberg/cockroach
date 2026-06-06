@@ -282,9 +282,14 @@ func (e *distSQLSpecExecFactory) ConstructScan(
 	var spans roachpb.Spans
 	var err error
 	if params.InvertedConstraint != nil {
-		spans, err = sb.SpansFromInvertedSpans(e.ctx, params.InvertedConstraint, params.IndexConstraint, nil /* scratch */)
+		spans, err = sb.SpansFromInvertedSpans(e.ctx, params.InvertedConstraint, params.IndexConstraint, false /* prefixIncludedInKeys */, nil /* scratch */)
 	} else {
-		splitter := span.MakeSplitter(tabDesc, idx, params.NeededCols)
+		var splitter span.Splitter
+		if params.Locking.MustLockAllRequestedColumnFamilies() {
+			splitter = span.MakeSplitterForSideEffect(tabDesc, idx, params.NeededCols)
+		} else {
+			splitter = span.MakeSplitter(tabDesc, idx, params.NeededCols)
+		}
 		spans, err = sb.SpansFromConstraint(params.IndexConstraint, splitter)
 	}
 	if err != nil {
@@ -312,6 +317,7 @@ func (e *distSQLSpecExecFactory) ConstructScan(
 		Reverse:                         params.Reverse,
 		TableDescriptorModificationTime: tabDesc.GetModificationTime(),
 	}
+	// TODO(yuzefovich): record the index usage when applicable.
 	if err := rowenc.InitIndexFetchSpec(&trSpec.FetchSpec, e.planner.ExecCfg().Codec, tabDesc, idx, columnIDs); err != nil {
 		return nil, err
 	}
@@ -325,6 +331,15 @@ func (e *distSQLSpecExecFactory) ConstructScan(
 		// TODO(nvanbenschoten): lift this restriction.
 		recommendation = cannotDistribute
 	}
+	for _, colID := range columnIDs {
+		if columnIDRequiresMVCCDecoding(colID) {
+			// TODO(yuzefovich): only require MVCC decoding when txn has
+			// buffered writes.
+			// TODO(#144166): relax this.
+			recommendation = cannotDistribute
+			break
+		}
+	}
 
 	// Note that we don't do anything about the possible filter here since we
 	// don't know yet whether we will have it. ConstructFilter is responsible
@@ -332,8 +347,8 @@ func (e *distSQLSpecExecFactory) ConstructScan(
 	post := execinfrapb.PostProcessSpec{}
 	if params.HardLimit != 0 {
 		post.Limit = uint64(params.HardLimit)
-	} else if params.SoftLimit != 0 {
-		trSpec.LimitHint = params.SoftLimit
+	} else if softLimit := int64(params.SoftLimit); softLimit > 0 {
+		trSpec.LimitHint = softLimit
 	}
 
 	err = e.dsp.planTableReaders(
@@ -348,6 +363,7 @@ func (e *distSQLSpecExecFactory) ConstructScan(
 			reverse:           params.Reverse,
 			parallelize:       params.Parallelize,
 			estimatedRowCount: params.EstimatedRowCount,
+			statsCreatedAt:    params.StatsCreatedAt,
 			reqOrdering:       ReqOrdering(reqOrdering),
 		},
 	)
@@ -375,7 +391,7 @@ func (e *distSQLSpecExecFactory) checkExprsAndMaybeMergeLastStage(
 		recommendation = cannotDistribute
 	}
 	for _, expr := range exprs {
-		if err := checkExprForDistSQL(expr, &e.distSQLVisitor); err != nil {
+		if checkExprForDistSQL(expr, &e.distSQLVisitor) != 0 {
 			recommendation = cannotDistribute
 			if physPlan != nil {
 				// The expression cannot be distributed, so we need to make sure that
@@ -486,11 +502,13 @@ func (e *distSQLSpecExecFactory) ConstructRender(
 ) (exec.Node, error) {
 	physPlan, plan := getPhysPlan(n)
 	recommendation := e.checkExprsAndMaybeMergeLastStage(exprs, physPlan)
+	planCtx := e.getPlanCtx(recommendation)
 
 	newColMap := identityMap(physPlan.PlanToStreamColMap, len(exprs))
 	if err := physPlan.AddRendering(
-		e.ctx, exprs, e.getPlanCtx(recommendation), physPlan.PlanToStreamColMap, getTypesFromResultColumns(columns),
-		e.dsp.convertOrdering(ReqOrdering(reqOrdering), newColMap), nil, /* finalizeLastStageCb */
+		e.ctx, exprs, planCtx, physPlan.PlanToStreamColMap, getTypesFromResultColumns(columns),
+		e.dsp.convertOrdering(ReqOrdering(reqOrdering), newColMap),
+		nil /* finalizeLastStageCb */, planCtx.collectExecStats,
 	); err != nil {
 		return nil, err
 	}
@@ -505,6 +523,7 @@ func (e *distSQLSpecExecFactory) ConstructApplyJoin(
 	rightColumns colinfo.ResultColumns,
 	onCond tree.TypedExpr,
 	planRightSideFn exec.ApplyJoinPlanRightSideFn,
+	rightSideForExplainFn exec.ApplyJoinRightSideForExplainFn,
 ) (exec.Node, error) {
 	return nil, unimplemented.NewWithIssue(47473, "experimental opt-driven distsql planning: apply join")
 }
@@ -838,6 +857,7 @@ func (e *distSQLSpecExecFactory) ConstructIndexJoin(
 	reqOrdering exec.OutputOrdering,
 	locking opt.Locking,
 	limitHint int64,
+	parallelize bool,
 ) (exec.Node, error) {
 	physPlan, plan := getPhysPlan(input)
 	tabDesc := table.(*optTable).desc
@@ -854,20 +874,25 @@ func (e *distSQLSpecExecFactory) ConstructIndexJoin(
 	fetch.lockingWaitPolicy = descpb.ToScanLockingWaitPolicy(locking.WaitPolicy)
 	fetch.lockingDurability = descpb.ToScanLockingDurability(locking.Durability)
 
-	// TODO(drewk): in an EXPLAIN context, record the index usage.
+	// TODO(drewk): record the index usage when applicable.
 	planInfo := &indexJoinPlanningInfo{
 		fetch:       fetch,
 		keyCols:     keyCols,
 		reqOrdering: ReqOrdering(reqOrdering),
 		limitHint:   limitHint,
+		parallelize: parallelize,
 	}
 
 	recommendation := canDistribute
-	if locking.Strength != tree.ForNone {
+	if locking.Strength != tree.ForNone ||
 		// Index joins that are performing row-level locking cannot currently be
 		// distributed because their locks would not be propagated back to the root
 		// transaction coordinator.
 		// TODO(nvanbenschoten): lift this restriction.
+		fetch.requiresMVCCDecoding() {
+		// TODO(yuzefovich): only require MVCC decoding when txn has buffered
+		// writes.
+		// TODO(#144166): relax this.
 		recommendation = cannotDistribute
 		physPlan.EnsureSingleStreamOnGateway(e.ctx, nil /* finalizeLastStageCb */)
 	}
@@ -897,6 +922,7 @@ func (e *distSQLSpecExecFactory) ConstructLookupJoin(
 	limitHint int64,
 	remoteOnlyLookups bool,
 	reverseScans bool,
+	parallelize bool,
 ) (exec.Node, error) {
 	physPlan, plan := getPhysPlan(input)
 	var planNodesToClose []planNode
@@ -931,7 +957,7 @@ func (e *distSQLSpecExecFactory) ConstructLookupJoin(
 		fetch.lockingWaitPolicy = descpb.ToScanLockingWaitPolicy(locking.WaitPolicy)
 		fetch.lockingDurability = descpb.ToScanLockingDurability(locking.Durability)
 
-		// TODO(drewk): if in an EXPLAIN context, record the index usage.
+		// TODO(drewk): record the index usage when applicable.
 		planInfo := &lookupJoinPlanningInfo{
 			fetch:                      fetch,
 			joinType:                   joinType,
@@ -945,22 +971,26 @@ func (e *distSQLSpecExecFactory) ConstructLookupJoin(
 			limitHint:                  limitHint,
 			remoteOnlyLookups:          remoteOnlyLookups,
 			reverseScans:               reverseScans,
+			parallelize:                parallelize,
 		}
 		if onCond != tree.DBoolTrue {
 			planInfo.onCond = onCond
 		}
 
 		recommendation := e.checkExprsAndMaybeMergeLastStage([]tree.TypedExpr{lookupExpr, onCond}, physPlan)
-		if locking.Strength != tree.ForNone {
-			// Lookup joins that are performing row-level locking cannot currently be
-			// distributed because their locks would not be propagated back to the root
-			// transaction coordinator.
+		noDistribution := locking.Strength != tree.ForNone ||
+			// Lookup joins that are performing row-level locking cannot
+			// currently be distributed because their locks would not be
+			// propagated back to the root transaction coordinator.
 			// TODO(nvanbenschoten): lift this restriction.
-			recommendation = cannotDistribute
-			physPlan.EnsureSingleStreamOnGateway(e.ctx, nil /* finalizeLastStageCb */)
-		} else if remoteLookupExpr != nil || remoteOnlyLookups {
-			// Do not distribute locality-optimized joins, since it would defeat the
-			// purpose of the optimization.
+			(remoteLookupExpr != nil || remoteOnlyLookups) ||
+			// Do not distribute locality-optimized joins, since it would defeat
+			// the purpose of the optimization.
+			fetch.requiresMVCCDecoding()
+		// TODO(yuzefovich): only require MVCC decoding when txn has buffered
+		// writes.
+		// TODO(#144166): relax this.
+		if noDistribution {
 			recommendation = cannotDistribute
 			physPlan.EnsureSingleStreamOnGateway(e.ctx, nil /* finalizeLastStageCb */)
 		}
@@ -1004,7 +1034,7 @@ func (e *distSQLSpecExecFactory) ConstructInvertedJoin(
 	fetch.lockingWaitPolicy = descpb.ToScanLockingWaitPolicy(locking.WaitPolicy)
 	fetch.lockingDurability = descpb.ToScanLockingDurability(locking.Durability)
 
-	// TODO(drewk): if we're in an EXPLAIN context, record the index usage.
+	// TODO(drewk): record the index usage when applicable.
 	planInfo := &invertedJoinPlanningInfo{
 		fetch:                     fetch,
 		joinType:                  joinType,
@@ -1066,8 +1096,7 @@ func (e *distSQLSpecExecFactory) constructZigzagJoinSide(
 		return zigzagPlanningSide{}, err
 	}
 
-	// TODO (cucaroach): update indexUsageStats.
-
+	// TODO(yuzefovich): record the index usage when applicable.
 	return zigzagPlanningSide{
 		desc:              desc,
 		index:             index.(*optIndex).idx,
@@ -1291,7 +1320,7 @@ func (e *distSQLSpecExecFactory) ConstructPlan(
 	} else {
 		p.physPlan.onClose = e.planCtx.getCleanupFunc()
 	}
-	return constructPlan(e.planner, root, subqueries, cascades, triggers, checks, rootRowCount, flags)
+	return constructPlan(root, subqueries, cascades, triggers, checks, rootRowCount, flags)
 }
 
 func (e *distSQLSpecExecFactory) ConstructExplainOpt(
@@ -1403,9 +1432,25 @@ func (e *distSQLSpecExecFactory) ConstructUpdate(
 	checks exec.CheckOrdinalSet,
 	passthrough colinfo.ResultColumns,
 	uniqueWithTombstoneIndexes cat.IndexOrdinals,
+	lockedIndexes cat.IndexOrdinals,
 	autoCommit bool,
 ) (exec.Node, error) {
 	return nil, unimplemented.NewWithIssue(47473, "experimental opt-driven distsql planning: update")
+}
+
+func (e *distSQLSpecExecFactory) ConstructUpdateSwap(
+	input exec.Node,
+	table cat.Table,
+	fetchCols exec.TableColumnOrdinalSet,
+	updateCols exec.TableColumnOrdinalSet,
+	returnCols exec.TableColumnOrdinalSet,
+	passthrough colinfo.ResultColumns,
+	lockedIndexes cat.IndexOrdinals,
+	autoCommit bool,
+) (exec.Node, error) {
+	return nil, unimplemented.NewWithIssue(
+		47473, "experimental opt-driven distsql planning: update swap",
+	)
 }
 
 func (e *distSQLSpecExecFactory) ConstructUpsert(
@@ -1420,6 +1465,7 @@ func (e *distSQLSpecExecFactory) ConstructUpsert(
 	returnCols exec.TableColumnOrdinalSet,
 	checks exec.CheckOrdinalSet,
 	uniqueWithTombstoneIndexes cat.IndexOrdinals,
+	lockedIndexes cat.IndexOrdinals,
 	autoCommit bool,
 ) (exec.Node, error) {
 	return nil, unimplemented.NewWithIssue(47473, "experimental opt-driven distsql planning: upsert")
@@ -1437,6 +1483,20 @@ func (e *distSQLSpecExecFactory) ConstructDelete(
 	return nil, unimplemented.NewWithIssue(47473, "experimental opt-driven distsql planning: delete")
 }
 
+func (e *distSQLSpecExecFactory) ConstructDeleteSwap(
+	input exec.Node,
+	table cat.Table,
+	fetchCols exec.TableColumnOrdinalSet,
+	returnCols exec.TableColumnOrdinalSet,
+	passthrough colinfo.ResultColumns,
+	lockedIndexes cat.IndexOrdinals,
+	autoCommit bool,
+) (exec.Node, error) {
+	return nil, unimplemented.NewWithIssue(
+		47473, "experimental opt-driven distsql planning: delete swap",
+	)
+}
+
 func (e *distSQLSpecExecFactory) ConstructDeleteRange(
 	table cat.Table,
 	needed exec.TableColumnOrdinalSet,
@@ -1450,7 +1510,7 @@ func (e *distSQLSpecExecFactory) ConstructVectorSearch(
 	table cat.Table,
 	index cat.Index,
 	outCols exec.TableColumnOrdinalSet,
-	prefixKey constraint.Key,
+	prefixConstraint *constraint.Constraint,
 	queryVector tree.TypedExpr,
 	targetNeighborCount uint64,
 ) (exec.Node, error) {
@@ -1459,17 +1519,18 @@ func (e *distSQLSpecExecFactory) ConstructVectorSearch(
 	cols := makeColList(table, outCols)
 	resultCols := colinfo.ResultColumnsFromColumns(tabDesc.GetID(), cols)
 
-	// Encode the prefix values as a roachpb.Key.
+	// Encode the prefix constraint as a list of roachpb.Keys.
 	var sb span.Builder
 	sb.Init(e.planner.EvalContext(), e.planner.ExecCfg().Codec, tabDesc, indexDesc)
-	encPrefixKey, _, err := sb.EncodeConstraintKey(prefixKey)
+	prefixKeys, err := sb.KeysFromVectorPrefixConstraint(e.ctx, prefixConstraint)
 	if err != nil {
 		return nil, err
 	}
+	// TODO(yuzefovich): record the index usage when applicable.
 	planInfo := &vectorSearchPlanningInfo{
 		table:               tabDesc,
 		index:               indexDesc,
-		prefixKey:           encPrefixKey,
+		prefixKeys:          prefixKeys,
 		queryVector:         queryVector,
 		targetNeighborCount: targetNeighborCount,
 		cols:                cols,
@@ -1504,6 +1565,7 @@ func (e *distSQLSpecExecFactory) ConstructVectorMutationSearch(
 	if isIndexPut {
 		cols = append(cols, colinfo.ResultColumn{Name: "quantized-vector", Typ: types.Bytes})
 	}
+	// TODO(yuzefovich): record the index usage when applicable.
 	planInfo := &vectorMutationSearchPlanningInfo{
 		table:          table.(*optTable).desc,
 		index:          index.(*optIndex).idx,
@@ -1540,6 +1602,7 @@ func (e *distSQLSpecExecFactory) ConstructCreateView(
 	columns colinfo.ResultColumns,
 	deps opt.SchemaDeps,
 	typeDeps opt.SchemaTypeDeps,
+	funcDeps opt.SchemaFunctionDeps,
 ) (exec.Node, error) {
 	return nil, unimplemented.NewWithIssue(47473, "experimental opt-driven distsql planning: create view")
 }
@@ -1666,7 +1729,7 @@ func (e *distSQLSpecExecFactory) ConstructCancelSessions(
 }
 
 func (e *distSQLSpecExecFactory) ConstructCreateStatistics(
-	cs *tree.CreateStats,
+	cs *tree.CreateStats, table cat.Table, index cat.Index, whereConstraint *constraint.Constraint,
 ) (exec.Node, error) {
 	return nil, unimplemented.NewWithIssue(47473, "experimental opt-driven distsql planning: create statistics")
 }

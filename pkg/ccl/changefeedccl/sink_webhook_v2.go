@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/redact"
 )
 
 const (
@@ -48,14 +49,15 @@ func isWebhookSink(u *url.URL) bool {
 }
 
 type webhookSinkClient struct {
-	ctx         context.Context
-	format      changefeedbase.FormatType
-	url         *changefeedbase.SinkURL
-	authHeader  string
-	batchCfg    sinkBatchConfig
-	client      *httputil.Client
-	settings    *cluster.Settings
-	compression compressionAlgo
+	ctx               context.Context
+	format            changefeedbase.FormatType
+	url               *changefeedbase.SinkURL
+	authHeader        string
+	additionalHeaders map[string]string
+	batchCfg          sinkBatchConfig
+	client            *httputil.Client
+	settings          *cluster.Settings
+	compression       compressionAlgo
 }
 
 var _ SinkClient = (*webhookSinkClient)(nil)
@@ -89,12 +91,13 @@ func makeWebhookSinkClient(
 	u.Scheme = strings.TrimPrefix(u.Scheme, `webhook-`)
 
 	sinkClient := &webhookSinkClient{
-		ctx:         ctx,
-		authHeader:  opts.AuthHeader,
-		format:      encodingOpts.Format,
-		batchCfg:    batchCfg,
-		settings:    settings,
-		compression: compression,
+		ctx:               ctx,
+		authHeader:        opts.AuthHeader,
+		additionalHeaders: opts.ExtraHeaders,
+		format:            encodingOpts.Format,
+		batchCfg:          batchCfg,
+		settings:          settings,
+		compression:       compression,
 	}
 
 	var connTimeout time.Duration
@@ -270,7 +273,7 @@ func (sc *webhookSinkClient) Flush(ctx context.Context, batch SinkPayload) error
 	req.Body = b
 	res, err := sc.client.Do(req)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "webhook sink request failed")
 	}
 	defer res.Body.Close()
 
@@ -280,7 +283,8 @@ func (sc *webhookSinkClient) Flush(ctx context.Context, batch SinkPayload) error
 		if err != nil {
 			return errors.Wrapf(err, "failed to read body for HTTP response with status: %d", res.StatusCode)
 		}
-		return fmt.Errorf("%s: %s", res.Status, string(resBody))
+		return errors.Newf("webhook sink HTTP error %s: %s",
+			redact.Safe(res.Status), resBody)
 	}
 	return nil
 }
@@ -309,6 +313,9 @@ func (sc *webhookSinkClient) setRequestHeaders(req *http.Request) {
 		req.Header.Set(contentEncodingHeader, compression)
 	}
 
+	for k, v := range sc.additionalHeaders {
+		req.Header.Set(k, v)
+	}
 	if sc.authHeader != "" {
 		req.Header.Set(authorizationHeader, sc.authHeader)
 	}
@@ -356,7 +363,16 @@ type webhookCSVBuffer struct {
 var _ BatchBuffer = (*webhookCSVBuffer)(nil)
 
 // Append implements the BatchBuffer interface.
-func (cb *webhookCSVBuffer) Append(key []byte, value []byte, _ attributes) {
+func (cb *webhookCSVBuffer) Append(
+	ctx context.Context, key []byte, value []byte, attrs attributes,
+) {
+	if len(cb.bytes) == 0 && len(attrs.csvColumnHeader) > 0 {
+		cb.bytes = append(cb.bytes, attrs.csvColumnHeader...)
+		cb.bytes = append(cb.bytes, '\n')
+	}
+	if cb.messageCount >= 1 {
+		cb.bytes = append(cb.bytes, '\n')
+	}
 	cb.bytes = append(cb.bytes, value...)
 	cb.messageCount += 1
 }
@@ -380,7 +396,7 @@ type webhookJSONBuffer struct {
 var _ BatchBuffer = (*webhookJSONBuffer)(nil)
 
 // Append implements the BatchBuffer interface.
-func (jb *webhookJSONBuffer) Append(key []byte, value []byte, _ attributes) {
+func (jb *webhookJSONBuffer) Append(ctx context.Context, key []byte, value []byte, _ attributes) {
 	jb.messages = append(jb.messages, value)
 	jb.numBytes += len(value)
 }

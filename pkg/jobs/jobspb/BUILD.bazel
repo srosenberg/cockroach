@@ -15,6 +15,7 @@ go_library(
     deps = [
         "//pkg/base",
         "//pkg/roachpb",
+        "//pkg/security/username",
         "//pkg/sql/catalog/catpb",
         "//pkg/sql/catalog/descpb",
         "//pkg/sql/protoreflect",
@@ -22,6 +23,7 @@ go_library(
         "//pkg/util/iterutil",
         "//pkg/util/tracing/tracingpb",
         "@com_github_cockroachdb_errors//:errors",
+        "@com_github_cockroachdb_redact//:redact",
         "@com_github_gogo_protobuf//jsonpb",
     ],
 )
@@ -48,6 +50,7 @@ proto_library(
         "@com_github_cockroachdb_errors//errorspb:errorspb_proto",
         "@com_github_gogo_protobuf//gogoproto:gogo_proto",
         "@com_google_protobuf//:any_proto",
+        "@com_google_protobuf//:empty_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
@@ -79,9 +82,15 @@ go_proto_library(
 
 go_test(
     name = "jobspb_test",
-    srcs = ["wrap_test.go"],
+    srcs = [
+        "jobs_test.go",
+        "wrap_test.go",
+    ],
     deps = [
         ":jobspb",
+        "//pkg/roachpb",
+        "//pkg/util/hlc",
         "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
     ],
 )

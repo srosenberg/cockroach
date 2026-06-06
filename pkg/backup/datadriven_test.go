@@ -45,6 +45,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
+	"github.com/cockroachdb/cockroach/pkg/util/admission"
+	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/datadriven"
 	"github.com/cockroachdb/errors"
 	"github.com/lib/pq"
@@ -91,10 +93,9 @@ type sqlDBKey struct {
 
 type datadrivenTestState struct {
 	// cluster maps the user defined cluster name to its cluster
-	clusters map[string]serverutils.TestClusterInterface
+	clusters       map[string]serverutils.TestClusterInterface
+	clusterCleanup []func()
 
-	// firstNode maps the cluster name to the first node in the cluster
-	firstNode         map[string]serverutils.TestServerInterface
 	dataDirs          map[string]string
 	sqlDBs            map[sqlDBKey]*gosql.DB
 	jobTags           map[string]jobspb.JobID
@@ -107,7 +108,6 @@ type datadrivenTestState struct {
 func newDatadrivenTestState() datadrivenTestState {
 	return datadrivenTestState{
 		clusters:          make(map[string]serverutils.TestClusterInterface),
-		firstNode:         make(map[string]serverutils.TestServerInterface),
 		dataDirs:          make(map[string]string),
 		sqlDBs:            make(map[sqlDBKey]*gosql.DB),
 		jobTags:           make(map[string]jobspb.JobID),
@@ -120,16 +120,27 @@ func (d *datadrivenTestState) cleanup(ctx context.Context, t *testing.T) {
 	// While the testCluster cleanupFns would close the dbConn and clusters, close
 	// them manually to ensure all queries finish on tests that share these
 	// resources.
+	for _, f := range d.cleanupFns {
+		f()
+	}
+
 	for _, db := range d.sqlDBs {
 		backuptestutils.CheckForInvalidDescriptors(t, db)
 		db.Close()
 	}
-	for _, s := range d.firstNode {
-		s.Stopper().Stop(ctx)
+
+	// Clean up the clusters in parallel so that if one gets stuck we don't see
+	// goroutines for running clusters mixed in with goroutines for the stuck
+	// cluster.
+	group := ctxgroup.WithContext(ctx)
+	for _, cleanup := range d.clusterCleanup {
+		group.Go(func() error {
+			cleanup()
+			return nil
+		})
 	}
-	for _, f := range d.cleanupFns {
-		f()
-	}
+	require.NoError(t, group.Wait())
+
 	d.noticeBuffer = nil
 }
 
@@ -149,7 +160,6 @@ type clusterCfg struct {
 func (d *datadrivenTestState) addCluster(t *testing.T, cfg clusterCfg) error {
 	params := base.TestClusterArgs{}
 	params.ServerArgs.ExternalIODirConfig = cfg.ioConf
-
 	params.ServerArgs.DefaultTestTenant = cfg.defaultTestTenant
 	var transactionRetryFilter func(roachpb.Transaction) bool
 	if cfg.randomTxnRetries {
@@ -184,6 +194,11 @@ func (d *datadrivenTestState) addCluster(t *testing.T, cfg clusterCfg) error {
 	closedts.SideTransportCloseInterval.Override(context.Background(), &settings.SV, 10*time.Millisecond)
 	kvserver.RangeFeedRefreshInterval.Override(context.Background(), &settings.SV, 10*time.Millisecond)
 	sql.TempObjectWaitInterval.Override(context.Background(), &settings.SV, time.Millisecond)
+	// Disable AC yielding as these tests can run many in-process clusters at once
+	// and overload the host. Generally overload would mean bulk work, which only
+	// uses strictly spare capacitym gets starved, but these tests expect it to
+	// still run (just slowly, along with everything else).
+	admission.YieldForElasticCPU.Override(context.Background(), &settings.SV, false)
 	params.ServerArgs.Settings = settings
 
 	clusterSize := cfg.nodes
@@ -216,16 +231,19 @@ func (d *datadrivenTestState) addCluster(t *testing.T, cfg clusterCfg) error {
 		backuptestutils.WithSkipInvalidDescriptorCheck(),
 	}
 	if cfg.iodir == "" {
-		opts = append(opts, backuptestutils.WithBank(cfg.splits))
+		rows := cfg.splits
+		if rows < 2 {
+			rows = 2
+		}
+		opts = append(opts, backuptestutils.WithBank(rows))
 	}
 
 	var tc serverutils.TestClusterInterface
 	var cleanup func()
 	tc, _, cfg.iodir, cleanup = backuptestutils.StartBackupRestoreTestCluster(t, clusterSize, opts...)
 	d.clusters[cfg.name] = tc
-	d.firstNode[cfg.name] = tc.Server(0)
 	d.dataDirs[cfg.name] = cfg.iodir
-	d.cleanupFns = append(d.cleanupFns, cleanup)
+	d.clusterCleanup = append(d.clusterCleanup, cleanup)
 
 	return nil
 }
@@ -262,7 +280,7 @@ func (d *datadrivenTestState) getSQLDBForVC(
 		serverutils.User(user),
 	}
 
-	s := d.firstNode[name].ApplicationLayer()
+	s := d.clusters[name].ApplicationLayer(0)
 	switch vc {
 	case "default":
 		// Nothing to do.
@@ -270,7 +288,7 @@ func (d *datadrivenTestState) getSQLDBForVC(
 		// We use the system layer since in the case of
 		// external SQL server's the application layer can't
 		// route to the system tenant.
-		s = d.firstNode[name].SystemLayer()
+		s = d.clusters[name].SystemLayer(0)
 	default:
 		opts = append(opts, serverutils.DBName("cluster:"+vc))
 	}
@@ -283,6 +301,11 @@ func (d *datadrivenTestState) getSQLDBForVC(
 		t.Fatal(err)
 	}
 	connector := pq.ConnectorWithNoticeHandler(base, func(notice *pq.Error) {
+		// Skip all "waiting for job(s) to complete" notices, since they include
+		// non-deterministic jobIDs.
+		if strings.HasPrefix(notice.Message, "waiting for job") {
+			return
+		}
 		d.noticeBuffer = append(d.noticeBuffer, notice.Severity+": "+notice.Message)
 		if notice.Detail != "" {
 			d.noticeBuffer = append(d.noticeBuffer, "DETAIL: "+notice.Detail)
@@ -330,7 +353,8 @@ func (d *datadrivenTestState) getSQLDBForVC(
 //   - testingKnobCfg: specifies a key to a hardcoded testingKnob configuration
 //
 //   - disable-tenant : ensures the test is never run in a multitenant environment by
-//     setting testserverargs.DefaultTestTenant to base.TODOTestTenantDisabled.
+//     setting testserverargs.DefaultTestTenant to
+//     base.TestDoesNotWorkWithSecondaryTenantsButWeDontKnowWhyYet(142798).
 //
 //   - "upgrade-cluster version=<version>"
 //     Upgrade the cluster version of the active cluster to the passed in
@@ -397,6 +421,10 @@ func (d *datadrivenTestState) getSQLDBForVC(
 //   - expect-pausepoint: expects the backup job to end up in a paused state because
 //     of a pausepoint error.
 //
+//   - aost: expects a tag referencing a previously saved cluster timestamp
+//     using `save-cluster-ts`. It then runs the backup as of the saved cluster
+//     timestamp.
+//
 //   - "restore" [args]
 //     Executes restore specific operations.
 //
@@ -410,13 +438,29 @@ func (d *datadrivenTestState) getSQLDBForVC(
 //   - aost: expects a tag referencing a previously saved cluster timestamp
 //     using `save-cluster-ts`. It then runs the restore as of the saved cluster
 //     timestamp.
+
+//   - "compact" [args]
+//     Executes compaction specific operations.
+//
+//     Supported arguments:
+//
+//   - tag=<tag>: tag the compaction job to reference it in the future.
+//
+//   - expect-pausepoint: expects the restore job to end up in a paused state because
+//     of a pausepoint error.
+//
+//   - start: expects a tag referencing a previously saved cluster timestamp
+//     using `save-cluster-ts`.
+//
+//   - end: expects a tag referencing a previously saved cluster timestamp
+//     using `save-cluster-ts`.
 //
 //   - "schema" [args]
 //     Executes schema change specific operations.
 //
 //     Supported arguments:
 //
-//   - tag=<tag>: tag the schema change job to reference it in the future.
+// - tag=<tag>: tag the schema change job to reference it in the future.
 //
 //   - expect-pausepoint: expects the schema change job to end up in a paused state because
 //     of a pausepoint error.
@@ -426,9 +470,9 @@ func (d *datadrivenTestState) getSQLDBForVC(
 //
 //     Supported arguments:
 //
-//   - type: kv request type. Currently, only DeleteRange is supported
+// - type: kv request type. Currently, only DeleteRange is supported
 //
-//   - target: SQL target. Currently, only table names are supported.
+// - target: SQL target. Currently, only table names are supported.
 //
 //   - "corrupt-backup" uri=<collectionUri>
 //     Finds the latest backup in the provided collection uri an flips a bit in one SST in the backup
@@ -443,6 +487,10 @@ func (d *datadrivenTestState) getSQLDBForVC(
 //
 //lint:ignore U1000 unused
 func runTestDataDriven(t *testing.T, testFilePathFromWorkspace string) {
+	// TODO(at): data driven tests will need some tweaks to work with OR metamorphic, which will
+	// likely be simplified after fixing some of the other test infra issues.
+	backuptestutils.DisableFastRestoreForTest(t)
+
 	// This test uses this mock HTTP server to pass the backup files between tenants.
 	httpAddr, httpServerCleanup := makeInsecureHTTPServer(t)
 	defer httpServerCleanup()
@@ -574,7 +622,7 @@ func runTestDataDriven(t *testing.T, testFilePathFromWorkspace string) {
 				d.ScanArgs(t, "testingKnobCfg", &testingKnobCfg)
 			}
 			if d.HasArg("disable-tenant") {
-				defaultTestTenant = base.TODOTestTenantDisabled
+				defaultTestTenant = base.TestDoesNotWorkWithSecondaryTenantsButWeDontKnowWhyYet(142798)
 			}
 
 			// TODO(ssd): Once TestServer starts up reliably enough:
@@ -797,6 +845,18 @@ func runTestDataDriven(t *testing.T, testFilePathFromWorkspace string) {
 			return ""
 
 		case "backup":
+			if d.HasArg("aost") {
+				var aost string
+				d.ScanArgs(t, "aost", &aost)
+				var ts string
+				var ok bool
+				if ts, ok = ds.clusterTimestamps[aost]; !ok {
+					t.Fatalf("no cluster timestamp found for %s", aost)
+				}
+				// Replace the ts tag with the actual timestamp.
+				d.Input = strings.Replace(d.Input, aost,
+					fmt.Sprintf("'%s'", ts), 1)
+			}
 			return execWithTagAndPausePoint(jobspb.TypeBackup)
 
 		case "import":
@@ -818,6 +878,29 @@ func runTestDataDriven(t *testing.T, testFilePathFromWorkspace string) {
 			}
 			return execWithTagAndPausePoint(jobspb.TypeRestore)
 
+		case "compact":
+			if !d.HasArg("start") || !d.HasArg("end") {
+				t.Fatalf("must specify start and end for compaction")
+			}
+			var start, end string
+			d.ScanArgs(t, "start", &start)
+			d.ScanArgs(t, "end", &end)
+			var startTs, endTs string
+			var ok bool
+			if startTs, ok = ds.clusterTimestamps[start]; !ok {
+				t.Fatalf("no cluster timestamp found for %s", start)
+			}
+			if endTs, ok = ds.clusterTimestamps[end]; !ok {
+				t.Fatalf("no cluster timestamp found for %s", end)
+			}
+			// Replace the ts tag with the actual timestamp.
+			// ds.clusterTimestamps stores a stringified nanosecond epoch.
+			d.Input = strings.Replace(d.Input, start,
+				fmt.Sprintf("'%s'::DECIMAL", startTs), 1)
+			d.Input = strings.Replace(d.Input, end,
+				fmt.Sprintf("'%s'::DECIMAL", endTs), 1)
+
+			return execWithTagAndPausePoint(jobspb.TypeBackup)
 		case "new-schema-change":
 			return execWithTagAndPausePoint(jobspb.TypeNewSchemaChange)
 
@@ -901,7 +984,7 @@ func runTestDataDriven(t *testing.T, testFilePathFromWorkspace string) {
 			return ""
 
 		case "create-dummy-system-table":
-			al := ds.firstNode[lastCreatedCluster].ApplicationLayer()
+			al := ds.clusters[lastCreatedCluster].ApplicationLayer(0)
 			db := al.DB()
 			execCfg := al.ExecutorConfig().(sql.ExecutorConfig)
 			codec := execCfg.Codec
@@ -982,7 +1065,7 @@ func handleKVRequest(
 			},
 			UseRangeTombstone: true,
 		}
-		if _, err := kv.SendWrapped(ctx, ds.firstNode[cluster].SystemLayer().DistSenderI().(*kvcoord.DistSender), &dr); err != nil {
+		if _, err := kv.SendWrapped(ctx, ds.clusters[cluster].SystemLayer(0).DistSenderI().(*kvcoord.DistSender), &dr); err != nil {
 			t.Fatal(err)
 		}
 	} else {

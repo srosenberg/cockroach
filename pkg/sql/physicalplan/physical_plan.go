@@ -13,6 +13,7 @@ import (
 	"context"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
@@ -192,8 +193,9 @@ func NewPhysicalInfrastructure(
 
 // Release resets the object and puts it back into the pool for reuse.
 func (p *PhysicalInfrastructure) Release() {
-	// We only need to nil out the local processors since these are the only
-	// pointer types.
+	for i := range p.Processors {
+		p.Processors[i] = Processor{}
+	}
 	for i := range p.LocalProcessors {
 		p.LocalProcessors[i] = nil
 	}
@@ -271,6 +273,8 @@ type ProcessorCorePlacement struct {
 	// EstimatedRowCount, if set to non-zero, is the optimizer's guess of how
 	// many rows will be emitted from this processor.
 	EstimatedRowCount uint64
+	// StatsCreatedAt is the time when the latest table statistics were collected.
+	StatsCreatedAt time.Time
 }
 
 // AddNoInputStage creates a stage of processors that don't have any input from
@@ -308,6 +312,7 @@ func (p *PhysicalPlan) AddNoInputStage(
 				StageID:           stageID,
 				ResultTypes:       outputTypes,
 				EstimatedRowCount: corePlacements[i].EstimatedRowCount,
+				StatsCreatedAt:    corePlacements[i].StatsCreatedAt,
 			},
 		}
 
@@ -690,6 +695,7 @@ func (p *PhysicalPlan) AddRendering(
 	outTypes []*types.T,
 	newMergeOrdering execinfrapb.Ordering,
 	finalizeLastStageCb func(*PhysicalPlan),
+	collectExecStats bool,
 ) error {
 	// First check if we need an Evaluator, or we are just shuffling values. We
 	// also check if the rendering is a no-op ("identity").
@@ -725,11 +731,15 @@ func (p *PhysicalPlan) AddRendering(
 	}
 
 	post := p.GetLastStagePost()
-	if len(post.RenderExprs) > 0 || len(post.OutputColumns) > 0 {
+	if len(post.RenderExprs) > 0 || len(post.OutputColumns) > 0 || collectExecStats {
 		post = execinfrapb.PostProcessSpec{}
 		// The last stage contains render expressions, or is projecting input columns.
 		// The new renders refer to the output of these in a particular order, so we
 		// need to add another "no-op" stage to which to attach the new rendering.
+		//
+		// We also plan the no-op processor if we're collecting execution stats:
+		// this allows us to separate them from the exec stats of the render's
+		// input.
 		p.AddNoGroupingStage(
 			execinfrapb.ProcessorCoreUnion{Noop: &execinfrapb.NoopCoreSpec{}},
 			post,
@@ -1035,8 +1045,17 @@ func (p *PhysicalPlan) GenerateFlowSpecs() (
 }
 
 func releaseAll(flows map[base.SQLInstanceID]*execinfrapb.FlowSpec) {
-	for _, flowSpec := range flows {
-		ReleaseFlowSpec(flowSpec)
+	for _, spec := range flows {
+		for i := range spec.Processors {
+			if tr := spec.Processors[i].Core.TableReader; tr != nil {
+				releaseTableReaderSpec(tr)
+			}
+			spec.Processors[i] = execinfrapb.ProcessorSpec{}
+		}
+		*spec = execinfrapb.FlowSpec{
+			Processors: spec.Processors[:0],
+		}
+		flowSpecPool.Put(spec)
 	}
 }
 

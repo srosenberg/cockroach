@@ -11,12 +11,13 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency/isolation"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
-	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/cat"
 	"github.com/cockroachdb/cockroach/pkg/sql/opt/constraint"
@@ -410,36 +411,32 @@ func (b *Builder) maybeAnnotateWithEstimates(node exec.Node, e memo.RelExpr) {
 		}
 		if scan, ok := e.(*memo.ScanExpr); ok {
 			tab := b.mem.Metadata().Table(scan.Table)
-			if tab.StatisticCount() > 0 {
-				// The first stat is the most recent full one.
-				var first int
-				for first < tab.StatisticCount() &&
-					tab.Statistic(first).IsPartial() ||
-					(tab.Statistic(first).IsForecast() && !b.evalCtx.SessionData().OptimizerUseForecasts) {
-					first++
+			first := cat.FindLatestFullStat(tab, b.evalCtx.SessionData())
+			if first < tab.StatisticCount() {
+				stat := tab.Statistic(first)
+				val.TableStatsRowCount = stat.RowCount()
+				if val.TableStatsRowCount == 0 {
+					val.TableStatsRowCount = 1
 				}
-
-				if first < tab.StatisticCount() {
-					stat := tab.Statistic(first)
-					val.TableStatsRowCount = stat.RowCount()
-					if val.TableStatsRowCount == 0 {
-						val.TableStatsRowCount = 1
-					}
-					val.TableStatsCreatedAt = stat.CreatedAt()
-					val.LimitHint = scan.RequiredPhysical().LimitHint
-					val.Forecast = stat.IsForecast()
-					if val.Forecast {
-						val.ForecastAt = stat.CreatedAt()
-						// Find the first non-forecast full stat.
-						for i := first + 1; i < tab.StatisticCount(); i++ {
-							nextStat := tab.Statistic(i)
-							if !nextStat.IsPartial() && !nextStat.IsForecast() {
-								val.TableStatsCreatedAt = nextStat.CreatedAt()
-								break
-							}
+				val.TableStatsCreatedAt = stat.CreatedAt()
+				val.LimitHint = scan.RequiredPhysical().LimitHint
+				val.Forecast = stat.IsForecast()
+				if val.Forecast {
+					val.ForecastAt = stat.CreatedAt()
+					// Find the first non-forecast full stat.
+					for i := first + 1; i < tab.StatisticCount(); i++ {
+						nextStat := tab.Statistic(i)
+						if !nextStat.IsPartial() && !nextStat.IsForecast() {
+							val.TableStatsCreatedAt = nextStat.CreatedAt()
+							break
 						}
 					}
 				}
+			}
+			if tab.CanaryAndStableStatsDiffer() &&
+				b.evalCtx.Settings.Version.IsActive(b.ctx, clusterversion.V26_2) {
+				val.CanaryStatsActive = true
+				val.CanaryWindowSize = tab.StatsCanaryWindow()
 			}
 		}
 		ef.AnnotateNode(node, exec.EstimatedStatsID, &val)
@@ -463,7 +460,7 @@ func (b *Builder) maybeAnnotatePolicyInfo(node exec.Node, e memo.RelExpr) {
 			policiesApplied, found := rlsMeta.PoliciesApplied[tabID]
 			if found {
 				val := exec.RLSPoliciesApplied{
-					PoliciesSkippedForRole: rlsMeta.HasAdminRole || policiesApplied.NoForceExempt,
+					PoliciesSkippedForRole: rlsMeta.HasAdminRole || policiesApplied.NoForceExempt || policiesApplied.BypassRLS,
 				}
 				if applyFilterExpr {
 					val.Policies = policiesApplied.Filter
@@ -475,12 +472,21 @@ func (b *Builder) maybeAnnotatePolicyInfo(node exec.Node, e memo.RelExpr) {
 		}
 		switch e := e.(type) {
 		case *memo.ValuesExpr:
-			// Normally, since policies apply to specific tables, we annotate when we
-			// come across a scan of a single table. We need to annotate a "norows"
-			// value as this can be emitted when scanning a table and RLS forced all
-			// rows to be filtered out because none of the policies applied.
-			if len(e.Rows) == 0 && rlsMeta.NoPoliciesApplied {
-				ef.AnnotateNode(node, exec.PolicyInfoID, &exec.RLSPoliciesApplied{})
+			// In most cases, RLS policies are annotated when scanning individual tables.
+			// However, a "norows" ValuesExpr can also be produced as a result of scanning
+			// a table where RLS is enabled and enforced, and all rows were filtered out.
+			//
+			// This can happen if:
+			//   - No policies applied (e.g., no SELECT policy was defined), or
+			//   - Policies did apply, but their conditions excluded all rows (e.g., the
+			//     policy condition contradicted the query predicate).
+			//
+			// In either case, we annotate this node to reflect that RLS caused all rows
+			// to be filtered.
+			if len(e.Rows) == 0 {
+				ef.AnnotateNode(node, exec.PolicyInfoID, &exec.RLSPoliciesApplied{
+					PoliciesFilteredAllRows: !rlsMeta.NoPoliciesApplied,
+				})
 			}
 		case *memo.ScanExpr:
 			annotateNodeForTable(e.Table, true /* applyFilterExpr */)
@@ -531,7 +537,6 @@ func (b *Builder) buildValuesRows(values *memo.ValuesExpr) ([][]tree.TypedExpr, 
 	numCols := len(values.Cols)
 
 	rows := makeTypedExprMatrix(len(values.Rows), numCols)
-	scalarCtx := buildScalarCtx{}
 	for i := range rows {
 		tup := values.Rows[i].(*memo.TupleExpr)
 		if len(tup.Elems) != numCols {
@@ -539,7 +544,7 @@ func (b *Builder) buildValuesRows(values *memo.ValuesExpr) ([][]tree.TypedExpr, 
 		}
 		var err error
 		for j := 0; j < numCols; j++ {
-			rows[i][j], err = b.buildScalar(&scalarCtx, tup.Elems[j])
+			rows[i][j], err = b.buildScalar(&emptyBuildScalarCtx, tup.Elems[j])
 			if err != nil {
 				return nil, err
 			}
@@ -654,7 +659,11 @@ func (b *Builder) indexConstraintMaxResults(
 
 // scanParams populates ScanParams and the output column mapping.
 func (b *Builder) scanParams(
-	tab cat.Table, scan *memo.ScanPrivate, relProps *props.Relational, reqProps *physical.Required,
+	tab cat.Table,
+	scan *memo.ScanPrivate,
+	relProps *props.Relational,
+	reqProps *physical.Required,
+	statsCreatedAt time.Time,
 ) (exec.ScanParams, colOrdMap, error) {
 	// Check if we tried to force a specific index but there was no Scan with that
 	// index in the memo.
@@ -729,7 +738,7 @@ func (b *Builder) scanParams(
 		sqltelemetry.IncrementPartitioningCounter(sqltelemetry.PartitionConstrainedScan)
 	}
 
-	softLimit := reqProps.LimitHintInt64()
+	softLimit := uint64(reqProps.LimitHintInt64())
 	hardLimit := scan.HardLimit.RowCount()
 	maxResults, maxResultsOk := b.indexConstraintMaxResults(scan, relProps)
 
@@ -806,6 +815,7 @@ func (b *Builder) scanParams(
 		Parallelize:        parallelize,
 		Locking:            locking,
 		EstimatedRowCount:  rowCount,
+		StatsCreatedAt:     statsCreatedAt,
 		LocalityOptimized:  scan.LocalityOptimized,
 	}, outputMap, nil
 }
@@ -877,32 +887,30 @@ func (b *Builder) buildScan(scan *memo.ScanExpr) (_ execPlan, outputCols colOrdM
 		}
 	}
 
+	var statsCreatedAt time.Time
 	// Save some instrumentation info.
 	b.ScanCounts[exec.ScanCount]++
 	if stats.Available {
 		b.TotalScanRows += stats.RowCount
 		b.ScanCounts[exec.ScanWithStatsCount]++
 
-		// The first stat is the most recent full one. Check if it was a forecast.
-		var first int
-		for first < tab.StatisticCount() && tab.Statistic(first).IsPartial() {
-			first++
-		}
+		sd := b.evalCtx.SessionData()
+		first := cat.FindLatestFullStat(tab, sd)
 		if first < tab.StatisticCount() && tab.Statistic(first).IsForecast() {
-			if b.evalCtx.SessionData().OptimizerUseForecasts {
-				b.ScanCounts[exec.ScanWithStatsForecastCount]++
+			b.ScanCounts[exec.ScanWithStatsForecastCount]++
 
-				// Calculate time since the forecast (or negative time until the forecast).
-				nanosSinceStatsForecasted := timeutil.Since(tab.Statistic(first).CreatedAt())
-				if nanosSinceStatsForecasted.Abs() > b.NanosSinceStatsForecasted.Abs() {
-					b.NanosSinceStatsForecasted = nanosSinceStatsForecasted
-				}
+			// Calculate time since the forecast (or negative time until the forecast).
+			nanosSinceStatsForecasted := timeutil.Since(tab.Statistic(first).CreatedAt())
+			if nanosSinceStatsForecasted.Abs() > b.NanosSinceStatsForecasted.Abs() {
+				b.NanosSinceStatsForecasted = nanosSinceStatsForecasted
 			}
-			// Find the first non-forecast full stat.
-			for first < tab.StatisticCount() &&
-				(tab.Statistic(first).IsPartial() || tab.Statistic(first).IsForecast()) {
-				first++
-			}
+
+			// Since currently 'first' points at the forecast, then usage of the
+			// forecasts must be enabled, so in order to find the first full
+			// non-forecast stat, we'll temporarily disable their usage.
+			sd.OptimizerUseForecasts = false
+			first = cat.FindLatestFullStat(tab, sd)
+			sd.OptimizerUseForecasts = true
 		}
 
 		if first < tab.StatisticCount() {
@@ -925,11 +933,14 @@ func (b *Builder) buildScan(scan *memo.ScanExpr) (_ execPlan, outputCols colOrdM
 				rowCountWithoutForecast = float64(minCardinality)
 			}
 			b.TotalScanRowsWithoutForecasts += rowCountWithoutForecast
+			statsCreatedAt = tabStat.CreatedAt()
 		}
 	}
 
 	var params exec.ScanParams
-	params, outputCols, err = b.scanParams(tab, &scan.ScanPrivate, scan.Relational(), scan.RequiredPhysical())
+	params, outputCols, err = b.scanParams(
+		tab, &scan.ScanPrivate, scan.Relational(), scan.RequiredPhysical(), statsCreatedAt,
+	)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -939,7 +950,7 @@ func (b *Builder) buildScan(scan *memo.ScanExpr) (_ execPlan, outputCols colOrdM
 	}
 	root, err := b.factory.ConstructScan(
 		tab,
-		tab.Index(scan.Index),
+		idx,
 		params,
 		reqOrdering,
 	)
@@ -967,9 +978,37 @@ func (b *Builder) buildPlaceholderScan(
 		return execPlan{}, colOrdMap{}, errors.AssertionFailedf("PlaceholderScan cannot have constraints")
 	}
 
+	// Evaluate the scalar expressions.
+	values := make([]tree.Datum, len(scan.Span))
+	for i, expr := range scan.Span {
+		// The expression is either a placeholder or a constant.
+		var val tree.Datum
+		if p, ok := expr.(*memo.PlaceholderExpr); ok {
+			val, err = eval.Expr(b.ctx, b.evalCtx, p.Value)
+			if err != nil {
+				return execPlan{}, colOrdMap{}, err
+			}
+		} else {
+			val = memo.ExtractConstDatum(expr)
+		}
+		if val == tree.DNull {
+			// If any value is NULL, then build an empty values operator instead
+			// of a scan. No row can satisfy the equality filter that was used
+			// to build this placeholder scan, because of SQL NULL-equality
+			// semantics.
+			return b.buildValues(&memo.ValuesExpr{
+				ValuesPrivate: memo.ValuesPrivate{
+					Cols: scan.Cols.ToList(),
+				},
+			})
+		}
+		values[i] = val
+	}
+
 	md := b.mem.Metadata()
 	tab := md.Table(scan.Table)
 	idx := tab.Index(scan.Index)
+	b.IndexesUsed.add(tab.ID(), idx.ID())
 
 	// Build the index constraint.
 	spanColumns := make([]opt.OrderingColumn, len(scan.Span))
@@ -982,20 +1021,6 @@ func (b *Builder) buildPlaceholderScan(
 	var columns constraint.Columns
 	columns.Init(spanColumns)
 	keyCtx := constraint.MakeKeyContext(b.ctx, &columns, b.evalCtx)
-
-	values := make([]tree.Datum, len(scan.Span))
-	for i, expr := range scan.Span {
-		// The expression is either a placeholder or a constant.
-		if p, ok := expr.(*memo.PlaceholderExpr); ok {
-			val, err := eval.Expr(b.ctx, b.evalCtx, p.Value)
-			if err != nil {
-				return execPlan{}, colOrdMap{}, err
-			}
-			values[i] = val
-		} else {
-			values[i] = memo.ExtractConstDatum(expr)
-		}
-	}
 
 	key := constraint.MakeCompositeKey(values...)
 	var span constraint.Span
@@ -1010,7 +1035,8 @@ func (b *Builder) buildPlaceholderScan(
 	private.SetConstraint(b.ctx, b.evalCtx, &c)
 
 	var params exec.ScanParams
-	params, outputCols, err = b.scanParams(tab, &private, scan.Relational(), scan.RequiredPhysical())
+	params, outputCols, err = b.scanParams(tab, &private, scan.Relational(),
+		scan.RequiredPhysical(), time.Time{} /* statsCreatedAt */)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -1020,7 +1046,7 @@ func (b *Builder) buildPlaceholderScan(
 	}
 	root, err := b.factory.ConstructScan(
 		tab,
-		tab.Index(scan.Index),
+		idx,
 		params,
 		reqOrdering,
 	)
@@ -1251,28 +1277,13 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (_ execPlan, outputCols colO
 	// Note: we put o outside of the function so we allocate it only once.
 	var o xform.Optimizer
 	fromMemo := b.mem
-	planRightSideFn := func(ctx context.Context, ef exec.Factory, leftRow tree.Datums) (_ exec.Plan, err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				// This code allows us to propagate internal errors without having to add
-				// error checks everywhere throughout the code. This is only possible
-				// because the code does not update shared state and does not manipulate
-				// locks.
-				//
-				// This is the same panic-catching logic that exists in
-				// o.Optimize() below. It's required here because it's possible
-				// for factory functions to panic below, like
-				// CopyAndReplaceDefault.
-				if ok, e := errorutil.ShouldCatch(r); ok {
-					err = e
-					log.VEventf(ctx, 1, "%v", err)
-				} else {
-					// Other panic objects can't be considered "safe" and thus are
-					// propagated as crashes that terminate the session.
-					panic(r)
-				}
-			}
-		}()
+	planRightSideFn := func(ctx context.Context, ef exec.Factory, leftRow tree.Datums) (_ exec.Plan, retErr error) {
+		// This is the same panic-catching logic that exists in o.Optimize()
+		// below. It's required here because it's possible for factory functions
+		// to panic below, like CopyAndReplaceDefault.
+		defer errorutil.MaybeCatchPanic(&retErr, func(caughtErr error) {
+			log.VEventf(ctx, 1, "%v", caughtErr)
+		})
 
 		o.Init(ctx, b.evalCtx, b.catalog)
 		f := o.Factory()
@@ -1325,6 +1336,7 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (_ execPlan, outputCols colO
 		eb := New(ctx, ef, &o, f.Memo(), b.catalog, newRightSide, b.semaCtx, b.evalCtx, false /* allowAutoCommit */, b.IsANSIDML)
 		eb.disableTelemetry = true
 		eb.withExprs = withExprs
+		eb.routineResultBuffers = b.routineResultBuffers
 		plan, err := eb.Build()
 		if err != nil {
 			if errors.IsAssertionFailure(err) {
@@ -1338,6 +1350,16 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (_ execPlan, outputCols colO
 			return nil, err
 		}
 		return plan, nil
+	}
+
+	// Build the stringified representation of the unoptimized right side for
+	// EXPLAIN purposes on demand.
+	rightSideForExplainFn := func(redactableValues bool) string {
+		f := memo.MakeExprFmtCtx(
+			b.ctx, memo.ExprFmtHideAll, redactableValues, b.mem, b.catalog,
+		)
+		f.FormatExpr(rightExpr)
+		return f.Buffer.String()
 	}
 
 	// The right plan will always produce the columns in the presentation, in
@@ -1382,6 +1404,7 @@ func (b *Builder) buildApplyJoin(join memo.RelExpr) (_ execPlan, outputCols colO
 		b.presentationToResultColumns(rightRequiredProps.Presentation),
 		onExpr,
 		planRightSideFn,
+		rightSideForExplainFn,
 	)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -2319,7 +2342,7 @@ func (b *Builder) enforceScanWithHomeRegion(skipID cat.StableID) error {
 			} else if gatewayRegion != homeRegion {
 				return pgerror.Newf(pgcode.QueryNotRunningInHomeRegion,
 					`%s. Try running the query from region '%s'. %s`,
-					execinfra.QueryNotRunningInHomeRegionMessagePrefix,
+					sqlerrors.QueryNotRunningInHomeRegionMessagePrefix,
 					homeRegion,
 					sqlerrors.EnforceHomeRegionFurtherInfo,
 				)
@@ -2388,7 +2411,7 @@ func (b *Builder) buildDistribute(
 		var errCode pgcode.Code
 		if ok {
 			errCode = pgcode.QueryNotRunningInHomeRegion
-			errorStringBuilder.WriteString(execinfra.QueryNotRunningInHomeRegionMessagePrefix)
+			errorStringBuilder.WriteString(sqlerrors.QueryNotRunningInHomeRegionMessagePrefix)
 			errorStringBuilder.WriteString(fmt.Sprintf(`. Try running the query from region '%s'. %s`, homeRegion, sqlerrors.EnforceHomeRegionFurtherInfo))
 		} else if distribute.Input.Op() != opt.LookupJoinOp {
 			// More detailed error message handling for lookup join occurs in the
@@ -2476,9 +2499,13 @@ func (b *Builder) buildIndexJoin(
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
+	// We know that there's exactly one lookup row for each input row, so we
+	// assume it's always safe to get the DistSender-level parallelism.
+	const parallelize = true
 	var res execPlan
 	res.root, err = b.factory.ConstructIndexJoin(
-		input.root, tab, keyCols, needed, reqOrdering, locking, join.RequiredPhysical().LimitHintInt64(),
+		input.root, tab, keyCols, needed, reqOrdering, locking,
+		join.RequiredPhysical().LimitHintInt64(), parallelize,
 	)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -2675,7 +2702,7 @@ func (b *Builder) handleRemoteLookupJoinError(join *memo.LookupJoinExpr) (err er
 				} else if gatewayRegion != homeRegion {
 					return pgerror.Newf(pgcode.QueryNotRunningInHomeRegion,
 						`%s. Try running the query from region '%s'. %s`,
-						execinfra.QueryNotRunningInHomeRegionMessagePrefix,
+						sqlerrors.QueryNotRunningInHomeRegionMessagePrefix,
 						homeRegion,
 						sqlerrors.EnforceHomeRegionFurtherInfo,
 					)
@@ -2693,6 +2720,143 @@ func (b *Builder) handleRemoteLookupJoinError(join *memo.LookupJoinExpr) (err er
 		return b.filterSuggestionError(lookupTableMeta, join.Index, nil /* table2Meta */, 0 /* indexOrdinal2 */)
 	}
 	return nil
+}
+
+// shouldParallelizeLookupJoin returns whether the execution engine should
+// parallelize lookup join reads across ranges. The joiner has a choice to make
+// between getting DistSender-level parallelism for its lookup batches and
+// setting row and memory limits (due to implementation limitations, you can't
+// have both at the same time). Note that the Streamer API overcomes these
+// limitations, so this parallelization recommendation doesn't have any
+// influence if the execution engine uses the Streamer.
+//
+// The goal of this function is to determine whether the lookup join is likely
+// to be "safe" for parallelization, meaning that it's extremely unlikely to OOM
+// the node performing the lookup.
+func (b *Builder) shouldParallelizeLookupJoin(
+	join *memo.LookupJoinExpr, lookupOrdinals exec.TableColumnOrdinalSet,
+) bool {
+	if join.LookupColsAreTableKey {
+		// We choose parallelism when we know that each lookup returns at most
+		// one row.
+		return true
+	}
+	sd := b.evalCtx.SessionData()
+	if sd.ParallelizeMultiKeyLookupJoinsEnabled {
+		// This setting unconditionally enables the parallelism.
+		return true
+	}
+
+	// See whether the "average lookup ratio" heuristic is applicable.
+	allowedAvgRatio := sd.ParallelizeMultiKeyLookupJoinsAvgLookupRatio
+	if allowedAvgRatio == 0 {
+		// The "average lookup ratio" heuristic is disabled.
+		log.VEventf(b.ctx, 2, "the average lookup ratio heuristic disabled, not parallelizing")
+		return false
+	}
+	if len(join.KeyCols) == 0 && join.EqualityLookupCols.Len() == 0 {
+		// If we don't have any columns constrained via an equality condition,
+		// then we're performing a range lookup, for which it's hard to estimate
+		// the lookup ratio, so we disable the parallelism.
+		log.VEventf(b.ctx, 2, "no equality lookup columns, not parallelizing")
+		return false
+	}
+	md := b.mem.Metadata()
+	table := md.Table(join.Table)
+	// If the session var has non-default value 'true', we'll apply the
+	// heuristic only to mutations of MR tables.
+	// TODO(yuzefovich): consider removing this session variable altogether once
+	// we have enough confidence in applying the heuristic across the board.
+	if sd.ParallelizeMultiKeyLookupJoinsOnlyOnMRMutations {
+		if !table.IsMultiregion() || !b.flags.IsSet(exec.PlanFlagContainsMutation) {
+			log.VEventf(b.ctx, 2, "either not multi-region or not a mutation, not parallelizing")
+			return false
+		}
+	}
+	// Estimate the average lookup ratio - we want to know how many looked up
+	// rows each input row will result in, and if it's relatively small, then
+	// we'll consider the lookup join "safe" for parallelization.
+	tableStats, ok := memo.GetTableStats(md, join.Table)
+	if !ok || !tableStats.Available {
+		// We don't have the table stats to make an informed decision, so we
+		// choose the safer option of disabling parallelism.
+		log.VEventf(b.ctx, 2, "lookup table stats are unavailable, not parallelizing")
+		return false
+	}
+	var equalityLookupCols opt.ColSet
+	// Only one of {EqualityLookupCols, KeyCols} is set.
+	if len(join.KeyCols) > 0 {
+		idx := table.Index(join.Index)
+		for i := 0; i < len(join.KeyCols); i++ {
+			ord := idx.Column(i).Ordinal()
+			equalityLookupCols.Add(join.Table.ColumnID(ord))
+		}
+	} else {
+		equalityLookupCols = join.EqualityLookupCols
+	}
+	colStat, ok := tableStats.ColStats.Lookup(equalityLookupCols)
+	if !ok {
+		// We have table stats but don't have column stats for the equality
+		// columns, so we can't make an informed decision.
+		log.VEventf(b.ctx, 2, "equality lookup column stats are unavailable, not parallelizing")
+		return false
+	}
+	if colStat.DistinctCount == 1 && colStat.NullCount > 0 {
+		// It appears that we only have NULLs in the lookup columns, we'll
+		// consider such case safe since we cannot look up those rows.
+		log.VEventf(b.ctx, 2, "only NULLs in lookup columns, parallelizing")
+		return true
+	}
+	rowCount, distinctCount := tableStats.RowCount, colStat.DistinctCount
+	if colStat.NullCount > 0 {
+		// Ignore rows with NULLs in the lookup columns since we cannot look
+		// them up.
+		rowCount -= colStat.NullCount
+		distinctCount -= 1
+	}
+	// We assume that each unique combination of values in lookup equality
+	// columns will result in the same lookup ratio.
+	estimatedAvgRatio := rowCount / distinctCount
+	if estimatedAvgRatio > allowedAvgRatio {
+		log.VEventf(b.ctx, 2, "lookup join estimated avg ratio %.2f exceeds allowed %.2f, not parallelizing", estimatedAvgRatio, allowedAvgRatio)
+		return false
+	}
+
+	// Guardrail 1: if we have a possible heavy hitter for the lookup equality
+	// columns, then ensure that its frequency doesn't exceed the allowed
+	// maximum. In absence of the histogram this guardrail is disabled.
+	if allowedMaxRatio := sd.ParallelizeMultiKeyLookupJoinsMaxLookupRatio; allowedMaxRatio != 0 && colStat.Histogram != nil {
+		estimatedMaxRatio := colStat.Histogram.MaxFrequency(true /* ignoreNulls */)
+		if estimatedMaxRatio > allowedMaxRatio {
+			log.VEventf(b.ctx, 2, "lookup join estimated max ratio %.2f exceeds allowed %.2f, not parallelizing", estimatedMaxRatio, allowedMaxRatio)
+			return false
+		}
+	}
+
+	// Guardrail 2: ensure that the estimated average lookup row size doesn't
+	// exceed the allowed size. In absence of the AvgColSizes this guardrail is
+	// disabled.
+	if allowedAvgRowSize := sd.ParallelizeMultiKeyLookupJoinsAvgLookupRowSize; allowedAvgRowSize != 0 && len(tableStats.AvgColSizes) > 0 {
+		var estimatedAvgRowSize uint64
+		lookupOrdinals.ForEach(func(lookupCol int) {
+			if len(tableStats.AvgColSizes) <= lookupCol {
+				if buildutil.CrdbTestBuild {
+					panic(errors.AssertionFailedf(
+						"lookup column ordinal %d not present in AvgColSizes", lookupCol,
+					))
+				}
+				return
+			}
+			estimatedAvgRowSize += tableStats.AvgColSizes[lookupCol]
+		})
+		if estimatedAvgRowSize > uint64(allowedAvgRowSize) {
+			log.VEventf(b.ctx, 2, "lookup join estimated avg row size %d exceeds allowed %d, not parallelizing", estimatedAvgRowSize, allowedAvgRowSize)
+			return false
+		}
+	}
+
+	log.VEventf(b.ctx, 2, "lookup join estimated avg ratio %.2f, parallelizing", estimatedAvgRatio)
+	return true
 }
 
 func (b *Builder) buildLookupJoin(
@@ -2748,14 +2912,19 @@ func (b *Builder) buildLookupJoin(
 		lookupCols.Remove(join.ContinuationCol)
 	}
 
-	lookupOrdinals, lookupColMap := b.getColumns(lookupCols, join.Table)
-
+	numInputCols := inputCols.MaxOrd() + 1
+	var lookupOrdinals exec.TableColumnOrdinalSet
 	// leftAndRightCols are the columns used in expressions evaluated by this
 	// join.
-	leftAndRightCols := b.joinOutputMap(inputCols, lookupColMap)
-
-	// lookupColMap is no longer used, so it can be freed.
-	b.colOrdsAlloc.Free(lookupColMap)
+	leftAndRightCols := b.colOrdsAlloc.Copy(inputCols)
+	for i, rightOrd, n := 0, 0, md.Table(join.Table).ColumnCount(); i < n; i++ {
+		colID := join.Table.ColumnID(i)
+		if lookupCols.Contains(colID) {
+			lookupOrdinals.Add(i)
+			leftAndRightCols.Set(colID, rightOrd+numInputCols)
+			rightOrd++
+		}
+	}
 
 	// Create the output column mapping.
 	switch {
@@ -2853,6 +3022,15 @@ func (b *Builder) buildLookupJoin(
 		return execPlan{}, colOrdMap{}, errors.AssertionFailedf("lookup join can't provide required ordering")
 	}
 	reverse := requiredDirection == ordering.ReverseDirection
+	parallelize := b.shouldParallelizeLookupJoin(join, lookupOrdinals)
+	for _, c := range reqOrdering {
+		if c.ColIdx >= numInputCols {
+			// We need to maintain lookup ordering, in which case we cannot use
+			// the DistSender-level parallelism.
+			parallelize = false
+			break
+		}
+	}
 	var res execPlan
 	res.root, err = b.factory.ConstructLookupJoin(
 		joinType,
@@ -2872,6 +3050,7 @@ func (b *Builder) buildLookupJoin(
 		join.RequiredPhysical().LimitHintInt64(),
 		join.RemoteOnlyLookups,
 		reverse,
+		parallelize,
 	)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -2963,7 +3142,7 @@ func (b *Builder) handleRemoteInvertedJoinError(join *memo.InvertedJoinExpr) (er
 				} else if gatewayRegion != homeRegion {
 					return pgerror.Newf(pgcode.QueryNotRunningInHomeRegion,
 						`%s. Try running the query from region '%s'. %s`,
-						execinfra.QueryNotRunningInHomeRegionMessagePrefix,
+						sqlerrors.QueryNotRunningInHomeRegionMessagePrefix,
 						homeRegion,
 						sqlerrors.EnforceHomeRegionFurtherInfo,
 					)
@@ -3280,7 +3459,7 @@ func (b *Builder) buildLocking(toLock opt.TableID, locking opt.Locking) (opt.Loc
 		}
 		if locking.Form == tree.LockPredicate {
 			return opt.Locking{}, unimplemented.NewWithIssuef(
-				110873, "explicit unique checks are not yet supported under read committed isolation",
+				126592, "explicit unique checks are not yet supported under read committed isolation",
 			)
 		}
 		// Check if we can actually use shared locks here, or we need to use
@@ -3333,9 +3512,6 @@ func (b *Builder) buildWith(with *memo.WithExpr) (_ execPlan, outputCols colOrdM
 		return execPlan{}, colOrdMap{}, err
 	}
 
-	// TODO(justin): if the binding here has a spoolNode at its root, we can
-	// remove it, since subquery execution also guarantees complete execution.
-
 	// Add the buffer as a subquery so it gets executed ahead of time, and is
 	// available to be referenced by other queries. Use SubqueryDiscardAllRows to
 	// avoid buffering the results in the subquery, since the bufferNode will
@@ -3379,7 +3555,6 @@ func (b *Builder) buildRecursiveCTE(
 	// To implement exec.RecursiveCTEIterationFn, we create a special Builder.
 
 	innerBldTemplate := &Builder{
-		ctx:     b.ctx,
 		mem:     b.mem,
 		catalog: b.catalog,
 		semaCtx: b.semaCtx,
@@ -3391,9 +3566,10 @@ func (b *Builder) buildRecursiveCTE(
 		withExprs: b.withExprs[:len(b.withExprs):len(b.withExprs)],
 	}
 
-	fn := func(ef exec.Factory, bufferRef exec.Node) (exec.Plan, error) {
+	fn := func(ctx context.Context, ef exec.Factory, bufferRef exec.Node) (exec.Plan, error) {
 		// Use a separate builder each time.
 		innerBld := *innerBldTemplate
+		innerBld.ctx = ctx
 		innerBld.factory = ef
 		innerBld.addBuiltWithExpr(rec.WithID, initialCols, bufferRef)
 		// TODO(mgartner): I think colOrdsAlloc can be reused for each recursive
@@ -3525,11 +3701,10 @@ func (b *Builder) buildCall(c *memo.CallExpr) (_ execPlan, outputCols colOrdMap,
 
 	// Build the argument expressions.
 	var args tree.TypedExprs
-	ctx := buildScalarCtx{}
 	if len(udf.Args) > 0 {
 		args = make(tree.TypedExprs, len(udf.Args))
 		for i := range udf.Args {
-			args[i], err = b.buildScalar(&ctx, udf.Args[i])
+			args[i], err = b.buildScalar(&emptyBuildScalarCtx, udf.Args[i])
 			if err != nil {
 				return execPlan{}, colOrdMap{}, err
 			}
@@ -3541,15 +3716,18 @@ func (b *Builder) buildCall(c *memo.CallExpr) (_ execPlan, outputCols colOrdMap,
 			b.setMutationFlags(s)
 		}
 	}
-
 	// Create a tree.RoutinePlanFn that can plan the statements in the UDF body.
 	planGen := b.buildRoutinePlanGenerator(
 		udf.Def.Params,
 		udf.Def.Body,
 		udf.Def.BodyProps,
 		udf.Def.BodyStmts,
+		udf.Def.BodyTags,
+		udf.Def.BodyASTs,
 		false, /* allowOuterWithRefs */
 		nil,   /* wrapRootExpr */
+		0,     /* resultBufferID */
+		nil,   /* bodyBuilder */
 	)
 
 	r := tree.NewTypedRoutineExpr(
@@ -3561,12 +3739,16 @@ func (b *Builder) buildCall(c *memo.CallExpr) (_ execPlan, outputCols colOrdMap,
 		udf.Def.CalledOnNullInput,
 		udf.Def.MultiColDataSource,
 		udf.Def.SetReturning,
+		false, /* discardLastStmtResult */
 		false, /* tailCall */
 		true,  /* procedure */
 		false, /* triggerFunc */
 		false, /* blockStart */
 		nil,   /* blockState */
 		nil,   /* cursorDeclaration */
+		nil,   /* firstStmtResultWriter */
+		udf.Def.SecurityMode,
+		udf.Def.RoutineOwner,
 	)
 
 	var ep execPlan
@@ -3942,6 +4124,7 @@ func (b *Builder) buildVectorSearch(
 		return execPlan{}, colOrdMap{}, errors.AssertionFailedf(
 			"vector search is only supported on vector indexes")
 	}
+	b.IndexesUsed.add(table.ID(), index.ID())
 	primaryKeyCols := md.TableMeta(search.Table).IndexKeyColumns(cat.PrimaryIndex)
 	for col, ok := search.Cols.Next(0); ok; col, ok = search.Cols.Next(col + 1) {
 		if !primaryKeyCols.Contains(col) {
@@ -3949,36 +4132,28 @@ func (b *Builder) buildVectorSearch(
 				"vector search output column %d is not a primary key column", col)
 		}
 	}
-	// Evaluate the prefix expressions.
-	var prefixKey constraint.Key
-	if len(search.PrefixVals) > 0 {
-		values := make([]tree.Datum, len(search.PrefixVals))
-		for i, expr := range search.PrefixVals {
-			// The expression is either a placeholder or a constant.
-			if p, ok := expr.(*memo.PlaceholderExpr); ok {
-				val, err := eval.Expr(b.ctx, b.evalCtx, p.Value)
-				if err != nil {
-					return execPlan{}, colOrdMap{}, err
-				}
-				values[i] = val
-			} else {
-				values[i] = memo.ExtractConstDatum(expr)
-			}
-		}
-		prefixKey = constraint.MakeCompositeKey(values...)
-	}
-
 	outColOrds, outColMap := b.getColumns(search.Cols, search.Table)
-	ctx := buildScalarCtx{}
-	queryVector, err := b.buildScalar(&ctx, search.QueryVector)
+	queryVector, err := b.buildScalar(&emptyBuildScalarCtx, search.QueryVector)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
 	targetNeighborCount := uint64(search.TargetNeighborCount)
 
+	// Verify that the query vector and vector column have the same dimensions.
+	resolvedQueryVector, ok := queryVector.(*tree.DPGVector)
+	if !ok {
+		return execPlan{}, colOrdMap{}, errors.AssertionFailedf("expected vector type, got %T", queryVector)
+	}
+	queryVectorLen := int32(len(resolvedQueryVector.T))
+	vectorColumnType := index.VectorColumn().DatumType()
+	if queryVectorLen != vectorColumnType.Width() {
+		return execPlan{}, colOrdMap{}, pgerror.Newf(pgcode.DataException,
+			"different vector dimensions %d and %d", queryVectorLen, vectorColumnType.Width())
+	}
+
 	var res execPlan
 	res.root, err = b.factory.ConstructVectorSearch(
-		table, index, outColOrds, prefixKey, queryVector, targetNeighborCount,
+		table, index, outColOrds, search.PrefixConstraint, queryVector, targetNeighborCount,
 	)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
@@ -3996,6 +4171,7 @@ func (b *Builder) buildVectorMutationSearch(
 		return execPlan{}, colOrdMap{}, errors.AssertionFailedf(
 			"vector mutation search is only supported on vector indexes")
 	}
+	b.IndexesUsed.add(table.ID(), index.ID())
 
 	input, inputCols, err := b.buildRelational(search.Input)
 	if err != nil {
@@ -4164,7 +4340,7 @@ func (b *Builder) getEnvData() (exec.ExplainEnvData, error) {
 		b.ctx,
 		b.catalog,
 		b.mem.Metadata().AllTables(),
-		func(cat.Table, cat.ForeignKeyConstraint) (exploreFKs bool) {
+		func(cat.Table, cat.ForeignKeyConstraint) (recurse bool) {
 			return true
 		},
 		func(table cat.Table, _ cat.ForeignKeyConstraint) {
@@ -4175,12 +4351,23 @@ func (b *Builder) getEnvData() (exec.ExplainEnvData, error) {
 			refTableIncluded.Add(int(table.ID()))
 		},
 	)
-	envOpts.AddFKs = opt.GetAllFKsAmongTables(
+	var skipFKs []*tree.AlterTable
+	envOpts.AddFKs, skipFKs = opt.GetAllFKs(
+		b.ctx,
+		b.catalog,
 		refTables,
 		func(t cat.Table) (tree.TableName, error) {
 			return b.catalog.FullyQualifiedName(b.ctx, t)
 		},
 	)
+	// Given that we include all FK-related tables when visiting them, we should
+	// not skip any FKs - we'll return an error if we find any in test-only
+	// builds.
+	if buildutil.CrdbTestBuild {
+		if len(skipFKs) > 0 {
+			return envOpts, errors.AssertionFailedf("unexpectedly skipped adding FKs in EXPLAIN (OPT): %v", skipFKs)
+		}
+	}
 	var err error
 	envOpts.Tables, err = getNames(len(refTables), func(i int) cat.DataSource {
 		return refTables[i]

@@ -25,8 +25,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
-	"github.com/cockroachdb/cockroach/pkg/util/version"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/version"
 	"github.com/petermattis/goid"
 )
 
@@ -140,6 +140,20 @@ type testImpl struct {
 		// parameters if there is a failure. They will additionally be logged in the test itself
 		// in case github issue posting is disabled.
 		extraParams map[string]string
+
+		// githubFatalLogs contains node fatal logs that will be passed to
+		// github.MaybePost
+		githubFatalLogs string
+
+		// githubIpToNodeMapping contains the ip to node map that will be passed to
+		// github.MaybePost
+		githubIpToNodeMapping string
+
+		// preempted is set when the test's failure was attributed to a VM
+		// preemption by runTest's post-failure checks. Read by the test runner
+		// after runTest returns to decide whether to requeue (e.g. retry a
+		// benchmark on non-spot VMs).
+		preempted bool
 	}
 	// Map from version to path to the cockroach binary to be used when
 	// mixed-version test wants a binary for that binary. If a particular version
@@ -516,6 +530,21 @@ func (t *testImpl) resetFailures() {
 	t.mu.failuresSuppressed = false
 }
 
+// markPreempted records that this test's failure was attributed to a VM
+// preemption. See the comment on the preempted field for details.
+func (t *testImpl) markPreempted() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.mu.preempted = true
+}
+
+// wasPreempted reports whether markPreempted was called.
+func (t *testImpl) wasPreempted() bool {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.mu.preempted
+}
+
 // We take the "squashed" error that contains information of all the errors for each failure.
 func formatFailure(b *strings.Builder, reportFailures ...failure) {
 	for i, failure := range reportFailures {
@@ -556,6 +585,47 @@ func (t *testImpl) failureMsg() string {
 	var b strings.Builder
 	formatFailure(&b, t.mu.failures...)
 	return b.String()
+}
+
+func (t *testImpl) getGithubFatalLogs() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.mu.githubFatalLogs
+}
+
+func (t *testImpl) appendGithubFatalLogs(msg string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.mu.githubFatalLogs += msg
+}
+
+func (t *testImpl) getGithubIpToNodeMapping() string {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.mu.githubIpToNodeMapping
+}
+
+func (t *testImpl) appendGithubIpToNodeMapping(msg string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.mu.githubIpToNodeMapping += msg
+}
+
+// getGithubMessage abstracts details on how the Github message is constructed
+// TODO(wchoe): Currently, all information we want to include in the Github
+// message must be passed in as a single string. This is not ideal, especially
+// as we add more information or want to format based on the failure or what
+// information is available. #157021 aims to address this.
+func (t *testImpl) getGithubMessage(failureMsg string) string {
+	githubMsg := failureMsg
+	if githubFatalLogs := t.getGithubFatalLogs(); githubFatalLogs != "" {
+		githubMsg = fmt.Sprintf("%s\n%s", githubMsg, githubFatalLogs)
+	}
+	if githubIpToNodeMapping := t.getGithubIpToNodeMapping(); githubIpToNodeMapping != "" {
+		githubMsg = fmt.Sprintf("%s\n%s", githubMsg, githubIpToNodeMapping)
+	}
+	t.L().Printf("github message: %s", githubMsg)
+	return githubMsg
 }
 
 // failuresMatchingError checks whether the first error in trees of
@@ -686,8 +756,8 @@ func (t *testImpl) IsBuildVersion(minVersion string) bool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := vers.PreRelease(); p != "" {
-		panic("cannot specify a prerelease: " + p)
+	if vers.IsPrerelease() {
+		panic("cannot specify a prerelease: " + vers.Format("%P"))
 	}
 	// We append "-0" to the min-version spec so that we capture all
 	// prereleases of the specified version. Otherwise, "v2.1.0" would compare
@@ -779,13 +849,13 @@ type clusterType int
 
 const (
 	localCluster clusterType = iota
-	roachprodCluster
+	roachprodClusterType
 )
 
 type loggingOpt struct {
-	// l is the test runner logger.
+	// runnerL is the test runner logger.
 	// Note that individual test runs will use a different logger.
-	l *logger.Logger
+	runnerL *logger.Logger
 	// tee controls whether test logs (not test runner logs) also go to stdout or
 	// not.
 	tee            logger.TeeOptType
@@ -815,7 +885,7 @@ type workerStatus struct {
 		// The cluster that the worker is currently operating on. If the worker is
 		// currently running a test, the test is using this cluster. Nil if the
 		// worker does not currently have a cluster.
-		c *clusterImpl
+		c testCluster
 	}
 }
 
@@ -831,13 +901,13 @@ func (w *workerStatus) SetStatus(status string) {
 	w.mu.Unlock()
 }
 
-func (w *workerStatus) Cluster() *clusterImpl {
+func (w *workerStatus) Cluster() testCluster {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.mu.c
 }
 
-func (w *workerStatus) SetCluster(c *clusterImpl) {
+func (w *workerStatus) SetCluster(c testCluster) {
 	w.mu.Lock()
 	w.mu.c = c
 	w.mu.Unlock()

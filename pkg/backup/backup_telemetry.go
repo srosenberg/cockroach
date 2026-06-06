@@ -9,10 +9,8 @@ import (
 	"context"
 	"net/url"
 	"sort"
-	"strings"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/backup/backupbase"
 	"github.com/cockroachdb/cockroach/pkg/backup/backupdest"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
@@ -20,6 +18,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
+	"github.com/cockroachdb/cockroach/pkg/util/besteffort"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/cockroach/pkg/util/log/severity"
@@ -47,10 +46,6 @@ const (
 	scheduledBackupJobEventType eventpb.RecoveryEventType = "scheduled_backup_job"
 	restoreJobEventType         eventpb.RecoveryEventType = "restore_job"
 
-	latestSubdirType   = "latest"
-	standardSubdirType = "standard"
-	customSubdirType   = "custom"
-
 	// Currently the telemetry event payload only contains keys of options. Future
 	// changes to telemetry should refrain from adding values to the payload
 	// unless they are properly redacted.
@@ -71,13 +66,19 @@ const (
 func logBackupTelemetry(
 	ctx context.Context, initialDetails jobspb.BackupDetails, jobID jobspb.JobID,
 ) {
-	event := createBackupRecoveryEvent(ctx, initialDetails, jobID)
-	log.StructuredEvent(ctx, severity.INFO, &event)
+	besteffort.Warning(ctx, "log-backup-telemetry", func(ctx context.Context) error {
+		event, err := createBackupRecoveryEvent(ctx, initialDetails, jobID)
+		if err != nil {
+			return err
+		}
+		log.StructuredEvent(ctx, severity.INFO, &event)
+		return nil
+	})
 }
 
 func createBackupRecoveryEvent(
 	ctx context.Context, initialDetails jobspb.BackupDetails, jobID jobspb.JobID,
-) eventpb.RecoveryEvent {
+) (eventpb.RecoveryEvent, error) {
 	recoveryType := backupEventType
 	if initialDetails.ScheduleID != 0 {
 		recoveryType = scheduledBackupEventType
@@ -100,40 +101,23 @@ func createBackupRecoveryEvent(
 		}
 	}
 
-	timeBaseSubdir := true
-	var subdirType string
-	if _, err := time.Parse(backupbase.DateBasedIntoFolderName,
-		initialDetails.Destination.Subdir); err != nil {
-		timeBaseSubdir = false
-	}
-
-	if strings.EqualFold(initialDetails.Destination.Subdir, backupbase.LatestFileName) {
-		subdirType = latestSubdirType
-	} else if !timeBaseSubdir {
-		subdirType = customSubdirType
-	} else {
-		subdirType = standardSubdirType
-	}
-
 	authTypes := make(map[string]struct{})
 	storageTypes := make(map[string]struct{})
 	defaultURI, urisByLocalityKV, err := backupdest.GetURIsByLocalityKV(initialDetails.Destination.To, "")
 	if err != nil {
-		log.Warningf(ctx, "failed to get URIs by locality: %v", err)
+		return eventpb.RecoveryEvent{}, errors.Wrap(err, "failed to get URIs by locality")
 	}
 
-	if defaultURI != "" {
-		if storageType, authType, err := parseStorageAndAuth(defaultURI); err != nil {
-			log.Warningf(ctx, "failed to parse backup default URI: %v", err)
-		} else {
-			storageTypes[storageType] = struct{}{}
-			authTypes[authType] = struct{}{}
-		}
+	if storageType, authType, err := parseStorageAndAuth(defaultURI); err != nil {
+		return eventpb.RecoveryEvent{}, errors.Wrap(err, "failed to parse backup default URI")
+	} else {
+		storageTypes[storageType] = struct{}{}
+		authTypes[authType] = struct{}{}
 	}
 
 	for _, uri := range urisByLocalityKV {
 		if storageType, authType, err := parseStorageAndAuth(uri); err != nil {
-			log.Warningf(ctx, "failed to parse locality URI: %v", err)
+			return eventpb.RecoveryEvent{}, errors.Wrap(err, "failed to parse locality URI")
 		} else {
 			storageTypes[storageType] = struct{}{}
 			authTypes[authType] = struct{}{}
@@ -156,14 +140,12 @@ func createBackupRecoveryEvent(
 		TargetScope:             largestScope.String(),
 		IsMultiregionTarget:     multiRegion,
 		TargetCount:             uint32(targetCount),
-		DestinationSubdirType:   subdirType,
 		IsLocalityAware:         isLocalityAware,
 		WithRevisionHistory:     initialDetails.RevisionHistory,
 		HasEncryptionPassphrase: passphrase,
 		KMSType:                 kms,
 		KMSCount:                uint32(kmsCount),
 		JobID:                   uint64(jobID),
-		AsOfInterval:            initialDetails.AsOfInterval,
 		Options:                 options,
 		ApplicationName:         initialDetails.ApplicationName,
 	}
@@ -179,7 +161,7 @@ func createBackupRecoveryEvent(
 		event.DestinationStorageTypes = append(event.DestinationStorageTypes, typ)
 	}
 	sort.Strings(event.DestinationStorageTypes)
-	return event
+	return event, nil
 }
 
 func getLargestScope(fullCluster bool, requestedDescriptors []descpb.Descriptor) targetScope {
@@ -218,7 +200,7 @@ func getPassphraseAndKMS(
 			if enc.KMSInfo != nil {
 				parsedKMSURI, err := url.ParseRequestURI(enc.KMSInfo.Uri)
 				if err != nil {
-					log.Warningf(ctx, "failed to parse KMS URI %s: %v", enc.KMSInfo.Uri, err)
+					log.Dev.Warningf(ctx, "failed to parse KMS URI %s: %v", enc.KMSInfo.Uri, err)
 				} else {
 					kms = parsedKMSURI.Scheme
 				}
@@ -243,25 +225,6 @@ func parseStorageAndAuth(uri string) (string, string, error) {
 		authType = auth
 	}
 	return storageType, authType, nil
-}
-
-func loggedSubdirType(subdir string) string {
-	timeBaseSubdir := true
-	var subdirType string
-	if _, err := time.Parse(backupbase.DateBasedIntoFolderName,
-		subdir); err != nil {
-		timeBaseSubdir = false
-	}
-
-	if strings.EqualFold(subdir, backupbase.LatestFileName) {
-		subdirType = latestSubdirType
-	} else if !timeBaseSubdir {
-		subdirType = customSubdirType
-	} else {
-		subdirType = standardSubdirType
-	}
-
-	return subdirType
 }
 
 // logCreateScheduleTelemetry publishes an eventpb.RecoveryEvent about a created
@@ -296,8 +259,6 @@ func logCreateScheduleTelemetry(
 	backupEvent.RecurringCron = recurringCron
 	backupEvent.FullBackupCron = fullCron
 	backupEvent.CustomFirstRunTime = firstRunNanos
-	backupEvent.OnPreviousRunning = jobspb.ScheduleDetails_WaitBehavior_name[int32(details.Wait)]
-	backupEvent.OnExecutionFailure = jobspb.ScheduleDetails_ErrorHandlingBehavior_name[int32(details.OnError)]
 	backupEvent.IgnoreExistingBackup = ignoreExisting
 
 	log.StructuredEvent(ctx, severity.INFO, &backupEvent)
@@ -312,7 +273,6 @@ func logRestoreTelemetry(
 	intoDB string,
 	newDBName string,
 	subdir string,
-	asOfInterval int64,
 	opts tree.RestoreOptions,
 	descsByTablePattern map[tree.TablePattern]catalog.Descriptor,
 	restoreDBs []catalog.DatabaseDescriptor,
@@ -326,10 +286,10 @@ func logRestoreTelemetry(
 		requestedTargets = append(requestedTargets, *desc.DescriptorProto())
 	}
 
-	largestScope := getLargestScope(details.DescriptorCoverage == tree.AllDescriptors, requestedTargets)
+	largestScope := getLargestScope(details.DescriptorCoverage != tree.RequestedDescriptors, requestedTargets)
 
 	targetCount := 1
-	if details.DescriptorCoverage != tree.AllDescriptors {
+	if details.DescriptorCoverage == tree.RequestedDescriptors {
 		targetCount = len(requestedTargets)
 	}
 
@@ -348,7 +308,7 @@ func logRestoreTelemetry(
 
 	for _, uri := range details.URIs {
 		if storage, auth, err := parseStorageAndAuth(uri); err != nil {
-			log.Warningf(ctx, "failed to parse URI: %v", err)
+			log.Dev.Warningf(ctx, "failed to parse URI: %v", err)
 		} else {
 			authTypes[auth] = struct{}{}
 			storageTypes[storage] = struct{}{}
@@ -362,7 +322,7 @@ func logRestoreTelemetry(
 
 		for _, uri := range localityInfo.URIsByOriginalLocalityKV {
 			if storage, auth, err := parseStorageAndAuth(uri); err != nil {
-				log.Warningf(ctx, "failed to parse URI: %v", err)
+				log.Dev.Warningf(ctx, "failed to parse URI: %v", err)
 			} else {
 				authTypes[auth] = struct{}{}
 				storageTypes[storage] = struct{}{}
@@ -410,9 +370,7 @@ func logRestoreTelemetry(
 		TargetScope:             largestScope.String(),
 		TargetCount:             uint32(targetCount),
 		IsMultiregionTarget:     multiRegion,
-		DestinationSubdirType:   loggedSubdirType(subdir),
 		IsLocalityAware:         localityAware,
-		AsOfInterval:            asOfInterval,
 		HasEncryptionPassphrase: passphrase,
 		KMSType:                 kmsType,
 		KMSCount:                uint32(kmsCount),

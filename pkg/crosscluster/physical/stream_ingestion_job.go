@@ -3,6 +3,164 @@
 // Use of this software is governed by the CockroachDB Software License
 // included in the /LICENSE file.
 
+/*
+Package physical implements the consumer side of physical cluster.
+
+Physical cluster replication (PCR) uses a pull-based model where the destination
+cluster (consumer) initiates connections to the source cluster (producer) to
+request change streams. The consumer provides a frontier timestamp indicating
+where to resume from, enabling crash recovery and incremental replication.
+
+# High-Level Architecture (as summarized by Claude Code)
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ SOURCE CLUSTER (Producer, pkg/crosscluster/producer)                        │
+│                                                                             │
+│  ┌──────────────┐    ┌──────────────────┐    ┌─────────────────────────┐    │
+│  │  Rangefeeds  │───▶│  eventStream     │───▶│  streamCh (pgwire)      │    │
+│  │  (per range) │    │  (batches events)│    │  (sends to consumer)    │    │
+│  └──────────────┘    └──────────────────┘    └─────────────────────────┘    │
+│                                                        │                    │
+│           GC protected by                              │                    │
+│           heartbeat timestamp                          │                    │
+│                                                        ▼                    │
+│  ┌────── ───────┐◀─────────────── heartbeats ──────────────────────────┐    │
+│  │  Rangefeed   │    (consumer reports durably replicated time         │    │
+│  │  GC threshold│     so producer can advance GC)                      │    │
+│  └──────────────┘                                                      │    │
+│                                                                        │    │
+│  Timing metrics:                                                       │    │
+│  - ProduceWait: time waiting to produce (rangefeed → batch)            │    │
+│  - EmitWait: time waiting to emit (batch → consumer reads)             │    │
+└────────────────────────────────────────────────────────────────────────│────┘
+
+	                                                                         │
+		                                                                       │
+		┌──────────────────────────────────────────────────────────────────────┘
+		│ pgwire connection (pkg/crosscluster/streamclient)
+		│ Consumer calls: crdb_internal.stream_partition(streamID, spec)
+		│ Spec includes InitialScanTimestamp and per-span resume timestamps
+		▼
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ DESTINATION CLUSTER (Consumer, pkg/crosscluster/physical)                   │
+│                                                                             │
+│  Job Resumer (stream_ingestion_job.go)                                      │
+│    - Reads ReplicatedTime from job progress (or InitialScanTimestamp)       │
+│    - Constructs DistSQL flow with frontier as resume point                  │
+│    - On restart, resumes from persisted checkpoint                          │
+│                       │                                                     │
+│                       ▼                                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ DistSQL Flow (one ingestion processor per source partition)         │    │
+│  │                                                                     │    │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐      │    │
+│  │  │ streamIngestion │  │ streamIngestion │  │ streamIngestion │      │    │
+│  │  │ Processor (N1)  │  │ Processor (N2)  │  │ Processor (N3)  │      │    │
+│  │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘      │    │
+│  │           │ ResolvedSpans      │                    │               │    │
+│  │           └────────────────────┼────────────────────┘               │    │
+│  │                                ▼                                    │    │
+│  │                    ┌────────────────────────┐                       │    │
+│  │                    │ streamIngestionFrontier│                       │    │
+│  │                    │ Processor (coordinator)│                       │    │
+│  │                    └───────────┬────────────┘                       │    │
+│  │                                │                                    │    │
+│  └────────────────────────────────│────────────────────────────────────┘    │
+│                                   ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │ Frontier Processor responsibilities:                                │    │
+│  │  - Merges ResolvedSpans from all ingestion processors               │    │
+│  │  - Maintains span.Frontier (min resolved timestamp across spans)    │    │
+│  │  - Persists ReplicatedTime to job progress periodically             │    │
+│  │  - Sends heartbeats to producer with durably replicated time        │    │
+│  │  - ReplicatedTime = safe point for cutover or job restart           │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
+│                                                                             │
+│  Timing metrics:                                                            │
+│  - AdmitLatency: MVCC timestamp → event received                            │
+│  - FlushHistNanos: time spent in flush operation                            │
+│  - CommitLatency: oldest MVCC timestamp → flush complete                    │
+│  - ReceiveWaitNanos: time blocked waiting for producer data                 │
+│  - FlushWaitNanos: time blocked waiting for flush pipeline                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+# Checkpoint and Frontier Flow
+
+ 1. Producer sends "resolved span" events indicating all data up to timestamp T
+    for a given span has been sent.
+
+ 2. Each ingestion processor receives resolved spans for its partitions, flushes
+    buffered data, then emits ResolvedSpans to the frontier processor.
+
+ 3. Frontier processor maintains a span.Frontier tracking the minimum resolved
+    timestamp across ALL spans. This is the ReplicatedTime.
+
+4. ReplicatedTime is persisted to job progress and used for:
+  - Cutover: destination can serve reads as of ReplicatedTime
+  - Resumption: on restart, consumer requests changes from ReplicatedTime
+  - GC coordination: heartbeat tells producer it can GC data before this time
+
+# Detailed Data Flow
+
+## Producer Side (pkg/crosscluster/producer/event_stream.go)
+
+1. Rangefeed callbacks (onValue, onValues, onSSTable, onDeleteRange):
+  - Receive events from rangefeed
+  - Add to streamEventBatcher (accumulates events)
+  - Call maybeFlushBatch() which flushes when:
+  - Batch size exceeds BatchByteSize (1 MiB default)
+  - Consumer is ready AND batch > minBatchByteSize (1 MiB)
+
+2. Batching and sending (flushBatch, sendFlush):
+  - Serialize batch to protobuf
+  - Optionally compress with Snappy
+  - BLOCKING: Send on streamCh - blocks until consumer's Next() reads it
+  - This is where producer waits for slow consumer
+
+3. Checkpoint emission (maybeCheckpoint, sendCheckpoint):
+  - Triggered on rangefeed frontier advance
+  - Respects MinCheckpointFrequency setting
+  - Sends resolved spans to consumer
+
+## Transport Layer (pkg/crosscluster/streamclient/)
+
+- partitionedStreamClient.Subscribe() initiates connection to producer
+- Passes InitialScanTimestamp and per-span frontier for resumption
+- Producer starts rangefeeds from the requested timestamps
+- Events flow via pgwire as rows, decoded into StreamEvent channel
+
+## Consumer Side (pkg/crosscluster/physical/stream_ingestion_processor.go)
+
+1. Subscription setup (Start()):
+  - Creates streamclient.Client per partition
+  - Each client calls Subscribe() with frontier timestamps
+  - All subscriptions merged via MergedSubscription
+
+2. Event consumption (consumeEvents()):
+  - BLOCKING select on mergedSubscription.Events()
+  - This is where consumer waits for data from producer
+  - Buffers KVs into streamIngestionBuffer
+  - Flushes on:
+  - Checkpoint event (if minimumFlushInterval elapsed)
+  - Buffer size threshold (maxKVBufferSize 128 MiB)
+  - Periodic timer
+
+3. Flush pipeline (flush() → flushLoop() → flushBuffer()):
+  - Swaps buffer, sends to flushCh (1 in-flight flush allowed)
+  - flushLoop receives buffer, calls flushBuffer()
+  - Sorts KVs, writes via SSTBatcher
+  - BLOCKING: sip.batcher.Flush() does actual I/O
+  - Emits ResolvedSpans to downstream frontier processor
+
+## Frontier Processor (stream_ingestion_frontier_processor.go)
+
+1. Receives ResolvedSpans from all ingestion processors
+2. Updates span.Frontier with each resolved span
+3. Periodically persists frontier to job progress (JobCheckpointFrequency)
+4. Sends heartbeats to producer via HeartbeatSender with replicated time
+5. Producer uses heartbeat time to advance GC threshold
+*/
 package physical
 
 import (
@@ -17,6 +175,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/jobs/ingeststopped"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobsprotectedts"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/rangefeed"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptpb"
 	"github.com/cockroachdb/cockroach/pkg/multitenant/mtinfopb"
@@ -26,13 +186,21 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/systemschema"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
+	"github.com/cockroachdb/cockroach/pkg/sql/rowenc/valueside"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/catconstants"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	bulkutil "github.com/cockroachdb/cockroach/pkg/util/bulk"
+	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
+	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
+	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
@@ -98,22 +266,23 @@ func updateStatus(
 	replicationStatus jobspb.ReplicationStatus,
 	status redact.RedactableString,
 ) {
-	err := ingestionJob.NoTxn().Update(ctx, func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+	//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+	err := ingestionJob.DeprecatedNoTxn().Update(ctx, func(txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 		updateStatusInternal(md, ju, replicationStatus, string(status.Redact()))
 		return nil
 	})
 	if err != nil {
-		log.Warningf(ctx, "error when updating job running status: %s", err)
+		log.Dev.Warningf(ctx, "error when updating job running status: %s", err)
 	} else if replicationStatus == jobspb.ReplicationError {
-		log.Warningf(ctx, "%s", status)
+		log.Dev.Warningf(ctx, "%s", status)
 	} else {
-		log.Infof(ctx, "%s", status)
+		log.Dev.Infof(ctx, "%s", status)
 	}
 }
 
 func updateStatusInternal(
-	md jobs.JobMetadata,
-	ju *jobs.JobUpdater,
+	md jobs.DeprecatedJobMetadata,
+	ju *jobs.DeprecatedJobUpdater,
 	replicationStatus jobspb.ReplicationStatus,
 	status string,
 ) {
@@ -129,7 +298,7 @@ func completeIngestion(
 	cutoverTimestamp hlc.Timestamp,
 ) error {
 	details := ingestionJob.Details().(jobspb.StreamIngestionDetails)
-	log.Infof(ctx, "activating destination tenant %d", details.DestinationTenantID)
+	log.Dev.Infof(ctx, "activating destination tenant %d", details.DestinationTenantID)
 	if err := activateTenant(ctx, execCtx, details, cutoverTimestamp); err != nil {
 		return err
 	}
@@ -140,7 +309,7 @@ func completeIngestion(
 	completeProducerJob(ctx, ingestionJob, execCtx.ExecCfg().InternalDB, true)
 	evalContext := &execCtx.ExtendedEvalContext().Context
 	if err := startPostCutoverRetentionJob(ctx, execCtx.ExecCfg(), details, evalContext, cutoverTimestamp); err != nil {
-		log.Warningf(ctx, "failed to begin post cutover retention job: %s", err.Error())
+		log.Dev.Warningf(ctx, "failed to begin post cutover retention job: %s", err.Error())
 	}
 
 	// Now that we have completed the cutover we can release the protected
@@ -179,7 +348,7 @@ func completeProducerJob(
 			return client.Complete(ctx, streamID, successfulIngestion)
 		},
 	); err != nil {
-		log.Warningf(ctx, `encountered error when completing the source cluster producer job %d: %s`, streamID, err.Error())
+		log.Dev.Warningf(ctx, `encountered error when completing the source cluster producer job %d: %s`, streamID, err.Error())
 	}
 }
 
@@ -210,35 +379,12 @@ func startPostCutoverRetentionJob(
 func ingest(
 	ctx context.Context, execCtx sql.JobExecContext, resumer *streamIngestionResumer,
 ) error {
-	ingestionJob := resumer.job
-	// Cutover should be the *first* thing checked upon resumption as it is the
-	// most critical task in disaster recovery.
-	cutoverTimestamp, reverted, err := maybeRevertToCutoverTimestamp(ctx, execCtx, ingestionJob)
-	if err != nil {
-		return err
-	}
-	if reverted {
-		log.Infof(ctx, "job completed cutover on resume")
-		return completeIngestion(ctx, execCtx, ingestionJob, cutoverTimestamp)
-	}
 	if knobs := execCtx.ExecCfg().StreamingTestingKnobs; knobs != nil && knobs.BeforeIngestionStart != nil {
 		if err := knobs.BeforeIngestionStart(ctx); err != nil {
 			return err
 		}
 	}
-	// A nil error is only possible if the job was signaled to cutover and the
-	// processors shut down gracefully, i.e stopped ingesting any additional
-	// events from the replication stream. At this point it is safe to revert to
-	// the cutoff time to leave the cluster in a consistent state.
-	if err := startDistIngestion(ctx, execCtx, resumer); err != nil {
-		return err
-	}
-
-	cutoverTimestamp, err = revertToCutoverTimestamp(ctx, execCtx, ingestionJob)
-	if err != nil {
-		return err
-	}
-	return completeIngestion(ctx, execCtx, ingestionJob, cutoverTimestamp)
+	return startDistIngestion(ctx, execCtx, resumer)
 }
 
 func getRetryPolicy(knobs *sql.StreamingTestingKnobs) retry.Options {
@@ -256,13 +402,11 @@ func getRetryPolicy(knobs *sql.StreamingTestingKnobs) retry.Options {
 func ingestWithRetries(
 	ctx context.Context, execCtx sql.JobExecContext, resumer *streamIngestionResumer,
 ) error {
-	ingestionJob := resumer.job
 	ro := getRetryPolicy(execCtx.ExecCfg().StreamingTestingKnobs)
-	var (
-		err                    error
-		previousPersistedSpans jobspb.ResolvedSpanEntries
-		currentPersistedSpans  jobspb.ResolvedSpanEntries
-	)
+
+	var err error
+	var previousPersistedSpans jobspb.ResolvedSpanEntries = resumer.job.Progress().Details.(*jobspb.Progress_StreamIngest).StreamIngest.Checkpoint.ResolvedSpans
+	currentPersistedSpans := previousPersistedSpans
 
 	for r := retry.Start(ro); r.Next(); {
 		err = ingest(ctx, execCtx, resumer)
@@ -276,37 +420,232 @@ func ingestWithRetries(
 		if jobs.IsPermanentJobError(err) || ctx.Err() != nil {
 			break
 		}
-		log.Infof(ctx, "hit retryable error %s", err)
+		log.Dev.Infof(ctx, "hit retryable error %s", err)
+
+		// Reload the job's in-memory progress from the database so that we see accurate progress.
+		reloadErr := execCtx.ExecCfg().InternalDB.Txn(ctx, func(ctx context.Context, t isql.Txn) error {
+			job, err := execCtx.ExecCfg().JobRegistry.LoadClaimedJobWithTxn(ctx, resumer.job.ID(), t)
+			if err != nil {
+				return err
+			}
+			resumer.job = job
+			return nil
+		})
+		if reloadErr != nil {
+			log.Dev.Warningf(ctx, "error loading job progress: %v", reloadErr)
+		}
 
 		currentPersistedSpans = resumer.job.Progress().Details.(*jobspb.Progress_StreamIngest).StreamIngest.Checkpoint.ResolvedSpans
 		if !currentPersistedSpans.Equal(previousPersistedSpans) {
 			// If the previous persisted spans are different than the current, it
 			// implies that further progress has been persisted.
 			r.Reset()
-			log.Infof(ctx, "resolved spans have advanced since last retry, resetting retry counter")
+			log.Dev.Infof(ctx, "resolved spans have advanced since last retry, resetting retry counter")
 		}
+		previousPersistedSpans = currentPersistedSpans
+
 		if knobs := execCtx.ExecCfg().StreamingTestingKnobs; knobs != nil && knobs.AfterRetryIteration != nil {
 			knobs.AfterRetryIteration(err)
 		}
 	}
-	if err != nil {
-		return err
-	}
-	updateStatus(ctx, ingestionJob, jobspb.ReplicationFailingOver,
-		"stream ingestion finished successfully")
-	return nil
+	return err
 }
 
 // The ingestion job should never fail, only pause, as progress should never be lost.
 func (s *streamIngestionResumer) handleResumeError(
 	ctx context.Context, execCtx sql.JobExecContext, err error,
 ) error {
+	// If the resumer has been canceled/paused, just return that error.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
 	msg := redact.Sprintf("ingestion job failed (%s) but is being paused", err)
 	updateStatus(ctx, s.job, jobspb.ReplicationError, msg)
 	// The ingestion job is paused but the producer job will keep
 	// running until it times out. Users can still resume ingestion before
 	// the producer job times out.
 	return jobs.MarkPauseRequestError(err)
+}
+
+// cutoverSignalRangefeed maintains a rangefeed on the legacy_progress
+// info_key row for the given job in system.job_info for the lifetime of ctx.
+// It sends on the nudge channel whenever it observes a progress update that
+// might mean it is time to cut over, prompting the poller to perform its
+// authoritative SQL read (the rangefeed does not wait for resolved
+// timestamps, so its own view is not sufficient to decide).
+//
+// The rangefeed is automatically restarted, after a fixed delay, when it
+// surfaces an error the client gives up retrying internally; all such errors
+// are logged and swallowed, as this path is purely a latency-reduction
+// optimization backstopped by the poller. It runs until ctx is cancelled,
+// which happens when the poller returns a non-nil error (which it does on
+// all return paths).
+func cutoverSignalRangefeed(
+	ctx context.Context, execCfg *sql.ExecutorConfig, jobID jobspb.JobID, nudge chan<- struct{},
+) error {
+	for ctx.Err() == nil {
+		if err := runOneCutoverSignalRangefeed(ctx, execCfg, jobID, nudge); err != nil {
+			log.Dev.Warningf(ctx, "cutover rangefeed: %s", err)
+			select {
+			case nudge <- struct{}{}: // nudge just to be sure, since we're not watching right now
+			default:
+			}
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-time.After(10 * time.Second):
+			}
+		}
+	}
+	return nil
+}
+
+// runOneCutoverSignalRangefeed runs a single rangefeed instance on the job's
+// legacy_progress info_key row, sending on nudge whenever an observed
+// progress update satisfies the cutover-reached condition (cutover time set
+// and replicated time has caught up to it). It blocks until ctx is cancelled
+// (returning nil) or the rangefeed surfaces an unrecoverable error (returned
+// to the caller, which is expected to restart).
+func runOneCutoverSignalRangefeed(
+	ctx context.Context, execCfg *sql.ExecutorConfig, jobID jobspb.JobID, nudge chan<- struct{},
+) error {
+	// system.job_info has a dynamically-assigned descriptor ID, so resolve it at
+	// runtime. The primary index and column metadata are stable and can be read
+	// off the static systemschema template.
+	tableID, err := execCfg.SystemTableIDResolver.LookupSystemTableID(
+		ctx, string(catconstants.SystemJobInfoTableName))
+	if err != nil {
+		return errors.Wrap(err, "looking up system.job_info")
+	}
+	jobInfo := systemschema.SystemJobInfoTable
+
+	prefix := execCfg.Codec.IndexPrefix(uint32(tableID), uint32(jobInfo.GetPrimaryIndexID()))
+	prefix = encoding.EncodeVarintAscending(prefix, int64(jobID))
+	prefix = encoding.EncodeStringAscending(prefix, jobs.LegacyProgressKey)
+	span := roachpb.Span{Key: prefix, EndKey: prefix.PrefixEnd()}
+
+	valueCol, err := catalog.MustFindColumnByName(jobInfo, "value")
+	if err != nil {
+		return errors.Wrap(err, "resolving value column")
+	}
+	decoder := valueside.MakeDecoder([]catalog.Column{valueCol})
+
+	onValue := func(ctx context.Context, ev *kvpb.RangeFeedValue) {
+		bytes, err := ev.Value.GetTuple()
+		if err != nil {
+			log.Dev.Warningf(ctx, "cutover rangefeed: get tuple: %s", err)
+			return
+		}
+		var alloc tree.DatumAlloc
+		datums, err := decoder.Decode(&alloc, bytes)
+		if err != nil {
+			log.Dev.Warningf(ctx, "cutover rangefeed: decode row: %s", err)
+			return
+		}
+		if len(datums) != 1 || datums[0] == tree.DNull {
+			log.Dev.Warningf(ctx, "cutover rangefeed: unexpected row format with %d datums", len(datums))
+			return
+		}
+		progressBytes, ok := datums[0].(*tree.DBytes)
+		if !ok {
+			log.Dev.Warningf(ctx, "cutover rangefeed: unexpected row format %T", datums[0])
+			return
+		}
+		var progress jobspb.Progress
+		if err := protoutil.Unmarshal([]byte(*progressBytes), &progress); err != nil {
+			log.Dev.Warningf(ctx, "cutover rangefeed: unmarshal progress: %s", err)
+			return
+		}
+		ip := progress.GetStreamIngest()
+		if ip == nil {
+			log.Dev.Warningf(ctx, "cutover rangefeed: progress missing StreamIngest field")
+			return
+		}
+		if !ip.CutoverTime.IsEmpty() && ip.CutoverTime.LessEq(ip.ReplicatedTime) {
+			select {
+			case nudge <- struct{}{}:
+			default:
+			}
+		}
+	}
+
+	errCh := make(chan error, 1)
+	rf, err := execCfg.RangeFeedFactory.RangeFeed(
+		ctx,
+		fmt.Sprintf("pcr-cutover-%d", jobID),
+		[]roachpb.Span{span},
+		execCfg.DB.Clock().Now(),
+		onValue,
+		rangefeed.WithSystemTablePriority(),
+		rangefeed.WithOnInternalError(func(ctx context.Context, err error) {
+			select {
+			case errCh <- err:
+			case <-ctx.Done():
+			}
+		}),
+	)
+	if err != nil {
+		return errors.Wrap(err, "starting rangefeed")
+	}
+	defer rf.Close()
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case err := <-errCh:
+		return err
+	}
+}
+
+// errCutoverSignaled is returned by pollForCutoverSignal when it detects
+// that a cutover has been signaled. When returned from a ctxgroup member, it
+// cancels the group context, which tears down the ingestion phase.
+var errCutoverSignaled = errors.New("cutover signaled")
+
+// pollForCutoverSignal periodically polls the job progress to detect when a
+// cutover has been signaled. It returns errCutoverSignaled when cutover is
+// reached, which cancels the ctxgroup context and unblocks all goroutines in
+// the ingestion phase (heartbeat sender, span config stream, replanning,
+// connection refresher) that may be stuck on dead TCP connections.
+//
+// This complements the per-processor cutover polling in checkForCutoverSignal,
+// which only signals individual ingestion processors via cutoverCh but cannot
+// unblock the other goroutines sharing the same ctxgroup context.
+//
+// The nudge channel, driven by cutoverSignalRangefeed running as a sibling
+// ctxgroup member, lets the loop wake before the next tick on observed
+// progress writes; the timer remains the floor and the SQL-based check
+// inside cutoverReached remains the source of truth, so a missing or
+// degraded rangefeed only affects latency, not correctness.
+func (s *streamIngestionResumer) pollForCutoverSignal(
+	ctx context.Context, execCfg *sql.ExecutorConfig, nudge <-chan struct{},
+) error {
+	provider := &cutoverFromJobProgress{
+		db:    execCfg.InternalDB,
+		jobID: s.job.ID(),
+	}
+	sv := &execCfg.Settings.SV
+	pollInterval := cutoverSignalPollInterval.Get(sv)
+	tick := time.NewTicker(pollInterval)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-nudge:
+		case <-tick.C:
+		}
+		reached, err := provider.cutoverReached(ctx)
+		if err != nil {
+			log.Dev.Warningf(ctx, "error checking cutover signal: %s", err)
+			continue
+		}
+		if reached {
+			log.Dev.Infof(ctx, "cutover signal detected, returning error to cancel ingestion context")
+			return errCutoverSignaled
+		}
+	}
 }
 
 // Resume is part of the jobs.Resumer interface.  Ensure that any errors
@@ -333,12 +672,75 @@ func (s *streamIngestionResumer) Resume(ctx context.Context, execCtx interface{}
 		return err
 	}
 
-	// Start ingesting KVs from the replication stream.
-	err = ingestWithRetries(ctx, jobExecCtx, s)
+	execCfg := jobExecCtx.ExecCfg()
+
+	// Cutover should be the *first* thing checked upon resumption as it is the
+	// most critical task in disaster recovery. If cutover has already been
+	// signaled, skip ingestion entirely and proceed to the cutover path below.
+	cutoverAlreadySignaled, err := (&cutoverFromJobProgress{
+		db: execCfg.InternalDB, jobID: s.job.ID(),
+	}).cutoverReached(ctx)
 	if err != nil {
 		return s.handleResumeError(ctx, jobExecCtx, err)
 	}
-	return nil
+
+	if !cutoverAlreadySignaled {
+		// Run ingestion and the cutover watcher concurrently. The watcher polls
+		// for cutover independently of the per-processor polling. When the watcher
+		// detects cutover, it returns errCutoverSignaled which cancels the group
+		// context, tearing down the entire ingestion phase including goroutines
+		// that the per-processor poller cannot reach (heartbeat sender, span config
+		// stream, replanning, etc.).
+		nudge := make(chan struct{}, 1)
+		err = ctxgroup.GoAndWait(ctx,
+			func(ctx context.Context) error {
+				return ingestWithRetries(ctx, jobExecCtx, s)
+			},
+			func(ctx context.Context) error {
+				return cutoverSignalRangefeed(ctx, execCfg, s.job.ID(), nudge)
+			},
+			func(ctx context.Context) error {
+				return s.pollForCutoverSignal(ctx, execCfg, nudge)
+			},
+		)
+		if err != nil {
+			if !errors.Is(err, errCutoverSignaled) {
+				return s.handleResumeError(ctx, jobExecCtx, err)
+			}
+		}
+	}
+
+	// Revert to the cutover timestamp and complete the ingestion. This handles
+	// all paths: cutover signaled before ingestion started, per-processor
+	// detection (err == nil), and watcher detection (err == errCutoverSignaled).
+	// Retry transient errors; maybeRevertToCutoverTimestamp is idempotent
+	// (no-ops once ReplicationFailingOver is set), so retrying is safe.
+	var cutoverTimestamp hlc.Timestamp
+	ro := getRetryPolicy(execCfg.StreamingTestingKnobs)
+	for r := retry.Start(ro); r.Next(); {
+		var reverted bool
+		cutoverTimestamp, reverted, err = maybeRevertToCutoverTimestamp(ctx, jobExecCtx, s.job)
+		if err != nil {
+			if jobs.IsPermanentJobError(err) || ctx.Err() != nil {
+				return s.handleResumeError(ctx, jobExecCtx, err)
+			}
+			log.Dev.Infof(ctx, "hit retryable error during cutover: %s", err)
+			continue
+		}
+		if !reverted {
+			return s.handleResumeError(ctx, jobExecCtx,
+				errors.AssertionFailedf("ingestion completed without cutover"))
+		}
+		if err = completeIngestion(ctx, jobExecCtx, s.job, cutoverTimestamp); err != nil {
+			if jobs.IsPermanentJobError(err) || ctx.Err() != nil {
+				return s.handleResumeError(ctx, jobExecCtx, err)
+			}
+			log.Dev.Infof(ctx, "hit retryable error completing ingestion: %s", err)
+			continue
+		}
+		return nil
+	}
+	return s.handleResumeError(ctx, jobExecCtx, err)
 }
 
 func releaseDestinationTenantProtectedTimestamp(
@@ -346,7 +748,7 @@ func releaseDestinationTenantProtectedTimestamp(
 ) error {
 	if err := ptp.Release(ctx, ptsID); err != nil {
 		if errors.Is(err, protectedts.ErrNotExists) {
-			log.Warningf(ctx, "failed to release protected ts as it does not to exist: %s", err)
+			log.Dev.Warningf(ctx, "failed to release protected ts as it does not to exist: %s", err)
 			err = nil
 		}
 		return err
@@ -384,12 +786,13 @@ func (s *streamIngestionResumer) protectDestinationTenant(
 	return execCfg.InternalDB.Txn(ctx, func(ctx context.Context, txn isql.Txn) error {
 		ptp := execCfg.ProtectedTimestampProvider.WithTxn(txn)
 		pts := jobsprotectedts.MakeRecord(ptsID, int64(s.job.ID()), replicationStartTime,
-			nil /* deprecatedSpans */, jobsprotectedts.Jobs, target)
+			jobsprotectedts.Jobs, target)
 		if err := ptp.Protect(ctx, pts); err != nil {
 			return err
 		}
-		return s.job.WithTxn(txn).Update(ctx, func(
-			txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater,
+		//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+		return s.job.DeprecatedWithTxn(txn).Update(ctx, func(
+			txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater,
 		) error {
 			if err := md.CheckRunningOrReverting(); err != nil {
 				return err
@@ -405,33 +808,17 @@ func (s *streamIngestionResumer) protectDestinationTenant(
 	})
 }
 
-// revertToCutoverTimestamp attempts a cutover and errors out if one was not
-// executed.
-func revertToCutoverTimestamp(
-	ctx context.Context, execCtx sql.JobExecContext, ingestionJob *jobs.Job,
-) (hlc.Timestamp, error) {
-	cutoverTimestamp, reverted, err := maybeRevertToCutoverTimestamp(ctx, execCtx, ingestionJob)
-	if err != nil {
-		return hlc.Timestamp{}, err
-	}
-	if !reverted {
-		return hlc.Timestamp{}, errors.Errorf("required cutover was not completed")
-	}
-
-	return cutoverTimestamp, nil
-}
-
 func cutoverTimeIsEligibleForCutover(
 	ctx context.Context, cutoverTime hlc.Timestamp, progress *jobspb.Progress,
 ) bool {
 	if cutoverTime.IsEmpty() {
-		log.Infof(ctx, "empty cutover time, no revert required")
+		log.Dev.Infof(ctx, "empty cutover time, no revert required")
 		return false
 	}
 
 	replicatedTime := replicationutils.ReplicatedTimeFromProgress(progress)
 	if replicatedTime.Less(cutoverTime) {
-		log.Infof(ctx, "job with replicated time %s not yet ready to revert to cutover at %s",
+		log.Dev.Infof(ctx, "job with replicated time %s not yet ready to revert to cutover at %s",
 			replicatedTime,
 			cutoverTime.String())
 		return false
@@ -456,15 +843,15 @@ func maybeRevertToCutoverTimestamp(
 	// existed in the record at the point of the update rather the
 	// value that may be in the job record before the update.
 	var (
-		shouldRevertToCutover   bool
-		cutoverTimestamp        hlc.Timestamp
-		originalSpanToRevert    roachpb.Span
-		remainingSpansToRevert  roachpb.Spans
-		replicatedTimeAtCutover hlc.Timestamp
-		readerTenantID          roachpb.TenantID
+		shouldRevertToCutover  bool
+		cutoverTimestamp       hlc.Timestamp
+		originalSpanToRevert   roachpb.Span
+		remainingSpansToRevert roachpb.Spans
+		readerTenantID         roachpb.TenantID
 	)
-	if err := ingestionJob.NoTxn().Update(ctx,
-		func(txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater) error {
+	//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+	if err := ingestionJob.DeprecatedNoTxn().Update(ctx,
+		func(txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater) error {
 			streamIngestionDetails := md.Payload.GetStreamIngestion()
 			if streamIngestionDetails == nil {
 				return errors.AssertionFailedf("unknown payload %v in stream ingestion job %d",
@@ -478,7 +865,6 @@ func maybeRevertToCutoverTimestamp(
 			}
 
 			cutoverTimestamp = streamIngestionProgress.CutoverTime
-			replicatedTimeAtCutover = streamIngestionProgress.ReplicatedTimeAtCutover
 			readerTenantID = streamIngestionDetails.ReadTenantID
 			originalSpanToRevert = streamIngestionDetails.Span
 			remainingSpansToRevert = streamIngestionProgress.RemainingCutoverSpans
@@ -500,9 +886,7 @@ func maybeRevertToCutoverTimestamp(
 	if !shouldRevertToCutover {
 		return cutoverTimestamp, false, nil
 	}
-	// Identical cutoverTimestamp and replicatedTimeAtCutover implies that
-	// CUTOVER TO LATEST command was run. Destroy reader tenant if not CUTOVER TO LATEST.
-	if !cutoverTimestamp.Equal(replicatedTimeAtCutover) && readerTenantID.IsSet() {
+	if readerTenantID.IsSet() {
 		if err := stopTenant(ctx, p.ExecCfg(), readerTenantID); err != nil {
 			return cutoverTimestamp, false, errors.Wrapf(err, "failed to stop reader tenant")
 		}
@@ -510,9 +894,9 @@ func maybeRevertToCutoverTimestamp(
 	if err := ingeststopped.WaitForNoIngestingNodes(ctx, p, ingestionJob, maxIngestionProcessorShutdownWait); err != nil {
 		return cutoverTimestamp, false, errors.Wrapf(err, "unable to verify that attempted LDR job %d had stopped offline ingesting %s", ingestionJob.ID(), maxIngestionProcessorShutdownWait)
 	}
-	log.Infof(ctx, "verified no nodes still offline ingesting on behalf of job %d", ingestionJob.ID())
+	log.Dev.Infof(ctx, "verified no nodes still offline ingesting on behalf of job %d", ingestionJob.ID())
 
-	log.Infof(ctx, "reverting to cutover timestamp %s", cutoverTimestamp)
+	log.Dev.Infof(ctx, "reverting to cutover timestamp %s", cutoverTimestamp)
 	if p.ExecCfg().StreamingTestingKnobs != nil && p.ExecCfg().StreamingTestingKnobs.AfterCutoverStarted != nil {
 		p.ExecCfg().StreamingTestingKnobs.AfterCutoverStarted()
 	}
@@ -637,9 +1021,9 @@ func (s *streamIngestionResumer) OnFailOrCancel(
 	// Ensure no sip processors are still ingesting data, so a subsequent DROP
 	// TENANT cmd will cleanly wipe out all data.
 	if err := ingeststopped.WaitForNoIngestingNodes(ctx, jobExecCtx, s.job, maxIngestionProcessorShutdownWait); err != nil {
-		log.Warningf(ctx, "unable to verify that attempted LDR job %d had stopped offline ingesting %s: %v", s.job.ID(), maxIngestionProcessorShutdownWait, err)
+		log.Dev.Warningf(ctx, "unable to verify that attempted LDR job %d had stopped offline ingesting %s: %v", s.job.ID(), maxIngestionProcessorShutdownWait, err)
 	} else {
-		log.Infof(ctx, "verified no nodes still offline ingesting on behalf of job %d", s.job.ID())
+		log.Dev.Infof(ctx, "verified no nodes still offline ingesting on behalf of job %d", s.job.ID())
 	}
 
 	return execCfg.InternalDB.Txn(ctx, func(
@@ -693,7 +1077,7 @@ func (s *streamIngestionResumer) CollectProfile(ctx context.Context, execCtx int
 
 func closeAndLog(ctx context.Context, d streamclient.Client) {
 	if err := d.Close(ctx); err != nil {
-		log.Warningf(ctx, "error closing stream client: %s", err.Error())
+		log.Dev.Warningf(ctx, "error closing stream client: %s", err.Error())
 	}
 }
 
@@ -791,7 +1175,8 @@ func (c *cutoverProgressTracker) updateJobProgress(
 		return fractionRangesFinished
 	}
 
-	if err := c.job.NoTxn().FractionProgressed(ctx, persistProgress); err != nil {
+	//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+	if err := c.job.DeprecatedNoTxn().FractionProgressed(ctx, persistProgress); err != nil {
 		return jobs.SimplifyInvalidStateError(err)
 	}
 	if c.onJobProgressUpdate != nil {
@@ -809,7 +1194,7 @@ func (c *cutoverProgressTracker) onCompletedCallback(
 	}
 
 	if err := c.updateJobProgress(ctx, c.remainingSpans.Slice()); err != nil {
-		log.Warningf(ctx, "failed to update job progress: %s", err)
+		log.Dev.Warningf(ctx, "failed to update job progress: %s", err)
 	}
 	return nil
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
 )
 
@@ -31,12 +32,17 @@ import (
 // be deleted, it'll enable autoCommit for delete range.
 type deleteRangeNode struct {
 	zeroInputPlanNode
-	// spans are the spans to delete.
+	rowsAffectedOutputHelper
+	// spans are the spans to delete. The slice is owned by the deleteRangeNode.
 	spans roachpb.Spans
 	// desc is the table descriptor the delete is operating on.
 	desc catalog.TableDescriptor
-	// fetcher is around to decode the returned keys from the DeleteRange, so that
-	// we can count the number of rows deleted.
+	// singleColumnFamily, if set, indicates that the table has only one column
+	// family.
+	singleColumnFamily bool
+	// fetcher is used to decode the returned keys from the DeleteRange, so that
+	// we can count the number of rows deleted. It's only used when the table
+	// has multiple column families (i.e. singleColumnFamily is false).
 	fetcher row.Fetcher
 
 	// autoCommitEnabled is set to true if the optimizer proved that we can safely
@@ -45,37 +51,55 @@ type deleteRangeNode struct {
 	// batches and will just send one big delete with a commit statement attached.
 	autoCommitEnabled bool
 
-	// rowCount will be set to the count of rows deleted.
-	rowCount int
+	// curRowPrefix is the prefix for all KVs (i.e. for all column families) of
+	// the SQL row that increased rowCount last. It is maintained across
+	// different BatchRequests in order to not double count the same SQL row. It
+	// is maintained only when singleColumnFamily is false.
+	curRowPrefix []byte
+
+	// kvCPUTimeAccum tracks the cumulative CPU time (in nanoseconds) that KV
+	// reported in BatchResponse headers during the execution of this delete range.
+	kvCPUTimeAccum int64
+
+	// localKVCPUTimeAccum tracks the cumulative SQL goroutine CPU time (in
+	// nanoseconds) spent inside KV calls during delete range execution, as
+	// measured by the grunning library. This is the portion of SQL goroutine
+	// CPU that overlapped with KV work, not the CPU consumed on KV servers (see
+	// kvCPUTimeAccum for that).
+	localKVCPUTimeAccum int64
+	// cpuStopWatch measures grunning time around KV calls.
+	cpuStopWatch timeutil.CPUStopWatch
 }
 
 var _ planNode = &deleteRangeNode{}
-var _ planNodeFastPath = &deleteRangeNode{}
-var _ batchedPlanNode = &deleteRangeNode{}
 var _ mutationPlanNode = &deleteRangeNode{}
 
-// BatchedNext implements the batchedPlanNode interface.
-func (d *deleteRangeNode) BatchedNext(params runParams) (bool, error) {
-	return false, nil
-}
-
-// BatchedCount implements the batchedPlanNode interface.
-func (d *deleteRangeNode) BatchedCount() int {
-	return d.rowCount
-}
-
-// BatchedValues implements the batchedPlanNode interface.
-func (d *deleteRangeNode) BatchedValues(rowIdx int) tree.Datums {
-	panic("invalid")
-}
-
-// FastPathResults implements the planNodeFastPath interface.
-func (d *deleteRangeNode) FastPathResults() (int, bool) {
-	return d.rowCount, true
-}
-
 func (d *deleteRangeNode) rowsWritten() int64 {
-	return int64(d.rowCount)
+	return d.rowsAffected()
+}
+
+func (d *deleteRangeNode) indexRowsWritten() int64 {
+	// Same as rowsWritten, because deleteRangeNode only applies to primary index
+	// rows (it is not used if there's a secondary index on the table).
+	return d.rowsAffected()
+}
+
+func (d *deleteRangeNode) indexBytesWritten() int64 {
+	// No bytes counted as written for a deletion.
+	return 0
+}
+
+func (d *deleteRangeNode) returnsRowsAffected() bool {
+	// DeleteRange always returns the number of rows deleted.
+	return true
+}
+
+func (d *deleteRangeNode) kvCPUTime() int64 {
+	return d.kvCPUTimeAccum
+}
+
+func (d *deleteRangeNode) localKVCPUTime() int64 {
+	return d.localKVCPUTimeAccum
 }
 
 // startExec implements the planNode interface.
@@ -84,30 +108,32 @@ func (d *deleteRangeNode) startExec(params runParams) error {
 		return err
 	}
 
-	// Configure the fetcher, which is only used to decode the returned keys
-	// from the Del and the DelRange operations, and is never used to actually
-	// fetch kvs.
-	var spec fetchpb.IndexFetchSpec
-	if err := rowenc.InitIndexFetchSpec(
-		&spec, params.ExecCfg().Codec, d.desc, d.desc.GetPrimaryIndex(), nil, /* columnIDs */
-	); err != nil {
-		return err
-	}
-	if err := d.fetcher.Init(
-		params.ctx,
-		row.FetcherInitArgs{
-			WillUseKVProvider: true,
-			Alloc:             &tree.DatumAlloc{},
-			Spec:              &spec,
-		},
-	); err != nil {
-		return err
+	if !d.singleColumnFamily {
+		// Configure the fetcher, which is only used to decode the returned keys
+		// from the Del and the DelRange operations, and is never used to
+		// actually fetch kvs.
+		var spec fetchpb.IndexFetchSpec
+		if err := rowenc.InitIndexFetchSpec(
+			&spec, params.ExecCfg().Codec, d.desc, d.desc.GetPrimaryIndex(), nil, /* fetchColumnIDs */
+		); err != nil {
+			return err
+		}
+		if err := d.fetcher.Init(
+			params.ctx,
+			row.FetcherInitArgs{
+				WillUseKVProvider: true,
+				Alloc:             &tree.DatumAlloc{},
+				Spec:              &spec,
+			},
+		); err != nil {
+			return err
+		}
 	}
 
 	ctx := params.ctx
 	log.VEvent(ctx, 2, "fast delete: skipping scan")
-	spans := make([]roachpb.Span, len(d.spans))
-	copy(spans, d.spans)
+	// We own the slice, so we can modify it as we please.
+	spans := d.spans
 	if !d.autoCommitEnabled {
 		// Without autocommit, we're going to run each batch one by one, respecting
 		// a max span request keys size. We use spans as a queue of spans to delete.
@@ -115,18 +141,23 @@ func (d *deleteRangeNode) startExec(params runParams) error {
 		// hits the key limit).
 		for len(spans) != 0 {
 			b := params.p.txn.NewBatch()
-			b.Header.MaxSpanRequestKeys = row.TableTruncateChunkSize
+			b.Header.MaxSpanRequestKeys = int64(row.DeleteRangeChunkSize(params.extendedEvalCtx.TestingKnobs.ForceProductionValues))
 			b.Header.LockTimeout = params.SessionData().LockTimeout
 			b.Header.DeadlockTimeout = params.SessionData().DeadlockTimeout
 			d.deleteSpans(params, b, spans)
 			log.VEventf(ctx, 2, "fast delete: processing %d spans", len(spans))
-			if err := params.p.txn.Run(ctx, b); err != nil {
-				return row.ConvertBatchError(ctx, d.desc, b)
+			d.cpuStopWatch.Start()
+			runErr := params.p.txn.Run(ctx, b)
+			if delta := d.cpuStopWatch.Stop(); delta > 0 {
+				d.localKVCPUTimeAccum += int64(delta)
+			}
+			if runErr != nil {
+				return row.ConvertBatchError(ctx, d.desc, b, false /* alwaysConvertCondFailed */)
 			}
 
 			spans = spans[:0]
 			var err error
-			if spans, err = d.processResults(b.Results, spans); err != nil {
+			if spans, err = d.processResults(b, spans); err != nil {
 				return err
 			}
 		}
@@ -143,10 +174,16 @@ func (d *deleteRangeNode) startExec(params runParams) error {
 		b.Header.DeadlockTimeout = params.SessionData().DeadlockTimeout
 		d.deleteSpans(params, b, spans)
 		log.VEventf(ctx, 2, "fast delete: processing %d spans and committing", len(spans))
-		if err := params.p.txn.CommitInBatch(ctx, b); err != nil {
-			return row.ConvertBatchError(ctx, d.desc, b)
+		d.cpuStopWatch.Start()
+		commitErr := params.p.txn.CommitInBatch(ctx, b)
+		if delta := d.cpuStopWatch.Stop(); delta > 0 {
+			d.localKVCPUTimeAccum += int64(delta)
 		}
-		if resumeSpans, err := d.processResults(b.Results, nil /* resumeSpans */); err != nil {
+		if commitErr != nil {
+			return row.ConvertBatchError(ctx, d.desc, b, false /* alwaysConvertCondFailed */)
+		}
+
+		if resumeSpans, err := d.processResults(b, nil /* resumeSpans */); err != nil {
 			return err
 		} else if len(resumeSpans) != 0 {
 			// This shouldn't ever happen - we didn't pass a limit into the batch.
@@ -155,7 +192,7 @@ func (d *deleteRangeNode) startExec(params runParams) error {
 	}
 
 	// Possibly initiate a run of CREATE STATISTICS.
-	params.ExecCfg().StatsRefresher.NotifyMutation(d.desc, d.rowCount)
+	params.ExecCfg().StatsRefresher.NotifyMutation(params.ctx, d.desc, d.rowCount)
 
 	return nil
 }
@@ -176,17 +213,11 @@ func (d *deleteRangeNode) deleteSpans(params runParams, b *kv.Batch, spans roach
 			// explicitly.
 			// - if buffered writes are disabled, then the KV layer will write
 			// an intent which acts as a lock.
-			// TODO(yuzefovich): add a tracing test to ensure that the lock is
-			// acquired here once the interceptor is updated.
 			b.DelMustAcquireExclusiveLock(span.Key)
 		} else {
 			if traceKV {
 				log.VEventf(ctx, 2, "DelRange %s - %s", span.Key, span.EndKey)
 			}
-			// TODO(yuzefovich): decide what we do with DeleteRange requests. If
-			// we won't buffer them, then we don't need to make any changes; if
-			// we do buffer them in the interceptor, we'll need to set
-			// to-be-added MustAcquireExclusiveLock flag too.
 			b.DelRange(span.Key, span.EndKey, true /* returnKeys */)
 		}
 	}
@@ -197,24 +228,44 @@ func (d *deleteRangeNode) deleteSpans(params runParams, b *kv.Batch, spans roach
 // encountered during result processing, they're appended to the resumeSpans
 // input parameter.
 func (d *deleteRangeNode) processResults(
-	results []kv.Result, resumeSpans []roachpb.Span,
+	b *kv.Batch, resumeSpans []roachpb.Span,
 ) (roachpb.Spans, error) {
-	for _, r := range results {
-		var prev []byte
-		for _, keyBytes := range r.Keys {
-			// If prefix is same, don't bother decoding key.
-			if len(prev) > 0 && bytes.HasPrefix(keyBytes, prev) {
-				continue
-			}
+	results := b.Results
+	if br := b.RawResponse(); br != nil && br.CPUTime > 0 {
+		d.kvCPUTimeAccum += br.CPUTime
+	}
 
-			after, _, err := d.fetcher.DecodeIndexKey(keyBytes)
-			if err != nil {
-				return nil, err
-			}
-			k := keyBytes[:len(keyBytes)-len(after)]
-			if !bytes.Equal(k, prev) {
-				prev = k
-				d.rowCount++
+	if !d.autoCommitEnabled && !d.singleColumnFamily {
+		defer func() {
+			// Make a copy of curRowPrefix to avoid referencing the memory from
+			// the now-old BatchRequest.
+			//
+			// When auto-commit is enabled, we expect to not see any resume
+			// spans, so we won't need to access d.curRowPrefix later.
+			curRowPrefix := make([]byte, len(d.curRowPrefix))
+			copy(curRowPrefix, d.curRowPrefix)
+			d.curRowPrefix = curRowPrefix
+		}()
+	}
+	for _, r := range results {
+		if d.singleColumnFamily {
+			d.addAffectedRows(len(r.Keys))
+		} else {
+			for _, keyBytes := range r.Keys {
+				// If prefix is same, don't bother decoding key.
+				if len(d.curRowPrefix) > 0 && bytes.HasPrefix(keyBytes, d.curRowPrefix) {
+					continue
+				}
+
+				after, _, err := d.fetcher.DecodeIndexKey(keyBytes)
+				if err != nil {
+					return nil, err
+				}
+				k := keyBytes[:len(keyBytes)-len(after)]
+				if !bytes.Equal(k, d.curRowPrefix) {
+					d.curRowPrefix = k
+					d.incAffectedRows()
+				}
 			}
 		}
 		if r.ResumeSpan != nil && r.ResumeSpan.Valid() {
@@ -225,15 +276,13 @@ func (d *deleteRangeNode) processResults(
 }
 
 // Next implements the planNode interface.
-func (*deleteRangeNode) Next(params runParams) (bool, error) {
-	// TODO(radu): this shouldn't be used, but it gets called when a cascade uses
-	// delete-range. Investigate this.
-	return false, nil
+func (d *deleteRangeNode) Next(params runParams) (bool, error) {
+	return d.next(), nil
 }
 
 // Values implements the planNode interface.
-func (*deleteRangeNode) Values() tree.Datums {
-	panic("invalid")
+func (d *deleteRangeNode) Values() tree.Datums {
+	return d.values()
 }
 
 // Close implements the planNode interface.

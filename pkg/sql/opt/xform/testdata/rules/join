@@ -235,7 +235,7 @@ inner-join (merge)
 memo expect=ReorderJoins
 SELECT * FROM abc, stu, xyz WHERE abc.a=stu.s AND stu.s=xyz.x
 ----
-memo (optimized, ~47KB, required=[presentation: a:1,b:2,c:3,s:7,t:8,u:9,x:12,y:13,z:14])
+memo (optimized, ~50KB, required=[presentation: a:1,b:2,c:3,s:7,t:8,u:9,x:12,y:13,z:14])
  ├── G1: (inner-join G2 G3 G4) (inner-join G3 G2 G4) (inner-join G5 G6 G7) (inner-join G6 G5 G7) (inner-join G8 G9 G7) (inner-join G9 G8 G7) (merge-join G2 G3 G10 inner-join,+1,+7) (merge-join G3 G2 G10 inner-join,+7,+1) (lookup-join G3 G10 abc@ab,keyCols=[7],outCols=(1-3,7-9,12-14)) (merge-join G5 G6 G10 inner-join,+7,+12) (merge-join G6 G5 G10 inner-join,+12,+7) (lookup-join G6 G10 stu,keyCols=[12],outCols=(1-3,7-9,12-14)) (merge-join G8 G9 G10 inner-join,+7,+12) (lookup-join G8 G10 xyz@xy,keyCols=[7],outCols=(1-3,7-9,12-14)) (merge-join G9 G8 G10 inner-join,+12,+7)
  │    └── [presentation: a:1,b:2,c:3,s:7,t:8,u:9,x:12,y:13,z:14]
  │         ├── best: (merge-join G5="[ordering: +7]" G6="[ordering: +(1|12)]" G10 inner-join,+7,+12)
@@ -343,7 +343,7 @@ SELECT *
 FROM stu, abc, xyz, pqr
 WHERE u = a AND a = x AND x = p
 ----
-memo (optimized, ~41KB, required=[presentation: s:1,t:2,u:3,a:6,b:7,c:8,x:12,y:13,z:14,p:18,q:19,r:20,s:21,t:22])
+memo (optimized, ~43KB, required=[presentation: s:1,t:2,u:3,a:6,b:7,c:8,x:12,y:13,z:14,p:18,q:19,r:20,s:21,t:22])
  ├── G1: (inner-join G2 G3 G4) (inner-join G3 G2 G4) (merge-join G2 G3 G5 inner-join,+3,+6) (merge-join G3 G2 G5 inner-join,+6,+3) (lookup-join G3 G5 stu@uts,keyCols=[6],outCols=(1-3,6-8,12-14,18-22))
  │    └── [presentation: s:1,t:2,u:3,a:6,b:7,c:8,x:12,y:13,z:14,p:18,q:19,r:20,s:21,t:22]
  │         ├── best: (merge-join G2="[ordering: +3]" G3="[ordering: +(6|12|18)]" G5 inner-join,+3,+6)
@@ -1277,7 +1277,7 @@ memo (optimized, ~14KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
 memo expect=ReorderJoins
 SELECT * FROM abc FULL OUTER JOIN xyz ON a=z
 ----
-memo (optimized, ~12KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
+memo (optimized, ~13KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
  ├── G1: (full-join G2 G3 G4) (full-join G3 G2 G4) (merge-join G2 G3 G5 full-join,+1,+9)
  │    └── [presentation: a:1,b:2,c:3,x:7,y:8,z:9]
  │         ├── best: (full-join G2 G3 G4)
@@ -1363,7 +1363,7 @@ full-join (hash)
 memo expect-not=ReorderJoins
 SELECT * FROM abc INNER LOOKUP JOIN xyz ON a=x
 ----
-memo (optimized, ~13KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
+memo (optimized, ~14KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
  ├── G1: (inner-join G2 G3 G4) (lookup-join G2 G5 xyz@xy,keyCols=[1],outCols=(1-3,7-9))
  │    └── [presentation: a:1,b:2,c:3,x:7,y:8,z:9]
  │         ├── best: (lookup-join G2 G5 xyz@xy,keyCols=[1],outCols=(1-3,7-9))
@@ -1446,7 +1446,7 @@ New expression 1 of 1:
 memo
 SELECT * FROM abc LEFT OUTER JOIN xyz ON a=z
 ----
-memo (optimized, ~12KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
+memo (optimized, ~13KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
  ├── G1: (left-join G2 G3 G4) (right-join G3 G2 G4) (merge-join G2 G3 G5 left-join,+1,+9)
  │    └── [presentation: a:1,b:2,c:3,x:7,y:8,z:9]
  │         ├── best: (left-join G2 G3 G4)
@@ -1670,13 +1670,15 @@ semi-join (lookup t.public.def)
  ├── key columns: [1 3] = [7 8]
  ├── lookup columns are key
  ├── stats: [rows=100, distinct(1)=100, null(1)=0, distinct(3)=10, null(3)=0]
- ├── cost: 539.760394
+ ├── cost: 541.8
+ ├── cost-flags: unbounded-cardinality
  ├── prune: (2)
  ├── interesting orderings: (+1,+2) (+2,+3)
  ├── scan t.public.abc
  │    ├── columns: t.public.abc.a:1(int) t.public.abc.b:2(int) t.public.abc.c:3(int)
  │    ├── stats: [rows=100, distinct(1)=100, null(1)=0, distinct(3)=10, null(3)=1]
  │    ├── cost: 135.72
+ │    ├── cost-flags: unbounded-cardinality
  │    ├── prune: (1-3)
  │    ├── interesting orderings: (+1,+2) (+2,+3)
  │    └── unfiltered-cols: (1-6)
@@ -1693,13 +1695,15 @@ semi-join (lookup t.public.def)
  ├── key columns: [1 3] = [7 8]
  ├── lookup columns are key
  ├── stats: [rows=100, distinct(1)=100, null(1)=0, distinct(3)=10, null(3)=0]
- ├── cost: 539.760394
+ ├── cost: 541.8
+ ├── cost-flags: unbounded-cardinality
  ├── prune: (2)
  ├── interesting orderings: (+1,+2) (+2,+3)
  ├── scan t.public.abc
  │    ├── columns: t.public.abc.a:1(int) t.public.abc.b:2(int) t.public.abc.c:3(int)
  │    ├── stats: [rows=100, distinct(1)=100, null(1)=0, distinct(3)=10, null(3)=1]
  │    ├── cost: 135.72
+ │    ├── cost-flags: unbounded-cardinality
  │    ├── prune: (1-3)
  │    ├── interesting orderings: (+1,+2) (+2,+3)
  │    └── unfiltered-cols: (1-6)
@@ -1823,7 +1827,7 @@ inner-join (merge)
 memo
 SELECT * FROM abc JOIN xyz ON a=x
 ----
-memo (optimized, ~16KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
+memo (optimized, ~17KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
  ├── G1: (inner-join G2 G3 G4) (inner-join G3 G2 G4) (merge-join G2 G3 G5 inner-join,+1,+7) (lookup-join G2 G5 xyz@xy,keyCols=[1],outCols=(1-3,7-9)) (merge-join G3 G2 G5 inner-join,+7,+1) (lookup-join G3 G5 abc@ab,keyCols=[7],outCols=(1-3,7-9))
  │    └── [presentation: a:1,b:2,c:3,x:7,y:8,z:9]
  │         ├── best: (merge-join G3="[ordering: +7]" G2="[ordering: +1]" G5 inner-join,+7,+1)
@@ -1874,7 +1878,7 @@ memo (optimized, ~12KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
 memo set=(optimizer_merge_joins_enabled=false) expect-not=GenerateMergeJoins
 SELECT * FROM abc JOIN xyz ON a=x
 ----
-memo (optimized, ~15KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
+memo (optimized, ~16KB, required=[presentation: a:1,b:2,c:3,x:7,y:8,z:9])
  ├── G1: (inner-join G2 G3 G4) (inner-join G3 G2 G4) (lookup-join G2 G5 xyz@xy,keyCols=[1],outCols=(1-3,7-9)) (lookup-join G3 G5 abc@ab,keyCols=[7],outCols=(1-3,7-9))
  │    └── [presentation: a:1,b:2,c:3,x:7,y:8,z:9]
  │         ├── best: (inner-join G3 G2 G4)
@@ -1945,11 +1949,11 @@ inner-join (lookup xyz@xy)
 memo disable=(EliminateJoinUnderProjectLeft,EliminateJoinUnderProjectRight)
 SELECT * FROM stu AS l JOIN stu AS r ON (l.s, l.t, l.u) = (r.s, r.t, r.u)
 ----
-memo (optimized, ~20KB, required=[presentation: s:1,t:2,u:3,s:6,t:7,u:8])
+memo (optimized, ~21KB, required=[presentation: s:1,t:2,u:3,s:6,t:7,u:8])
  ├── G1: (inner-join G2 G3 G4) (inner-join G3 G2 G4) (merge-join G2 G3 G5 inner-join,+1,+2,+3,+6,+7,+8) (merge-join G2 G3 G5 inner-join,+3,+2,+1,+8,+7,+6) (lookup-join G2 G5 stu [as=r],keyCols=[1 2 3],outCols=(1-3,6-8)) (lookup-join G2 G5 stu@uts [as=r],keyCols=[3 2 1],outCols=(1-3,6-8)) (merge-join G3 G2 G5 inner-join,+6,+7,+8,+1,+2,+3) (merge-join G3 G2 G5 inner-join,+8,+7,+6,+3,+2,+1) (lookup-join G3 G5 stu [as=l],keyCols=[6 7 8],outCols=(1-3,6-8)) (lookup-join G3 G5 stu@uts [as=l],keyCols=[8 7 6],outCols=(1-3,6-8))
  │    └── [presentation: s:1,t:2,u:3,s:6,t:7,u:8]
  │         ├── best: (merge-join G2="[ordering: +1,+2,+3]" G3="[ordering: +6,+7,+8]" G5 inner-join,+1,+2,+3,+6,+7,+8)
- │         └── cost: 21457.26
+ │         └── cost: 21457.27
  ├── G2: (scan stu [as=l],cols=(1-3)) (scan stu@uts [as=l],cols=(1-3))
  │    ├── [ordering: +1,+2,+3]
  │    │    ├── best: (scan stu [as=l],cols=(1-3))
@@ -3119,6 +3123,38 @@ left-join (lookup lookup_expr [as=t])
  │         └── column1:1 = w:7 [outer=(1,7), constraints=(/1: (/NULL - ]; /7: (/NULL - ]), fd=(1)==(7), (7)==(1)]
  └── filters (true)
 
+# The filters in the lookup expression should contains all columns of the
+# idx_vrw index. Column r, though not in the ON exprs, should still be
+# in the filters, because for the column w that comes behind it in
+# idx_vrw, there is a necessary filter `w IN (10, 20)`.
+opt expect=GenerateLookupJoinsWithFilter
+SELECT * FROM (VALUES (1), (2), (3)) AS q(v) LEFT LOOKUP JOIN lookup_expr t
+ON q.v = t.v WHERE w IN (10, 20)
+----
+inner-join (lookup lookup_expr [as=t])
+ ├── columns: v:1!null r:2!null k:3!null u:4 v:5!null w:6!null x:7 y:8!null z:9!null
+ ├── key columns: [2 3] = [2 3]
+ ├── lookup columns are key
+ ├── fd: ()-->(9), (2,3)-->(4-8), (1)==(5), (5)==(1)
+ ├── inner-join (lookup lookup_expr@idx_vrw [as=t])
+ │    ├── columns: column1:1!null r:2!null k:3!null v:5!null w:6!null
+ │    ├── flags: force lookup join (into right side)
+ │    ├── lookup expression
+ │    │    └── filters
+ │    │         ├── r:2 IN ('east', 'west') [outer=(2), constraints=(/2: [/'east' - /'east'] [/'west' - /'west']; tight)]
+ │    │         ├── w:6 IN (10, 20) [outer=(6), constraints=(/6: [/10 - /10] [/20 - /20]; tight)]
+ │    │         └── column1:1 = v:5 [outer=(1,5), constraints=(/1: (/NULL - ]; /5: (/NULL - ]), fd=(1)==(5), (5)==(1)]
+ │    ├── fd: (2,3)-->(5,6), (1)==(5), (5)==(1)
+ │    ├── values
+ │    │    ├── columns: column1:1!null
+ │    │    ├── cardinality: [3 - 3]
+ │    │    ├── (1,)
+ │    │    ├── (2,)
+ │    │    └── (3,)
+ │    └── filters (true)
+ └── filters (true)
+
+
 # Ensure that we constrain all columns in idx_vrw, not just v.
 opt expect=GenerateLookupJoins
 SELECT * FROM (VALUES (1, 10), (2, 20), (3, NULL)) AS q(v, w) LEFT JOIN lookup_expr t
@@ -4076,46 +4112,65 @@ project
  ├── cardinality: [0 - 1]
  ├── key: ()
  ├── fd: ()-->(1)
- └── semi-join (cross)
+ └── select
       ├── columns: pk:1!null col0:2!null col2:4!null col4:5!null
       ├── cardinality: [0 - 1]
       ├── key: ()
       ├── fd: ()-->(1,2,4,5)
-      ├── select
-      │    ├── columns: pk:1!null col0:2!null col2:4!null col4:5!null
+      ├── index-join t
+      │    ├── columns: pk:1!null col0:2 col2:4 col4:5
       │    ├── cardinality: [0 - 1]
       │    ├── key: ()
       │    ├── fd: ()-->(1,2,4,5)
-      │    ├── index-join t
-      │    │    ├── columns: pk:1!null col0:2 col2:4 col4:5
-      │    │    ├── cardinality: [0 - 1]
-      │    │    ├── key: ()
-      │    │    ├── fd: ()-->(1,2,4,5)
-      │    │    └── scan t@t_col2_key
-      │    │         ├── columns: pk:1!null col2:4!null
-      │    │         ├── constraint: /4: [/1 - /1]
-      │    │         ├── cardinality: [0 - 1]
-      │    │         ├── key: ()
-      │    │         └── fd: ()-->(1,4)
-      │    └── filters
-      │         ├── col4:5 = 1 [outer=(5), constraints=(/5: [/1 - /1]; tight), fd=()-->(5)]
-      │         └── col0:2 = 1 [outer=(2), constraints=(/2: [/1 - /1]; tight), fd=()-->(2)]
-      ├── select
-      │    ├── columns: col0:9!null col2:11
-      │    ├── lax-key: (11)
-      │    ├── fd: ()-->(9,11)
-      │    ├── index-join t
-      │    │    ├── columns: col0:9 col2:11
-      │    │    ├── lax-key: (9,11)
-      │    │    ├── fd: ()-->(11), (11)~~>(9)
-      │    │    └── scan t@t_col2_key
-      │    │         ├── columns: pk:8!null col2:11
-      │    │         ├── constraint: /11: [/NULL - /NULL]
-      │    │         ├── key: (8)
-      │    │         └── fd: ()-->(11), (11)~~>(8)
-      │    └── filters
-      │         └── col0:9 = 1 [outer=(9), constraints=(/9: [/1 - /1]; tight), fd=()-->(9)]
-      └── filters (true)
+      │    └── select
+      │         ├── columns: pk:1!null col2:4!null
+      │         ├── cardinality: [0 - 1]
+      │         ├── key: ()
+      │         ├── fd: ()-->(1,4)
+      │         ├── scan t@t_col2_key
+      │         │    ├── columns: pk:1!null col2:4!null
+      │         │    ├── constraint: /4: [/1 - /1]
+      │         │    ├── cardinality: [0 - 1]
+      │         │    ├── key: ()
+      │         │    └── fd: ()-->(1,4)
+      │         └── filters
+      │              └── coalesce [subquery]
+      │                   ├── subquery
+      │                   │    └── project
+      │                   │         ├── columns: column16:16!null
+      │                   │         ├── cardinality: [0 - 1]
+      │                   │         ├── key: ()
+      │                   │         ├── fd: ()-->(16)
+      │                   │         ├── limit
+      │                   │         │    ├── columns: col0:9!null col2:11
+      │                   │         │    ├── cardinality: [0 - 1]
+      │                   │         │    ├── key: ()
+      │                   │         │    ├── fd: ()-->(9,11)
+      │                   │         │    ├── select
+      │                   │         │    │    ├── columns: col0:9!null col2:11
+      │                   │         │    │    ├── lax-key: (11)
+      │                   │         │    │    ├── fd: ()-->(9,11)
+      │                   │         │    │    ├── limit hint: 1.00
+      │                   │         │    │    ├── index-join t
+      │                   │         │    │    │    ├── columns: col0:9 col2:11
+      │                   │         │    │    │    ├── lax-key: (9,11)
+      │                   │         │    │    │    ├── fd: ()-->(11), (11)~~>(9)
+      │                   │         │    │    │    ├── limit hint: 10.00
+      │                   │         │    │    │    └── scan t@t_col2_key
+      │                   │         │    │    │         ├── columns: pk:8!null col2:11
+      │                   │         │    │    │         ├── constraint: /11: [/NULL - /NULL]
+      │                   │         │    │    │         ├── key: (8)
+      │                   │         │    │    │         ├── fd: ()-->(11), (11)~~>(8)
+      │                   │         │    │    │         └── limit hint: 10.00
+      │                   │         │    │    └── filters
+      │                   │         │    │         └── col0:9 = 1 [outer=(9), constraints=(/9: [/1 - /1]; tight), fd=()-->(9)]
+      │                   │         │    └── 1
+      │                   │         └── projections
+      │                   │              └── true [as=column16:16]
+      │                   └── false
+      └── filters
+           ├── col4:5 = 1 [outer=(5), constraints=(/5: [/1 - /1]; tight), fd=()-->(5)]
+           └── col0:2 = 1 [outer=(2), constraints=(/2: [/1 - /1]; tight), fd=()-->(2)]
 
 # Lookup semi-join with covering index.
 opt expect=GenerateLookupJoinsWithFilter
@@ -4503,13 +4558,16 @@ SELECT m FROM small WHERE EXISTS (SELECT 1 FROM partial_tab WHERE n = i)
 project
  ├── columns: m:1
  ├── cost: 263.356
+ ├── cost-flags: unbounded-cardinality
  └── semi-join (lookup partial_tab@full_idx)
       ├── columns: m:1 n:2
       ├── key columns: [2] = [7]
       ├── cost: 263.236
+      ├── cost-flags: unbounded-cardinality
       ├── scan small
       │    ├── columns: m:1 n:2
-      │    └── cost: 39.02
+      │    ├── cost: 39.02
+      │    └── cost-flags: unbounded-cardinality
       └── filters (true)
 
 opt format=show-cost
@@ -4518,13 +4576,16 @@ SELECT m FROM small WHERE EXISTS (SELECT 1 FROM partial_tab WHERE s IN ('foo', '
 project
  ├── columns: m:1
  ├── cost: 263.356
+ ├── cost-flags: unbounded-cardinality
  └── semi-join (lookup partial_tab@partial_idx,partial)
       ├── columns: m:1 n:2
       ├── key columns: [2] = [7]
       ├── cost: 263.236
+      ├── cost-flags: unbounded-cardinality
       ├── scan small
       │    ├── columns: m:1 n:2
-      │    └── cost: 39.02
+      │    ├── cost: 39.02
+      │    └── cost-flags: unbounded-cardinality
       └── filters (true)
 
 exec-ddl
@@ -7276,7 +7337,7 @@ WHERE n.name = 'Upper West Side'
 OR n.name = 'Upper East Side'
 GROUP BY n.name, n.geom
 ----
-memo (optimized, ~38KB, required=[presentation: name:16,popn_per_sqkm:22])
+memo (optimized, ~39KB, required=[presentation: name:16,popn_per_sqkm:22])
  ├── G1: (project G2 G3 name)
  │    └── [presentation: name:16,popn_per_sqkm:22]
  │         ├── best: (project G2 G3 name)
@@ -9933,31 +9994,30 @@ project
       │    ├── right columns: a:26 b:27 c:28
       │    ├── cardinality: [0 - 2]
       │    ├── ordering: +1
-      │    ├── semi-join (lookup pqr@q)
+      │    ├── semi-join (merge)
       │    │    ├── columns: a:14!null b:15 c:16!null
-      │    │    ├── key columns: [15 106] = [20 19]
-      │    │    ├── lookup columns are key
+      │    │    ├── left ordering: +15
+      │    │    ├── right ordering: +20
       │    │    ├── cardinality: [0 - 1]
       │    │    ├── key: ()
       │    │    ├── fd: ()-->(14-16)
-      │    │    ├── project
-      │    │    │    ├── columns: "lookup_join_const_col_@19":106!null a:14!null b:15 c:16!null
+      │    │    ├── index-join zz
+      │    │    │    ├── columns: a:14!null b:15 c:16!null
       │    │    │    ├── cardinality: [0 - 1]
       │    │    │    ├── key: ()
-      │    │    │    ├── fd: ()-->(14-16,106)
-      │    │    │    ├── index-join zz
-      │    │    │    │    ├── columns: a:14!null b:15 c:16!null
-      │    │    │    │    ├── cardinality: [0 - 1]
-      │    │    │    │    ├── key: ()
-      │    │    │    │    ├── fd: ()-->(14-16)
-      │    │    │    │    └── scan zz@idx_c
-      │    │    │    │         ├── columns: a:14!null c:16!null
-      │    │    │    │         ├── constraint: /16: [/0 - /0]
-      │    │    │    │         ├── cardinality: [0 - 1]
-      │    │    │    │         ├── key: ()
-      │    │    │    │         └── fd: ()-->(14,16)
-      │    │    │    └── projections
-      │    │    │         └── 0 [as="lookup_join_const_col_@19":106]
+      │    │    │    ├── fd: ()-->(14-16)
+      │    │    │    └── scan zz@idx_c
+      │    │    │         ├── columns: a:14!null c:16!null
+      │    │    │         ├── constraint: /16: [/0 - /0]
+      │    │    │         ├── cardinality: [0 - 1]
+      │    │    │         ├── key: ()
+      │    │    │         └── fd: ()-->(14,16)
+      │    │    ├── scan pqr
+      │    │    │    ├── columns: p:19!null q:20
+      │    │    │    ├── constraint: /19: [/0 - /0]
+      │    │    │    ├── cardinality: [0 - 1]
+      │    │    │    ├── key: ()
+      │    │    │    └── fd: ()-->(19,20)
       │    │    └── filters (true)
       │    └── project
       │         ├── columns: a:26!null b:27 c:28
@@ -13584,7 +13644,8 @@ limit
  │         │         │    ├── columns: c_id:24!null c_p_id:25 c.crdb_region:26!null
  │         │         │    ├── constraint: /26/24: [/'east' - /'east']
  │         │         │    ├── key: (24)
- │         │         │    └── fd: ()-->(26), (24)-->(25)
+ │         │         │    ├── fd: ()-->(26), (24)-->(25)
+ │         │         │    └── limit hint: 10.00
  │         │         └── filters (true)
  │         └── project
  │              ├── columns: p_id:18!null id2:19 id3:20 p.crdb_region:21!null c_id:29!null c_p_id:30!null
@@ -13607,7 +13668,8 @@ limit
  │                   │    │    ├── [/'central' - /'central']
  │                   │    │    └── [/'west' - /'west']
  │                   │    ├── key: (29)
- │                   │    └── fd: (29)-->(30,31)
+ │                   │    ├── fd: (29)-->(30,31)
+ │                   │    └── limit hint: 20.00
  │                   └── filters (true)
  └── 1
 
@@ -13659,7 +13721,8 @@ limit
  │         │         │    ├── columns: c_id:24!null c_p_id:25 c.crdb_region:26!null
  │         │         │    ├── constraint: /26/24: [/'east' - /'east']
  │         │         │    ├── key: (24)
- │         │         │    └── fd: ()-->(26), (24)-->(25)
+ │         │         │    ├── fd: ()-->(26), (24)-->(25)
+ │         │         │    └── limit hint: 10.00
  │         │         └── filters (true)
  │         └── project
  │              ├── columns: p_id:18!null id2:19!null id3:20 p.crdb_region:21!null c_id:29!null c_p_id:30!null
@@ -13682,7 +13745,8 @@ limit
  │                   │    │    ├── [/'central' - /'central']
  │                   │    │    └── [/'west' - /'west']
  │                   │    ├── key: (29)
- │                   │    └── fd: (29)-->(30,31)
+ │                   │    ├── fd: (29)-->(30,31)
+ │                   │    └── limit hint: 20.00
  │                   └── filters (true)
  └── 1
 
@@ -13896,7 +13960,8 @@ limit
  │    │         │    ├── columns: c_id:37!null c_p_id:38 c.crdb_region:39!null
  │    │         │    ├── constraint: /39/37: [/'east' - /'east']
  │    │         │    ├── key: (37)
- │    │         │    └── fd: ()-->(39), (37)-->(38)
+ │    │         │    ├── fd: ()-->(39), (37)-->(38)
+ │    │         │    └── limit hint: 10.00
  │    │         └── filters (true)
  │    └── project
  │         ├── columns: c_id:42!null c_p_id:43
@@ -13919,7 +13984,8 @@ limit
  │              │    │    ├── [/'central' - /'central']
  │              │    │    └── [/'west' - /'west']
  │              │    ├── key: (42)
- │              │    └── fd: (42)-->(43,44)
+ │              │    ├── fd: (42)-->(43,44)
+ │              │    └── limit hint: 20.00
  │              └── filters (true)
  └── 1
 

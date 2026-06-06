@@ -61,7 +61,10 @@ func (i KVInserter) Del(key ...interface{}) {
 
 // DelMustAcquireExclusiveLock is not implemented.
 func (i KVInserter) DelMustAcquireExclusiveLock(key ...interface{}) {
-	// See comment within Del for why this is a no-op.
+	// Lock acquisition ask has no influence on the KVInserter - the KVInserter
+	// function simply accumulates KVs and doesn't care about the KV request
+	// details.
+	i.Del(key)
 }
 
 // Put method of the row.Putter interface.
@@ -72,27 +75,30 @@ func (i KVInserter) Put(key, value interface{}) {
 	})
 }
 
-func (c KVInserter) PutMustAcquireExclusiveLock(key, value interface{}) {
-	panic(errors.AssertionFailedf("unimplemented"))
+func (i KVInserter) PutMustAcquireExclusiveLock(key, value interface{}) {
+	// Lock acquisition ask has no influence on the KVInserter - the KVInserter
+	// function simply accumulates KVs and doesn't care about the KV request
+	// details.
+	i.Put(key, value)
 }
-func (c KVInserter) CPutWithOriginTimestamp(
+func (i KVInserter) CPutWithOriginTimestamp(
 	key, value interface{}, expValue []byte, ts hlc.Timestamp,
 ) {
 	panic(errors.AssertionFailedf("unimplemented"))
 }
-func (c KVInserter) CPutBytesEmpty(kys []roachpb.Key, values [][]byte) {
+func (i KVInserter) CPutBytesEmpty(kys []roachpb.Key, values [][]byte) {
 	panic(errors.AssertionFailedf("unimplemented"))
 }
-func (c KVInserter) CPutTuplesEmpty(kys []roachpb.Key, values [][]byte) {
+func (i KVInserter) CPutTuplesEmpty(kys []roachpb.Key, values [][]byte) {
 	panic(errors.AssertionFailedf("unimplemented"))
 }
-func (c KVInserter) CPutValuesEmpty(kys []roachpb.Key, values []roachpb.Value) {
+func (i KVInserter) CPutValuesEmpty(kys []roachpb.Key, values []roachpb.Value) {
 	panic(errors.AssertionFailedf("unimplemented"))
 }
-func (c KVInserter) PutBytes(kys []roachpb.Key, values [][]byte) {
+func (i KVInserter) PutBytes(kys []roachpb.Key, values [][]byte) {
 	panic(errors.AssertionFailedf("unimplemented"))
 }
-func (c KVInserter) PutTuples(kys []roachpb.Key, values [][]byte) {
+func (i KVInserter) PutTuples(kys []roachpb.Key, values [][]byte) {
 	panic(errors.AssertionFailedf("unimplemented"))
 }
 
@@ -203,7 +209,9 @@ func GenerateInsertRow(
 type KVBatch struct {
 	// Source is where the row data in the batch came from.
 	Source int32
-	// LastRow is the index of the last converted row in source in this batch.
+	// LastRow is a progress marker used as the resume position on retry.
+	// Its meaning is opaque: File-based imports set it to a row index while
+	// workload-based imports set it to a batch sequence number.
 	LastRow int64
 	// Progress represents the fraction of the input that generated this row.
 	Progress float32
@@ -243,18 +251,23 @@ type DatumRowConverter struct {
 	computedIVarContainer     schemaexpr.RowIndexedVarContainer
 	partialIndexIVarContainer schemaexpr.RowIndexedVarContainer
 
-	// FractionFn is used to set the progress header in KVBatches.
+	// CompletedRowFn is an opaque callback that returns a progress indicator
+	// stamped onto each KV batch as LastRow. The meaning of the returned value
+	// depends on the caller: File-based imports use it as a row index while
+	// workload-based imports use it as a batch sequence number.
 	CompletedRowFn func() int64
-	FractionFn     func() float32
-	kvInserter     KVInserter
+	// FractionFn is used to set the progress header in KVBatches.
+	FractionFn func() float32
+	kvInserter KVInserter
 
 	db *kv.DB
 }
 
-var kvDatumRowConverterBatchSize = metamorphic.ConstantWithTestValue(
+var kvDatumRowConverterBatchSize = metamorphic.ConstantWithTestRange(
 	"datum-row-converter-batch-size",
 	5000, /* defaultValue */
-	1,    /* metamorphicValue */
+	1,    /* min */
+	100,  /* max */
 )
 
 const kvDatumRowConverterBatchMemSize = 4 << 20
@@ -343,7 +356,6 @@ func NewDatumRowConverter(
 		db:      db,
 	}
 	c.kvInserter = func(kv roachpb.KeyValue) {
-		kv.Value.InitChecksum(kv.Key)
 		c.KvBatch.KVs = append(c.KvBatch.KVs, kv)
 		c.KvBatch.MemSize += int64(cap(kv.Key) + cap(kv.Value.RawBytes))
 	}
@@ -384,15 +396,12 @@ func NewDatumRowConverter(
 	}
 
 	ri, err := MakeInserter(
-		ctx,
-		nil, /* txn */
 		evalCtx.Codec,
 		tableDesc,
 		nil, /* uniqueWithTombstoneIndexes */
 		cols,
-		&tree.DatumAlloc{},
+		evalCtx.SessionData(),
 		&evalCtx.Settings.SV,
-		evalCtx.SessionData().Internal,
 		metrics,
 	)
 	if err != nil {
@@ -442,6 +451,8 @@ func NewDatumRowConverter(
 				// been identified now (e.g. "IMPORT PGDUMP...") and we want to
 				// throw an error only at the "Row" stage when the targeted columns
 				// have been identified.
+				// TODO(yuzefovich): can this check be now removed? PGDUMP is
+				// gone.
 				c.defaultCache[i] = &unsafeErrExpr{
 					err: errors.Wrapf(err, "default expression %s unsafe for import", defaultExprs[i].String()),
 				}
@@ -479,20 +490,65 @@ func NewDatumRowConverter(
 		// MakeComputedExprs to map that of Datums.
 		colsOrdered[ri.InsertColIDtoRowIndex.GetDefault(col.GetID())] = col
 	}
-	// Here, computeExprs will be nil if there's no computed column, or
-	// the list of computed expressions (including nil, for those columns
-	// that are not computed) otherwise, according to colsOrdered.
-	c.computedExprs, _, err = schemaexpr.MakeComputedExprs(
-		ctx,
-		colsOrdered,
-		c.tableDesc.PublicColumns(),
-		c.tableDesc,
-		tree.NewUnqualifiedTableName(tree.Name(c.tableDesc.GetName())),
-		c.EvalCtx,
-		c.SemaCtx,
-	)
-	if err != nil {
-		return nil, errors.Wrapf(err, "error type checking and building computed expression for IMPORT INTO")
+
+	// If any computed columns reference UDFs, we need a FunctionResolver
+	// to resolve them by OID during type-checking. Set up a per-instance
+	// resolver using a bare-bones descs.Collection inside a short-lived
+	// txn, and call MakeComputedExprs within the txn so the resolver
+	// remains valid. Each DatumRowConverter instance gets its own
+	// resolver to avoid races when multiple import workers run in
+	// parallel. This mirrors the sequence resolution pattern above.
+	hasComputedCols := false
+	for _, col := range colsOrdered {
+		if col != nil && col.IsComputed() {
+			hasComputedCols = true
+			break
+		}
+	}
+	if hasComputedCols && c.SemaCtx.FunctionResolver == nil && c.db != nil {
+		cf := descs.NewBareBonesCollectionFactory(evalCtx.Settings, evalCtx.Codec)
+		dsdp := catsessiondata.NewDescriptorSessionDataStackProvider(evalCtx.SessionDataStack)
+		descsCol := cf.NewCollection(ctx, descs.WithDescriptorSessionDataProvider(dsdp))
+		defer descsCol.ReleaseAll(ctx)
+		err = c.db.Txn(ctx, func(ctx context.Context, txn *kv.Txn) error {
+			if err := txn.SetFixedTimestamp(ctx, hlc.Timestamp{WallTime: evalCtx.TxnTimestamp.UnixNano()}); err != nil {
+				return err
+			}
+			// Use ByIDWithoutLeased because the bare-bones collection
+			// does not have a lease manager.
+			c.SemaCtx.FunctionResolver = descs.NewDistSQLFunctionResolverFromGetter(
+				descsCol.ByIDWithoutLeased(txn).Get(),
+			)
+			c.computedExprs, _, err = schemaexpr.MakeComputedExprs(
+				ctx,
+				colsOrdered,
+				c.tableDesc.PublicColumns(),
+				c.tableDesc,
+				tree.NewUnqualifiedTableName(tree.Name(c.tableDesc.GetName())),
+				c.EvalCtx,
+				c.SemaCtx,
+			)
+			return err
+		})
+		if err != nil {
+			return nil, errors.Wrapf(err, "error type checking and building computed expression for IMPORT INTO")
+		}
+	} else {
+		// Here, computeExprs will be nil if there's no computed column, or
+		// the list of computed expressions (including nil, for those columns
+		// that are not computed) otherwise, according to colsOrdered.
+		c.computedExprs, _, err = schemaexpr.MakeComputedExprs(
+			ctx,
+			colsOrdered,
+			c.tableDesc.PublicColumns(),
+			c.tableDesc,
+			tree.NewUnqualifiedTableName(tree.Name(c.tableDesc.GetName())),
+			c.EvalCtx,
+			c.SemaCtx,
+		)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error type checking and building computed expression for IMPORT INTO")
+		}
 	}
 
 	// Here, partialIndexExprs will be nil if there are no partial indexes, or a
@@ -581,6 +637,7 @@ func (c *DatumRowConverter) Row(ctx context.Context, sourceID int32, rowIndex in
 	// TODO(mw5h, drewk): call into the vector index library to determine the partitions
 	// to update.
 	var vh VectorIndexUpdateHelper
+	var oth OriginTimestampCPutHelper
 
 	if err := c.ri.InsertRow(
 		ctx,
@@ -588,8 +645,11 @@ func (c *DatumRowConverter) Row(ctx context.Context, sourceID int32, rowIndex in
 		insertRow,
 		pm,
 		vh,
-		nil, /* OriginTimestampCPutHelper */
-		PutOp,
+		oth,
+		// Lock acquisition ask doesn't matter for the DatumRowConverter, but
+		// we're being conservative and are choosing a "safer" option of asking
+		// for the lock.
+		PutMustAcquireExclusiveLockOp,
 		false, /* traceKV */
 	); err != nil {
 		return errors.Wrap(err, "insert row")

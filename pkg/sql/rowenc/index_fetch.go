@@ -63,11 +63,10 @@ func InitIndexFetchSpec(
 
 	s.FamilyDefaultColumns = table.FamilyDefaultColumns()
 
-	families := table.GetFamilies()
-	for i := range families {
-		if id := families[i].ID; id > s.MaxFamilyID {
-			s.MaxFamilyID = id
-		}
+	var err error
+	s.MaxFamilyID, err = table.MaxFamilyIDForIndex(index)
+	if err != nil {
+		return err
 	}
 
 	s.KeyAndSuffixColumns = table.IndexFetchSpecKeyAndSuffixColumns(index)
@@ -107,7 +106,7 @@ func InitIndexFetchSpec(
 		colIDs.UnionWith(index.CollectKeySuffixColumnIDs())
 		for i := range s.FetchedColumns {
 			if !colIDs.Contains(s.FetchedColumns[i].ColumnID) {
-				return errors.AssertionFailedf("requested column %s not in index", s.FetchedColumns[i].Name)
+				return errors.AssertionFailedf("requested column '%s' not in index", s.FetchedColumns[i].Name)
 			}
 		}
 	}

@@ -24,48 +24,76 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
+type s3CloneSecureOption int
+
+const (
+	s3ClonePlain             s3CloneSecureOption = iota // Use HTTP
+	s3CloneTLSWithSkipVerify                            // Use HTTPS, but skip certification verification.
+	s3CloneTLS                                          // Use HTTPS and verify certificates.
+)
+
+var s3CloneSecureOptions = []s3CloneSecureOption{s3ClonePlain, s3CloneTLSWithSkipVerify, s3CloneTLS}
+
+func (o s3CloneSecureOption) String() string {
+	switch o {
+	case s3ClonePlain:
+		return "plain"
+	case s3CloneTLSWithSkipVerify:
+		return "tlsSkipVerify"
+	case s3CloneTLS:
+		return "tls"
+	default:
+		panic("invalid option")
+	}
+}
+
 // registerBackupS3Clones validates backup/restore compatibility with S3 clones.
 func registerBackupS3Clones(r registry.Registry) {
 	// Running against a microceph cluster deployed on a GCE instance.
 	for _, cephVersion := range []string{"reef", "squid"} {
-		r.Add(registry.TestSpec{
-			Name:                      fmt.Sprintf("backup/ceph/%s", cephVersion),
-			Owner:                     registry.OwnerFieldEng,
-			Cluster:                   r.MakeClusterSpec(4, spec.WorkloadNodeCount(1)),
-			EncryptionSupport:         registry.EncryptionMetamorphic,
-			Leases:                    registry.MetamorphicLeases,
-			CompatibleClouds:          registry.Clouds(spec.GCE),
-			Suites:                    registry.Suites(registry.Nightly),
-			TestSelectionOptOutSuites: registry.Suites(registry.Nightly),
-			Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
-				v := s3BackupRestoreValidator{
-					t:            t,
-					c:            c,
-					crdbNodes:    c.CRDBNodes(),
-					csvPort:      8081,
-					importNode:   c.Node(1),
-					rows:         1000,
-					workloadNode: c.WorkloadNode(),
-				}
-				v.startCluster(ctx)
-				ceph := cephManager{
-					t:      t,
-					c:      c,
-					bucket: backupTestingBucket,
-					// For now, we use the workload node as the cephNode
-					cephNodes: c.Node(c.Spec().NodeCount),
-					key:       randomString(32),
-					secret:    randomString(64),
-					// reef `microceph enable rgw` does not support `--ssl-certificate`
-					// so we'll test a non-secure version.
-					secure:  cephVersion != "reef",
-					version: cephVersion,
-				}
-				ceph.install(ctx)
-				defer ceph.cleanup(ctx)
-				v.validateBackupRestore(ctx, ceph)
-			},
-		})
+		for _, secureOption := range s3CloneSecureOptions {
+			if cephVersion == "reef" && secureOption != s3ClonePlain {
+				// reef `microceph enable rgw` does not support `--ssl-certificate`
+				// so we'll test only a non-secure version.
+				continue
+			}
+			r.Add(registry.TestSpec{
+				Name:                      fmt.Sprintf("backup/ceph/%s/%s", cephVersion, secureOption),
+				Owner:                     registry.OwnerFieldEng,
+				Cluster:                   r.MakeClusterSpec(4, spec.WorkloadNodeCount(1)),
+				EncryptionSupport:         registry.EncryptionMetamorphic,
+				Leases:                    registry.MetamorphicLeases,
+				CompatibleClouds:          registry.Clouds(spec.GCE),
+				Suites:                    registry.Suites(registry.Nightly),
+				TestSelectionOptOutSuites: registry.Suites(registry.Nightly),
+				Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+					v := s3BackupRestoreValidator{
+						t:            t,
+						c:            c,
+						crdbNodes:    c.CRDBNodes(),
+						csvPort:      8081,
+						importNode:   c.Node(1),
+						rows:         1000,
+						workloadNode: c.WorkloadNode(),
+					}
+					v.startCluster(ctx)
+					ceph := cephManager{
+						t:      t,
+						c:      c,
+						bucket: backupTestingBucket,
+						// For now, we use the workload node as the cephNode
+						cephNodes: c.Node(c.Spec().NodeCount),
+						key:       randomString(32),
+						secret:    randomString(64),
+						secure:    secureOption,
+						version:   cephVersion,
+					}
+					ceph.install(ctx)
+					defer ceph.cleanup(ctx)
+					v.validateBackupRestore(ctx, ceph)
+				},
+			})
+		}
 	}
 
 	r.Add(registry.TestSpec{
@@ -126,44 +154,37 @@ type s3BackupRestoreValidator struct {
 
 // checkBackups verifies that there is exactly one full and one incremental backup.
 func (v *s3BackupRestoreValidator) checkBackups(ctx context.Context, conn *gosql.DB) {
-	backups := conn.QueryRowContext(ctx, "SHOW BACKUPS IN 'external://backup_bucket'")
-	var path string
-	if err := backups.Scan(&path); err != nil {
+	if _, err := conn.ExecContext(ctx, "SET use_backups_with_ids = true"); err != nil {
 		v.t.Fatal(err)
 	}
-
-	rows, err := conn.QueryContext(ctx,
-		"SELECT backup_type from [SHOW BACKUP $1 IN 'external://backup_bucket'] WHERE object_type='table'",
-		path)
-
+	rows, err := conn.QueryContext(
+		ctx,
+		"SELECT start_time IS NULL FROM [SHOW BACKUPS IN 'external://backup_bucket' WITH DEBUG]",
+	)
 	if err != nil {
 		v.t.Fatal(err)
 	}
-	var foundFull, foundIncr bool
-	var rowCount int
+	fulls, incs := 0, 0
 	for rows.Next() {
-		var backupType string
-		if err := rows.Scan(&backupType); err != nil {
+		var isFull bool
+		if err := rows.Scan(&isFull); err != nil {
 			v.t.Fatal(err)
 		}
-		if backupType == "full" {
-			foundFull = true
+		if isFull {
+			fulls++
+		} else {
+			incs++
 		}
-		if backupType == "incremental" {
-			foundIncr = true
-		}
-		rowCount++
 	}
-	if !foundFull {
+	if fulls == 0 {
 		v.t.Fatal(errors.Errorf("full backup not found"))
 	}
-	if !foundIncr {
+	if incs == 0 {
 		v.t.Fatal(errors.Errorf("incremental backup not found"))
 	}
-	if rowCount > 2 {
+	if fulls+incs > 2 {
 		v.t.Fatal(errors.Errorf("found more than 2 backups"))
 	}
-
 }
 
 // runImportForS3CloneTesting import the data used to test the S3 clone backup/restore
@@ -207,7 +228,7 @@ func (v *s3BackupRestoreValidator) validateBackupRestore(ctx context.Context, s 
 	}
 
 	// Run a full backup while running the workload
-	m := v.c.NewMonitor(ctx, v.c.CRDBNodes())
+	m := v.c.NewDeprecatedMonitor(ctx, v.c.CRDBNodes())
 	m.Go(func(ctx context.Context) error {
 		v.t.Status(`running backup `)
 		_, err := conn.ExecContext(ctx,

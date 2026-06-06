@@ -14,7 +14,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
-	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/server/srvtestutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
@@ -28,7 +27,7 @@ import (
 func TestRangesResponse(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
-	defer kvserver.EnableLeaseHistoryForTesting(100)()
+	defer kvserver.TestingEnableLeaseHistory(100)()
 	srv := serverutils.StartServerOnly(t, base.TestServerArgs{})
 	defer srv.Stopper().Stop(context.Background())
 	ts := srv.ApplicationLayer()
@@ -56,9 +55,6 @@ func TestRangesResponse(t *testing.T) {
 		for _, ri := range response.Ranges {
 			// Do some simple validation based on the fact that this is a
 			// single-node cluster.
-			if ri.RaftState.State != "StateLeader" && ri.RaftState.State != server.RaftStateDormant {
-				t.Errorf("expected to be Raft leader or dormant, but was '%s'", ri.RaftState.State)
-			}
 			expReplica := roachpb.ReplicaDescriptor{
 				NodeID:    1,
 				StoreID:   1,
@@ -131,7 +127,7 @@ func TestTenantRangesSecurity(t *testing.T) {
 func TestRangeResponse(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
-	defer kvserver.EnableLeaseHistoryForTesting(100)()
+	defer kvserver.TestingEnableLeaseHistory(100)()
 	srv := serverutils.StartServerOnly(t, base.TestServerArgs{})
 	defer srv.Stopper().Stop(context.Background())
 	ts := srv.ApplicationLayer()

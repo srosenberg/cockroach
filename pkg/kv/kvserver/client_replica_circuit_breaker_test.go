@@ -8,6 +8,7 @@ package kvserver_test
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -200,7 +201,11 @@ func TestReplicaCircuitBreaker_LeaselessTripped(t *testing.T) {
 	require.NoError(t, tc.Write(n1))
 	tc.SetProbeEnabled(n1, false)
 	tc.TripBreaker(n1)
+	// We don't know the lease type here, so make sure the lease is expired for
+	// both the cases of epoch or leader leases.
 	resumeHeartbeats := tc.ExpireAllLeasesAndN1LivenessRecord(t, pauseHeartbeats)
+	tc.DisableAllStoreLivenessHeartbeats.Store(true)
+	tc.ManualClock.Increment(tc.Servers[0].RaftConfig().RangeLeaseDuration.Nanoseconds())
 
 	// On n1, run into the circuit breaker when requesting lease. We have to
 	// resume heartbeats for this to not time out, as requesting the new lease
@@ -212,6 +217,7 @@ func TestReplicaCircuitBreaker_LeaselessTripped(t *testing.T) {
 	// (except the test harness categorically prevents n2 from getting a lease,
 	// injecting an error).
 	resumeHeartbeats()
+	tc.DisableAllStoreLivenessHeartbeats.Store(false)
 	testutils.SucceedsSoon(t, func() error {
 		err := tc.Read(n1)
 		if errors.HasType(err, (*kvpb.NotLeaseHolderError)(nil)) {
@@ -788,6 +794,9 @@ func TestReplicaCircuitBreaker_Partial_Retry(t *testing.T) {
 	skip.UnderRace(t)
 	skip.UnderDeadlock(t)
 
+	// To help debug issues like #154179.
+	testutils.SetVModule(t, "dist_sender=3")
+
 	testutils.RunValues(t, "lease-type", roachpb.ExpirationAndLeaderLeaseType(),
 		func(t *testing.T, leaseType roachpb.LeaseType) {
 			// Use a context timeout, to prevent test hangs on failures.
@@ -855,14 +864,20 @@ func TestReplicaCircuitBreaker_Partial_Retry(t *testing.T) {
 			requireRUEs := func(t *testing.T, dbs []*kv.DB) {
 				t.Helper()
 				for _, db := range dbs {
-					backoffMetric := (db.NonTransactionalSender().(*kv.CrossRangeTxnWrapperSender)).Wrapped().(*kvcoord.DistSender).Metrics().InLeaseTransferBackoffs
-					initialBackoff := backoffMetric.Count()
+					ctx, finishAndGetRec := tracing.ContextWithRecordingSpan(context.Background(), db.Tracer, "requireRUEs")
+					defer func() {
+						rec := finishAndGetRec()
+						if !t.Failed() {
+							return
+						}
+						t.Logf("failure trace:\n%s", rec)
+					}()
 					err := db.Put(ctx, key, value)
-					// Verify that we did not perform any backoff while executing this request.
-					require.EqualValues(t, 0, backoffMetric.Count()-initialBackoff)
 					require.Error(t, err)
 					require.True(t, errors.HasType(err, (*kvpb.ReplicaUnavailableError)(nil)),
 						"expected ReplicaUnavailableError, got %v", err)
+					// Verify that we did not perform any backoff while executing this request.
+					require.NotContains(t, finishAndGetRec(), kvcoord.InLeaseTransferBackoffTraceMessage)
 				}
 				t.Logf("writes failed with ReplicaUnavailableError")
 			}
@@ -913,7 +928,7 @@ func TestReplicaCircuitBreaker_Partial_Retry(t *testing.T) {
 			// and it will return RUE.
 			lease, _ := repl3.GetLease()
 			manualClock.Increment(tc.Servers[0].RaftConfig().RangeLeaseDuration.Nanoseconds())
-			t.Logf("expired n%d lease", lease.Replica.ReplicaID)
+			t.Logf("expired first lease (n%d)", lease.Replica.ReplicaID) // always n3
 
 			requireRUEs(t, dbs)
 
@@ -960,7 +975,7 @@ func TestReplicaCircuitBreaker_Partial_Retry(t *testing.T) {
 			// because the leader's circuit breaker is tripped.
 			lease, _ = repl1.GetLease()
 			manualClock.Increment(tc.Servers[0].RaftConfig().RangeLeaseDuration.Nanoseconds())
-			t.Logf("expired n%d lease", lease.Replica.ReplicaID)
+			t.Logf("expired second lease (n%d)", lease.Replica.ReplicaID)
 
 			requireRUEs(t, dbs)
 
@@ -974,7 +989,7 @@ func TestReplicaCircuitBreaker_Partial_Retry(t *testing.T) {
 				}
 				return true
 			}, 10*time.Second, 100*time.Millisecond)
-			t.Logf("no raft leader")
+			t.Logf("expired raft leader")
 
 			requireRUEs(t, dbs)
 
@@ -1047,6 +1062,10 @@ func setupCircuitBreakerTest(t *testing.T, leaseType roachpb.LeaseType) *circuit
 	} else {
 		kvserver.OverrideDefaultLeaseType(ctx, &st.SV, leaseType)
 	}
+
+	// Disable the leaderless watcher; it is tested separately and can
+	// interfere with circuit breaker assertions. See #163999.
+	kvserver.ReplicaLeaderlessUnavailableThreshold.Override(ctx, &st.SV, 0)
 
 	storeKnobs := &kvserver.StoreTestingKnobs{
 		SlowReplicationThresholdOverride: func(ba *kvpb.BatchRequest) time.Duration {
@@ -1300,7 +1319,7 @@ func (cbt *circuitBreakerTest) SendCtxTS(
 	// going to leak memory.
 	ctx = context.WithValue(ctx, req, struct{}{})
 
-	_, pErr := repl.Send(ctx, ba)
+	_, pErr := kvserver.ToSenderForTesting(repl.Replica).Send(ctx, ba)
 	// If our context got canceled, return an opaque error regardless of presence or
 	// absence of actual error. This makes sure we don't accidentally pass tests as
 	// a result of our context cancellation.
@@ -1337,10 +1356,30 @@ func (*circuitBreakerTest) IsBreakerOpen(err error) bool {
 	// NB: we will see AmbiguousResultError here when proposals are inflight while
 	// the breaker trips. These are wrapping errors, so the assertions below will
 	// look through them.
-	if !errors.Is(err, circuit.ErrBreakerOpen) {
-		return false
+	if errors.Is(err, circuit.ErrBreakerOpen) &&
+		errors.HasType(err, (*kvpb.ReplicaUnavailableError)(nil)) {
+		return true
 	}
-	return errors.HasType(err, (*kvpb.ReplicaUnavailableError)(nil))
+	// Unfortunately, selectBestError in dist_sender.go can "flatten" an
+	// AmbiguousResultError by formatting it as a string via NewAmbiguousResultErrorf,
+	// which loses the error markers. In that case, the ReplicaUnavailableError and
+	// ErrBreakerOpen are only present as stringified text, not as proper error types.
+	// See: https://github.com/cockroachdb/cockroach/issues/159582
+	//
+	// TODO(kvserver): Consider fixing selectBestError to properly wrap errors instead
+	// of formatting them as strings, e.g.:
+	//   return kvpb.NewAmbiguousResultError(errors.WithSecondaryError(ambiguousErr, lastAttemptErr))
+	//
+	// For now, we fall back to string matching for this edge case. The "replica
+	// unavailable" text comes from the stringified ReplicaUnavailableError which
+	// is only produced by the circuit breaker code path.
+	if errors.HasType(err, (*kvpb.AmbiguousResultError)(nil)) {
+		errStr := err.Error()
+		if strings.Contains(errStr, "replica unavailable") {
+			return true
+		}
+	}
+	return false
 }
 
 func (cbt *circuitBreakerTest) RequireIsBreakerOpen(t *testing.T, err error) {

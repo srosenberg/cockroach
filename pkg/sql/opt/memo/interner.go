@@ -372,7 +372,8 @@ func (h *hasher) HashDatum(val tree.Datum) {
 		h.HashString(t.Locale)
 		h.HashString(t.Contents)
 	case *tree.DJsonpath:
-		h.HashString(string(*t))
+		// TODO(#22513): Workaround until we allow jsonpath encoding.
+		h.HashString(t.String())
 	default:
 		h.bytes, h.bytes3 = encodeDatum(h.bytes[:0], val, h.bytes3[:0])
 		h.HashBytes(h.bytes)
@@ -643,14 +644,20 @@ func (h *hasher) HashPhysProps(val *physical.Required) {
 		}
 	}
 	h.HashOrderingChoice(val.Ordering)
-	h.HashFloat64(val.LimitHint)
 	h.HashDistribution(val.Distribution)
+	h.HashFloat64(val.LimitHint)
+	h.HashBool(val.RemoteBranch)
+	h.HashPlanGram(val.PlanGram)
 }
 
 func (h *hasher) HashDistribution(val physical.Distribution) {
 	for _, region := range val.Regions {
 		h.HashString(region)
 	}
+}
+
+func (h *hasher) HashPlanGram(val physical.PlanGram) {
+	h.HashUint64(val.RootHash())
 }
 
 func (h *hasher) HashLocking(val opt.Locking) {
@@ -910,9 +917,9 @@ func (h *hasher) IsDatumEqual(l, r tree.Datum) bool {
 		}
 		return len(lt.Array) != 0 || h.IsTypeEqual(ltyp, rtyp)
 	case *tree.DJsonpath:
-		// TODO(normanchenn): Workaround until we allow jsonpath encoding.
+		// TODO(#22513): Workaround until we allow jsonpath encoding.
 		rt := r.(*tree.DJsonpath)
-		return h.IsStringEqual(string(*lt), string(*rt))
+		return h.IsStringEqual(lt.String(), rt.String())
 	default:
 		h.bytes, h.bytes3 = encodeDatum(h.bytes[:0], l, h.bytes3[:0])
 		h.bytes2, h.bytes3 = encodeDatum(h.bytes2[:0], r, h.bytes3[:0])
@@ -1116,6 +1123,10 @@ func (h *hasher) IsPhysPropsEqual(l, r *physical.Required) bool {
 }
 
 func (h *hasher) IsDistributionEqual(l, r physical.Distribution) bool {
+	return l.Equals(r)
+}
+
+func (h *hasher) IsPlanGramEqual(l, r physical.PlanGram) bool {
 	return l.Equals(r)
 }
 
@@ -1343,16 +1354,21 @@ func (h *hasher) IsUDFDefinitionEqual(l, r *UDFDefinition) bool {
 	} else if r.ExceptionBlock != nil {
 		return false
 	}
-	if l.CursorDeclaration != nil {
-		if r.CursorDeclaration == nil {
+	leftCursDec := l.FirstStmtOutput.CursorDeclaration
+	rightCursDec := r.FirstStmtOutput.CursorDeclaration
+	if leftCursDec != nil {
+		if rightCursDec == nil {
 			return false
 		}
-		if l.CursorDeclaration.NameArgIdx != r.CursorDeclaration.NameArgIdx ||
-			l.CursorDeclaration.Scroll != r.CursorDeclaration.Scroll ||
-			l.CursorDeclaration.CursorSQL != r.CursorDeclaration.CursorSQL {
+		if leftCursDec.NameArgIdx != rightCursDec.NameArgIdx ||
+			leftCursDec.Scroll != rightCursDec.Scroll ||
+			leftCursDec.CursorSQL != rightCursDec.CursorSQL {
 			return false
 		}
-	} else if r.CursorDeclaration != nil {
+	} else if rightCursDec != nil {
+		return false
+	}
+	if l.FirstStmtOutput.TargetBufferID != r.FirstStmtOutput.TargetBufferID {
 		return false
 	}
 	return h.IsColListEqual(l.Params, r.Params) && l.IsRecursive == r.IsRecursive

@@ -55,7 +55,6 @@ var slowQueryLogThreshold = settings.RegisterDurationSettingWithExplicitUnit(
 	"when set to non-zero, log statements whose service latency exceeds "+
 		"the threshold to a secondary logger on each node",
 	0,
-	settings.NonNegativeDuration,
 	settings.WithPublic,
 )
 
@@ -74,6 +73,32 @@ var slowQueryLogFullTableScans = settings.RegisterBoolSetting(
 	"when set to true, statements that perform a full table/index scan will be logged to the "+
 		"slow query log even if they do not meet the latency threshold. Must have the slow query "+
 		"log enabled for this setting to have any effect.",
+	false,
+	settings.WithPublic)
+
+// failedQueryLogEnabled, when set, causes every non-internal SQL statement
+// that ends in error to be emitted on the SQL_EXEC log channel as a
+// `failed_query` event. It is intended as an "errors-only" counterpart to
+// `sql.log.all_statements.enabled`: operators get reliable per-failure
+// visibility (and can derive a custom metric from the log stream) without
+// paying the cost of logging every successful statement.
+var failedQueryLogEnabled = settings.RegisterBoolSetting(
+	settings.ApplicationLevel,
+	"sql.log.failed_query.enabled",
+	"when set to true, every SQL statement that ends in an error is logged "+
+		"to a secondary logger on each node as a `failed_query` event",
+	false,
+	settings.WithPublic)
+
+// failedQueryLogInternalEnabled gates the same logging for the internal
+// executor. It mirrors `sql.log.slow_query.internal_queries.enabled` and has
+// no effect unless `sql.log.failed_query.enabled` is also set.
+var failedQueryLogInternalEnabled = settings.RegisterBoolSetting(
+	settings.ApplicationLevel,
+	"sql.log.failed_query.internal_queries.enabled",
+	"when set to true, internal queries that end in an error are logged to a "+
+		"separate `failed_query_internal` event. Must have "+
+		"`sql.log.failed_query.enabled` set for this setting to have any effect.",
 	false,
 	settings.WithPublic)
 
@@ -169,6 +194,8 @@ func (p *planner) maybeLogStatementInternal(
 	slowLogFullTableScans := slowQueryLogFullTableScans.Get(&p.execCfg.Settings.SV)
 	slowQueryLogEnabled := slowLogThreshold != 0
 	slowInternalQueryLogEnabled := slowInternalQueryLogEnabled.Get(&p.execCfg.Settings.SV)
+	failedQueryLogEnabled := failedQueryLogEnabled.Get(&p.execCfg.Settings.SV)
+	failedQueryLogInternalEnabled := failedQueryLogInternalEnabled.Get(&p.execCfg.Settings.SV)
 	auditEventsDetected := len(p.curPlan.auditEventBuilders) != 0
 	logConsoleQuery := telemetryInternalConsoleQueriesEnabled.Get(&p.execCfg.Settings.SV) &&
 		strings.HasPrefix(p.SessionData().ApplicationName, internalConsoleAppName)
@@ -185,8 +212,19 @@ func (p *planner) maybeLogStatementInternal(
 	// a user and the user has admin privilege (is directly or indirectly a
 	// member of the admin role).
 
+	// Zone config changes are always audit-logged on the SENSITIVE_ACCESS
+	// channel because they control data placement (CRDB-1180).
+	_, isZoneConfigChange := p.stmt.AST.(tree.ZoneConfigStatement)
+	shouldLogZoneConfigAudit := isZoneConfigChange && execType != executorTypeInternal
+
+	// failedQueryLogActive captures whether we may need to emit a failed_query
+	// event for this statement. The setting can be on without an error, in
+	// which case this evaluates to false and we still short-circuit below.
+	failedQueryLogActive := failedQueryLogEnabled && err != nil
+
 	if !logV && !logExecuteEnabled && !auditEventsDetected && !slowQueryLogEnabled &&
-		!shouldLogToAdminAuditLog && !telemetryLoggingEnabled {
+		!shouldLogToAdminAuditLog && !telemetryLoggingEnabled && !shouldLogZoneConfigAudit &&
+		!failedQueryLogActive {
 		// Shortcut: avoid the expense of computing anything log-related
 		// if logging is not enabled by configuration.
 		return
@@ -252,15 +290,41 @@ func (p *planner) maybeLogStatementInternal(
 	(slowLogFullTableScans && (execDetails.FullTableScan || execDetails.FullIndexScan)) ||
 		// Is the query actually slow?
 		queryDuration > slowLogThreshold) {
+		commonSQLEventDetails := p.getCommonSQLEventDetails()
 		switch {
 		case execType == executorTypeExec:
 			// Non-internal queries are always logged to the slow query log.
-			p.logEventsOnlyExternally(ctx, &eventpb.SlowQuery{CommonSQLExecDetails: execDetails})
-
+			event := &eventpb.SlowQuery{
+				CommonSQLEventDetails: commonSQLEventDetails,
+				CommonSQLExecDetails:  execDetails,
+			}
+			log.StructuredEvent(ctx, severity.INFO, event)
 		case execType == executorTypeInternal && slowInternalQueryLogEnabled:
 			// Internal queries that surpass the slow query log threshold should only
 			// be logged to the slow-internal-only log if the cluster setting dictates.
-			p.logEventsOnlyExternally(ctx, &eventpb.SlowQueryInternal{CommonSQLExecDetails: execDetails})
+			event := &eventpb.SlowQueryInternal{
+				CommonSQLEventDetails: commonSQLEventDetails,
+				CommonSQLExecDetails:  execDetails,
+			}
+			log.StructuredEvent(ctx, severity.INFO, event)
+		}
+	}
+
+	if failedQueryLogActive {
+		commonSQLEventDetails := p.getCommonSQLEventDetails()
+		switch {
+		case execType == executorTypeExec:
+			event := &eventpb.FailedQuery{
+				CommonSQLEventDetails: commonSQLEventDetails,
+				CommonSQLExecDetails:  execDetails,
+			}
+			log.StructuredEvent(ctx, severity.INFO, event)
+		case execType == executorTypeInternal && failedQueryLogInternalEnabled:
+			event := &eventpb.FailedQueryInternal{
+				CommonSQLEventDetails: commonSQLEventDetails,
+				CommonSQLExecDetails:  execDetails,
+			}
+			log.StructuredEvent(ctx, severity.INFO, event)
 		}
 	}
 
@@ -281,6 +345,14 @@ func (p *planner) maybeLogStatementInternal(
 
 	if shouldLogToAdminAuditLog {
 		p.logEventsOnlyExternally(ctx, &eventpb.AdminQuery{CommonSQLExecDetails: execDetails})
+	}
+
+	// Note: for admin users, both admin_query (above) and zone_config_audit
+	// (below) are emitted. This is intentional — admin_query captures all
+	// admin activity, while zone_config_audit enables filtering specifically
+	// for zone config changes across all users.
+	if shouldLogZoneConfigAudit {
+		p.logEventsOnlyExternally(ctx, &eventpb.ZoneConfigAudit{CommonSQLExecDetails: execDetails})
 	}
 
 	if telemetryLoggingEnabled && !p.SessionData().TroubleshootingMode {
@@ -336,29 +408,14 @@ func (p *planner) maybeLogStatementInternal(
 		// overhead latency: txn/retry management, error checking, etc
 		execOverheadNanos := svcLatNanos - processingLatNanos
 
-		// If the statement was recorded by the stats collector, we can extract
-		// the statement fingerprint ID. Otherwise, we'll need to compute it from the AST.
-		stmtFingerprintID := statsCollector.StatementFingerprintID()
-		if stmtFingerprintID == 0 {
-			repQuery := p.stmt.StmtNoConstants
-			if repQuery == "" {
-				flags := tree.FmtFlags(queryFormattingForFingerprintsMask.Get(&p.execCfg.Settings.SV))
-				f := tree.NewFmtCtx(flags)
-				f.FormatNode(p.stmt.AST)
-				repQuery = f.CloseAndGetString()
-			}
-			stmtFingerprintID = appstatspb.ConstructStatementFingerprintID(
-				repQuery,
-				implicitTxn,
-				p.CurrentDatabase(),
-			)
-		}
+		stmtFingerprintID := p.instrumentation.fingerprintId
 
 		sampledQuery := getSampledQuery()
 		defer releaseSampledQuery(sampledQuery)
 
 		*sampledQuery = eventpb.SampledQuery{
 			CommonSQLExecDetails:     execDetails,
+			CommonSQLEventDetails:    p.getCommonSQLEventDetails(),
 			SkippedQueries:           skippedQueries,
 			CostEstimate:             p.curPlan.instrumentation.costEstimate,
 			Distribution:             p.curPlan.instrumentation.distribution.String(),
@@ -396,7 +453,7 @@ func (p *planner) maybeLogStatementInternal(
 			SQLInstanceIDs:           queryLevelStats.SQLInstanceIDs,
 			KVNodeIDs:                queryLevelStats.KVNodeIDs,
 			UsedFollowerRead:         queryLevelStats.UsedFollowerRead,
-			NetworkBytesSent:         queryLevelStats.NetworkBytesSent,
+			NetworkBytesSent:         queryLevelStats.DistSQLNetworkBytesSent,
 			MaxMemUsage:              queryLevelStats.MaxMemUsage,
 			MaxDiskUsage:             queryLevelStats.MaxDiskUsage,
 			KVBytesRead:              queryLevelStats.KVBytesRead,
@@ -404,8 +461,8 @@ func (p *planner) maybeLogStatementInternal(
 			KVRowsRead:               queryLevelStats.KVRowsRead,
 			KvTimeNanos:              queryLevelStats.KVTime.Nanoseconds(),
 			KvGrpcCalls:              queryLevelStats.KVBatchRequestsIssued,
-			NetworkMessages:          queryLevelStats.NetworkMessages,
-			CpuTimeNanos:             queryLevelStats.CPUTime.Nanoseconds(),
+			NetworkMessages:          queryLevelStats.DistSQLNetworkMessages,
+			CpuTimeNanos:             queryLevelStats.SQLCPUTime.Nanoseconds(),
 			IndexRecommendations:     indexRecs,
 			// TODO(mgartner): Use a slice of struct{uint64, uint64} instead of
 			// converting to strings.
@@ -437,7 +494,7 @@ func (p *planner) maybeLogStatementInternal(
 			SchemaChangerMode:                     p.curPlan.instrumentation.schemaChangerMode.String(),
 		}
 
-		p.logEventsOnlyExternally(ctx, sampledQuery)
+		log.StructuredEvent(ctx, severity.INFO, sampledQuery)
 	}
 }
 
@@ -498,12 +555,12 @@ func (p *planner) logTransaction(
 
 	if txnStats.CollectedExecStats {
 		sampledTxn.SampledExecStats = &eventpb.SampledExecStats{
-			NetworkBytes:    txnStats.ExecStats.NetworkBytesSent,
+			NetworkBytes:    txnStats.ExecStats.DistSQLNetworkBytesSent,
 			MaxMemUsage:     txnStats.ExecStats.MaxMemUsage,
 			ContentionTime:  int64(txnStats.ExecStats.ContentionTime.Seconds()),
-			NetworkMessages: txnStats.ExecStats.NetworkMessages,
+			NetworkMessages: txnStats.ExecStats.DistSQLNetworkMessages,
 			MaxDiskUsage:    txnStats.ExecStats.MaxDiskUsage,
-			CPUSQLNanos:     txnStats.ExecStats.CPUTime.Nanoseconds(),
+			CPUSQLNanos:     txnStats.ExecStats.SQLCPUTime.Nanoseconds(),
 			MVCCIteratorStats: eventpb.MVCCIteratorStats{
 				StepCount:                      txnStats.ExecStats.MvccSteps,
 				StepCountInternal:              txnStats.ExecStats.MvccStepsInternal,

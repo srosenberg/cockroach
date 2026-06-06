@@ -17,17 +17,20 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/build"
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
+	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
 	"github.com/cockroachdb/cockroach/pkg/testutils/release"
+	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
-	"github.com/cockroachdb/cockroach/pkg/util/version"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/version"
 )
 
 var (
@@ -54,15 +57,15 @@ type Version struct {
 // tested, we print the branch name being tested if the test is
 // running on TeamCity, to make it clearer (instead of "<current>").
 func (v *Version) String() string {
+	suffix := ""
 	if v.IsCurrent() {
 		if currentBranch != "" {
-			return currentBranch
+			suffix = fmt.Sprintf(" (%s)", currentBranch)
+		} else {
+			suffix = fmt.Sprintf(" (%s)", CurrentVersionString)
 		}
-
-		return CurrentVersionString
 	}
-
-	return v.Version.String()
+	return v.Version.String() + suffix
 }
 
 // IsCurrent returns whether this version corresponds to the current
@@ -74,19 +77,19 @@ func (v *Version) IsCurrent() bool {
 // Equal compares the two versions, returning whether they represent
 // the same version.
 func (v *Version) Equal(other *Version) bool {
-	return v.Version.Compare(&other.Version) == 0
+	return v.Version.Compare(other.Version) == 0
 }
 
 // AtLeast is a thin wrapper around `(*version.Version).AtLeast`,
 // allowing two `Version` objects to be compared directly.
 func (v *Version) AtLeast(other *Version) bool {
-	return v.Version.AtLeast(&other.Version)
+	return v.Version.AtLeast(other.Version)
 }
 
 // LessThan returns true if the version is strictly
 // older than the other version. `v < other`
 func (v *Version) LessThan(other *Version) bool {
-	return !v.Version.AtLeast(&other.Version)
+	return !v.Version.AtLeast(other.Version)
 }
 
 // Series returns the release series this version is a part of.
@@ -101,7 +104,32 @@ func CurrentVersion() *Version {
 		return &Version{*TestBuildVersion} // test-only
 	}
 
-	return &Version{*version.MustParse(build.BinaryVersion())}
+	return &Version{version.MustParse(build.BinaryVersion())}
+}
+
+// RandomReplicationPeerVersion returns the latest patch release for a
+// randomly selected supported previous major version that is at least
+// minVersion. If minVersion is 0, any supported predecessor is
+// eligible. Returns (nil, nil) if no supported release meets the
+// minimum.
+func RandomReplicationPeerVersion(rng *rand.Rand, minVersion clusterversion.Key) (*Version, error) {
+	supportedReleases := clusterversion.SupportedPreviousReleases()
+	var eligible []clusterversion.Key
+	for _, k := range supportedReleases {
+		if k >= minVersion {
+			eligible = append(eligible, k)
+		}
+	}
+	if len(eligible) == 0 {
+		return nil, nil
+	}
+	selected := eligible[rng.Intn(len(eligible))]
+	seriesStr := selected.ReleaseSeries().String()
+	patchStr, err := release.LatestPatch(seriesStr)
+	if err != nil {
+		return nil, errors.Wrapf(err, "getting latest patch for series %s", seriesStr)
+	}
+	return ParseVersion(patchStr)
 }
 
 // MustParseVersion parses the version string given (with or without
@@ -135,7 +163,7 @@ func ParseVersion(v string) (*Version, error) {
 		return nil, err
 	}
 
-	return &Version{*parsedVersion}, nil
+	return &Version{parsedVersion}, nil
 }
 
 // LatestPatchRelease returns the latest patch release version for a given
@@ -156,10 +184,22 @@ func LatestPatchRelease(series string) (*Version, error) {
 // associated with the given database connection.
 // NB: version means major.minor[-internal]; the patch level isn't
 // returned. For example, a binary of version 19.2.4 will return 19.2.
-func BinaryVersion(ctx context.Context, db *gosql.DB) (roachpb.Version, error) {
+func BinaryVersion(ctx context.Context, l *logger.Logger, db *gosql.DB) (roachpb.Version, error) {
 	zero := roachpb.Version{}
 	var sv string
-	if err := db.QueryRowContext(ctx, `SELECT crdb_internal.node_executable_version();`).Scan(&sv); err != nil {
+	rows, err := roachtestutil.QueryWithRetry(
+		ctx, l, db, roachtestutil.ClusterSettingRetryOpts, `SELECT crdb_internal.node_executable_version();`,
+	)
+	if err != nil {
+		return zero, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return zero, fmt.Errorf("no rows returned")
+	}
+
+	if err := rows.Scan(&sv); err != nil {
 		return zero, err
 	}
 
@@ -176,14 +216,66 @@ func BinaryVersion(ctx context.Context, db *gosql.DB) (roachpb.Version, error) {
 // in the background plus gossip asynchronicity.
 // NB: cluster versions are always major.minor[-internal]; there isn't
 // a patch level.
-func ClusterVersion(ctx context.Context, db *gosql.DB) (roachpb.Version, error) {
+func ClusterVersion(ctx context.Context, l *logger.Logger, db *gosql.DB) (roachpb.Version, error) {
 	zero := roachpb.Version{}
 	var sv string
-	if err := db.QueryRowContext(ctx, `SHOW CLUSTER SETTING version`).Scan(&sv); err != nil {
+	rows, err := roachtestutil.QueryWithRetry(
+		ctx, l, db, roachtestutil.ClusterSettingRetryOpts, `SHOW CLUSTER SETTING version`,
+	)
+	if err != nil {
+		return zero, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return zero, fmt.Errorf("no rows returned")
+	}
+
+	if err := rows.Scan(&sv); err != nil {
 		return zero, err
 	}
 
 	return roachpb.ParseVersion(sv)
+}
+
+// ClusterVersionFromKV returns the cluster version stored in the KV layer
+// (system.settings table) without waiting for local version synchronization.
+// This is useful during mid-upgrade states when SHOW CLUSTER SETTING version
+// would block waiting for the upgrade to complete on all nodes.
+// See GitHub issue #160516
+func ClusterVersionFromKV(
+	ctx context.Context, l *logger.Logger, db *gosql.DB,
+) (roachpb.Version, error) {
+	zero := roachpb.Version{}
+	var encodedVal string
+	// Query the raw encoded value from system.settings
+	rows, err := roachtestutil.QueryWithRetry(
+		ctx, l, db, roachtestutil.ClusterSettingRetryOpts,
+		`SELECT value FROM system.settings WHERE name = 'version'`,
+	)
+	if err != nil {
+		return zero, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return zero, err
+		}
+		return zero, fmt.Errorf("no version found in system.settings")
+	}
+
+	if err := rows.Scan(&encodedVal); err != nil {
+		return zero, err
+	}
+
+	// Decode the protobuf-encoded ClusterVersion
+	var cv clusterversion.ClusterVersion
+	if err := protoutil.Unmarshal([]byte(encodedVal), &cv); err != nil {
+		return zero, fmt.Errorf("failed to decode cluster version: %w", err)
+	}
+
+	return cv.Version, nil
 }
 
 // UploadCockroach stages the cockroach binary in the nodes.
@@ -228,7 +320,6 @@ func UploadWorkload(
 	default:
 		minWorkloadBinaryVersion = MustParseVersion("v22.2.0")
 	}
-
 	// If we are uploading the `current` version, skip version checking,
 	// as the binary used is the one passed via command line flags.
 	if !v.IsCurrent() && !v.AtLeast(minWorkloadBinaryVersion) {
@@ -239,9 +330,15 @@ func UploadWorkload(
 	return path, err == nil, err
 }
 
-// uploadBinaryVersion uploads the specified binary associated with
-// the given version to the given nodes. It returns the path of the
-// uploaded binaries on the nodes.
+// uploadBinaryVersion attempts to upload the specified binary associated with
+// the given version to the given nodes. If the destination binary path already
+// exists, assume the binary has already been uploaded previously. Returns the
+// path of the uploaded binaries on the nodes.
+//
+// If cockroach is the target binary and if --versions-binary-override option
+// is set and if version v is contained in the override map, use that version's
+// value, which is a local binary path as the source binary to upload instead
+// of using roachprod to stage.
 func uploadBinaryVersion(
 	ctx context.Context,
 	t test.Test,
@@ -256,6 +353,8 @@ func uploadBinaryVersion(
 	var isOverridden bool
 	switch binary {
 	case "cockroach":
+		// If the --versions-binary-override option is set and version v is in the
+		// argument map, then use that version's value as the path to the binary
 		defaultBinary, isOverridden = t.VersionsBinaryOverride()[v.String()]
 		if isOverridden {
 			l.Printf("using cockroach binary override for version %s: %s", v, defaultBinary)
@@ -298,14 +397,13 @@ func uploadBinaryVersion(
 			// a build for a specific release. Instead, we stage the binary
 			// for the corresponding release branch, which is good enough in
 			// most cases.
-			stageVersion = fmt.Sprintf("release-%d.%d", v.Major(), v.Minor())
+			stageVersion = v.Format("release-%X.%Y")
 		}
 
 		if err := c.Stage(ctx, l, application, stageVersion, dir, nodes); err != nil {
 			return "", err
 		}
 	}
-
 	return dstBinary, nil
 }
 
@@ -323,7 +421,7 @@ func InstallFixtures(
 	// The fixtures use cluster version (major.minor) but the input might be
 	// a patch release.
 	name := CheckpointName(
-		roachpb.Version{Major: int32(v.Major()), Minor: int32(v.Minor())}.String(),
+		roachpb.Version{Major: int32(v.Major().Year), Minor: int32(v.Major().Ordinal)}.String(),
 	)
 	for n := 1; n <= len(nodes); n++ {
 		if err := c.PutE(ctx, l,
@@ -477,7 +575,7 @@ func WaitForClusterUpgrade(
 	timeout time.Duration,
 ) error {
 	firstNode := nodes[0]
-	newVersion, err := BinaryVersion(ctx, dbFunc(firstNode))
+	newVersion, err := BinaryVersion(ctx, l, dbFunc(firstNode))
 	if err != nil {
 		return err
 	}
@@ -490,7 +588,7 @@ func WaitForClusterUpgrade(
 		retryCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 		err := opts.Do(retryCtx, func(ctx context.Context) error {
-			currentVersion, err := ClusterVersion(ctx, dbFunc(node))
+			currentVersion, err := ClusterVersion(ctx, l, dbFunc(node))
 			if err != nil {
 				return err
 			}

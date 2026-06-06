@@ -1,10 +1,13 @@
 # LogicTest: local-read-committed
 
 statement ok
-CREATE TABLE jars (j INT PRIMARY KEY)
+CREATE TABLE jars (j INT PRIMARY KEY, i INT, UNIQUE INDEX (i), FAMILY (j, i))
 
 statement ok
 CREATE TABLE cookies (c INT PRIMARY KEY, j INT REFERENCES jars (j), FAMILY (c, j))
+
+statement ok
+CREATE TABLE gumballs (g INT PRIMARY KEY, j INT REFERENCES jars (j) ON DELETE CASCADE ON UPDATE CASCADE, FAMILY (g, j))
 
 statement ok
 SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED
@@ -173,12 +176,13 @@ vectorized: true
         │
         └── • lookup join (anti)
             │ columns: (j_new)
-            │ estimated row count: 0 (missing stats)
+            │ estimated row count: 1 (missing stats)
             │ table: jars@jars_pkey
             │ equality: (j_new) = (j)
             │ equality cols are key
             │ locking strength: for share
             │ locking durability: guaranteed
+            │ parallel
             │
             └── • project
                 │ columns: (j_new)
@@ -188,7 +192,9 @@ vectorized: true
                       estimated row count: 1 (missing stats)
                       label: buffer 1
 
-# Foreign key checks of the child do not require locking.
+# Foreign key checks of the child do not require locking under serializable
+# isolation, but do require locking under read committed isolation to avoid
+# stale reads.
 query T
 EXPLAIN (OPT) UPDATE jars SET j = j + 4
 ----
@@ -207,7 +213,8 @@ update jars
                      │    └── with-scan &1
                      ├── distinct-on
                      │    └── scan cookies
-                     │         └── flags: avoid-full-scan
+                     │         ├── flags: avoid-full-scan
+                     │         └── locking: for-share,durability-guaranteed
                      └── filters
                           └── j = cookies.j
 
@@ -227,20 +234,91 @@ vectorized: true
 │   │ set: j
 │   │
 │   └── • buffer
-│       │ columns: (j, j_new)
+│       │ columns: (j, i, j_new)
 │       │ label: buffer 1
 │       │
 │       └── • render
-│           │ columns: (j, j_new)
+│           │ columns: (j, i, j_new)
 │           │ render j_new: j + 4
 │           │ render j: j
+│           │ render i: i
 │           │
 │           └── • scan
-│                 columns: (j)
+│                 columns: (j, i)
 │                 estimated row count: 1,000 (missing stats)
 │                 table: jars@jars_pkey
 │                 spans: FULL SCAN
 │                 locking strength: for update
+│
+├── • fk-cascade
+│   │ fk: gumballs_j_fkey
+│   │
+│   └── • root
+│       │ columns: ()
+│       │
+│       ├── • update
+│       │   │ columns: ()
+│       │   │ estimated row count: 0 (missing stats)
+│       │   │ table: gumballs
+│       │   │ set: j
+│       │   │
+│       │   └── • buffer
+│       │       │ columns: (g, j, j_new, j)
+│       │       │ label: buffer 1
+│       │       │
+│       │       └── • hash join (inner)
+│       │           │ columns: (g, j, j_new, j)
+│       │           │ estimated row count: 327 (missing stats)
+│       │           │ equality: (j) = (j)
+│       │           │
+│       │           ├── • scan
+│       │           │     columns: (g, j)
+│       │           │     estimated row count: 1,000 (missing stats)
+│       │           │     table: gumballs@gumballs_pkey
+│       │           │     spans: FULL SCAN
+│       │           │     locking strength: for update
+│       │           │     locking durability: guaranteed
+│       │           │
+│       │           └── • filter
+│       │               │ columns: (j, j_new)
+│       │               │ estimated row count: 33
+│       │               │ filter: j IS DISTINCT FROM j_new
+│       │               │
+│       │               └── • project
+│       │                   │ columns: (j, j_new)
+│       │                   │
+│       │                   └── • scan buffer
+│       │                         columns: (j, i, j_new)
+│       │                         estimated row count: 100
+│       │                         label: buffer 1000000
+│       │
+│       └── • constraint-check
+│           │
+│           └── • error if rows
+│               │ columns: ()
+│               │
+│               └── • lookup join (anti)
+│                   │ columns: (j_new)
+│                   │ estimated row count: 1 (missing stats)
+│                   │ table: jars@jars_pkey
+│                   │ equality: (j_new) = (j)
+│                   │ equality cols are key
+│                   │ locking strength: for share
+│                   │ locking durability: guaranteed
+│                   │ parallel
+│                   │
+│                   └── • filter
+│                       │ columns: (j_new)
+│                       │ estimated row count: 323 (missing stats)
+│                       │ filter: j_new IS NOT NULL
+│                       │
+│                       └── • project
+│                           │ columns: (j_new)
+│                           │
+│                           └── • scan buffer
+│                                 columns: (g, j, j_new, j)
+│                                 estimated row count: 327 (missing stats)
+│                                 label: buffer 1
 │
 └── • constraint-check
     │
@@ -265,7 +343,7 @@ vectorized: true
                 │   │   │ columns: (j)
                 │   │   │
                 │   │   └── • scan buffer
-                │   │         columns: (j, j_new)
+                │   │         columns: (j, i, j_new)
                 │   │         estimated row count: 1,000 (missing stats)
                 │   │         label: buffer 1
                 │   │
@@ -273,7 +351,7 @@ vectorized: true
                 │       │ columns: (j_new)
                 │       │
                 │       └── • scan buffer
-                │             columns: (j, j_new)
+                │             columns: (j, i, j_new)
                 │             estimated row count: 1,000 (missing stats)
                 │             label: buffer 1
                 │
@@ -287,20 +365,23 @@ vectorized: true
                           estimated row count: 1,000 (missing stats)
                           table: cookies@cookies_pkey
                           spans: FULL SCAN
+                          locking strength: for share
+                          locking durability: guaranteed
 
 query T
 EXPLAIN (OPT) DELETE FROM jars WHERE j = 1
 ----
 delete jars
  ├── scan jars
- │    ├── constraint: /6: [/1 - /1]
+ │    ├── constraint: /7: [/1 - /1]
  │    └── flags: avoid-full-scan
  └── f-k-checks
       └── f-k-checks-item: cookies(j) -> jars(j)
            └── semi-join (hash)
                 ├── with-scan &1
                 ├── scan cookies
-                │    └── flags: avoid-full-scan
+                │    ├── flags: avoid-full-scan
+                │    └── locking: for-share,durability-guaranteed
                 └── filters
                      └── j = cookies.j
 
@@ -319,15 +400,39 @@ vectorized: true
 │   │ from: jars
 │   │
 │   └── • buffer
-│       │ columns: (j)
+│       │ columns: (j, i)
 │       │ label: buffer 1
 │       │
 │       └── • scan
-│             columns: (j)
+│             columns: (j, i)
 │             estimated row count: 1 (missing stats)
 │             table: jars@jars_pkey
 │             spans: /1/0
 │             locking strength: for update
+│
+├── • fk-cascade
+│   │ fk: gumballs_j_fkey
+│   │
+│   └── • delete
+│       │ columns: ()
+│       │ estimated row count: 0 (missing stats)
+│       │ from: gumballs
+│       │
+│       └── • project
+│           │ columns: (g)
+│           │
+│           └── • filter
+│               │ columns: (g, j)
+│               │ estimated row count: 10 (missing stats)
+│               │ filter: j = 1
+│               │
+│               └── • scan
+│                     columns: (g, j)
+│                     estimated row count: 1,000 (missing stats)
+│                     table: gumballs@gumballs_pkey
+│                     spans: FULL SCAN
+│                     locking strength: for update
+│                     locking durability: guaranteed
 │
 └── • constraint-check
     │
@@ -345,8 +450,124 @@ vectorized: true
             │     estimated row count: 1,000 (missing stats)
             │     table: cookies@cookies_pkey
             │     spans: FULL SCAN
+            │     locking strength: for share
+            │     locking durability: guaranteed
             │
-            └── • scan buffer
-                  columns: (j)
-                  estimated row count: 1 (missing stats)
-                  label: buffer 1
+            └── • project
+                │ columns: (j)
+                │
+                └── • scan buffer
+                      columns: (j, i)
+                      estimated row count: 1 (missing stats)
+                      label: buffer 1
+
+query T
+EXPLAIN (OPT) DELETE FROM jars WHERE i = 1
+----
+delete jars
+ ├── scan jars@jars_i_key
+ │    ├── constraint: /8: [/1 - /1]
+ │    └── flags: avoid-full-scan
+ └── f-k-checks
+      └── f-k-checks-item: cookies(j) -> jars(j)
+           └── semi-join (hash)
+                ├── with-scan &1
+                ├── scan cookies
+                │    ├── flags: avoid-full-scan
+                │    └── locking: for-share,durability-guaranteed
+                └── filters
+                     └── j = cookies.j
+
+
+query T
+EXPLAIN (VERBOSE) DELETE FROM jars WHERE i = 1
+----
+distribution: local
+vectorized: true
+·
+• root
+│ columns: ()
+│
+├── • delete
+│   │ columns: ()
+│   │ estimated row count: 0 (missing stats)
+│   │ from: jars
+│   │
+│   └── • buffer
+│       │ columns: (j, i)
+│       │ label: buffer 1
+│       │
+│       └── • scan
+│             columns: (j, i)
+│             estimated row count: 1 (missing stats)
+│             table: jars@jars_i_key
+│             spans: /1/0
+│             locking strength: for update
+│
+├── • fk-cascade
+│   │ fk: gumballs_j_fkey
+│   │
+│   └── • delete
+│       │ columns: ()
+│       │ estimated row count: 0 (missing stats)
+│       │ from: gumballs
+│       │
+│       └── • project
+│           │ columns: (g)
+│           │
+│           └── • project
+│               │ columns: (g, j)
+│               │
+│               └── • hash join (inner)
+│                   │ columns: (g, j, j)
+│                   │ estimated row count: 89 (missing stats)
+│                   │ equality: (j) = (j)
+│                   │ right cols are key
+│                   │
+│                   ├── • scan
+│                   │     columns: (g, j)
+│                   │     estimated row count: 1,000 (missing stats)
+│                   │     table: gumballs@gumballs_pkey
+│                   │     spans: FULL SCAN
+│                   │     locking strength: for update
+│                   │     locking durability: guaranteed
+│                   │
+│                   └── • distinct
+│                       │ columns: (j)
+│                       │ estimated row count: 10
+│                       │ distinct on: j
+│                       │
+│                       └── • project
+│                           │ columns: (j)
+│                           │
+│                           └── • scan buffer
+│                                 columns: (j, i)
+│                                 estimated row count: 100
+│                                 label: buffer 1000000
+│
+└── • constraint-check
+    │
+    └── • error if rows
+        │ columns: ()
+        │
+        └── • hash join (right semi)
+            │ columns: (j)
+            │ estimated row count: 1 (missing stats)
+            │ equality: (j) = (j)
+            │ right cols are key
+            │
+            ├── • scan
+            │     columns: (j)
+            │     estimated row count: 1,000 (missing stats)
+            │     table: cookies@cookies_pkey
+            │     spans: FULL SCAN
+            │     locking strength: for share
+            │     locking durability: guaranteed
+            │
+            └── • project
+                │ columns: (j)
+                │
+                └── • scan buffer
+                      columns: (j, i)
+                      estimated row count: 1 (missing stats)
+                      label: buffer 1

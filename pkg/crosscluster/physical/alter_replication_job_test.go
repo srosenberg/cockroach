@@ -12,16 +12,15 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
-	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationtestutils"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
-	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/jobutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
+	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
@@ -112,6 +111,41 @@ func TestAlterTenantCompleteToLatest(t *testing.T) {
 	// now updated src tenant.
 	defer c.StartDestTenant(ctx, nil, 0)()
 	c.CompareResult(`SELECT * FROM d.t2`)
+}
+
+func TestAlterTenantAddReader(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	skip.UnderDeadlock(t, "flakes with deadlock detector")
+
+	ctx := context.Background()
+	args := replicationtestutils.DefaultTenantStreamingClustersArgs
+
+	c, cleanup := replicationtestutils.CreateTenantStreamingClusters(ctx, t, args)
+	defer cleanup()
+	producerJobID, ingestionJobID := c.StartStreamReplication(ctx)
+
+	jobutils.WaitForJobToRun(t, c.SrcSysSQL, jobspb.JobID(producerJobID))
+	jobutils.WaitForJobToRun(t, c.DestSysSQL, jobspb.JobID(ingestionJobID))
+
+	c.WaitUntilReplicatedTime(c.SrcCluster.Server(0).Clock().Now(), jobspb.JobID(ingestionJobID))
+	c.DestSysSQL.CheckQueryResults(t, "SELECT name FROM [SHOW TENANTS] ORDER BY name",
+		[][]string{{"destination"}, {"system"}},
+	)
+	c.DestSysSQL.Exec(t, "ALTER TENANT $1 SET REPLICATION READ VIRTUAL CLUSTER", args.DestTenantName)
+	c.DestSysSQL.CheckQueryResults(t, "SELECT name, data_state FROM [SHOW TENANTS] ORDER BY name",
+		[][]string{{"destination", "replicating"}, {"destination-readonly", "ready"}, {"system", "ready"}},
+	)
+
+	testutils.SucceedsSoon(t, func() error {
+		readonlyConn, err := c.DestSysServer.SQLConnE(serverutils.DBName("cluster:destination-readonly"))
+		if err != nil {
+			return err
+		}
+		defer readonlyConn.Close()
+		return readonlyConn.PingContext(ctx)
+	})
 }
 
 func TestAlterTenantPauseResume(t *testing.T) {
@@ -281,9 +315,12 @@ func TestAlterTenantFailUpdatingCutoverTime(t *testing.T) {
 	// Wait for cutover to start.
 	<-cutoverStartedCh
 
-	// Another cutover should fail, verify the error.
+	// Attempting to cutover to the same timestamp (LATEST) should succeed (noop).
+	c.DestSysSQL.Exec(c.T, `ALTER TENANT $1 COMPLETE REPLICATION TO LATEST`, args.DestTenantName)
+
+	// Attempting to cutover to a different timestamp should fail.
 	c.DestSysSQL.ExpectErr(t, "already started cutting over to timestamp",
-		fmt.Sprintf("ALTER TENANT %s COMPLETE REPLICATION TO LATEST", args.DestTenantName))
+		fmt.Sprintf("ALTER TENANT %s COMPLETE REPLICATION TO SYSTEM TIME '-1us'", args.DestTenantName))
 
 	// Done, the tenant is cutting over, unblock the job.
 	unblockJob()
@@ -508,6 +545,10 @@ func TestTenantReplicationStatus(t *testing.T) {
 	_, status, err = getReplicationStatsAndStatus(ctx, registry, nil, jobspb.JobID(producerJobID))
 	require.ErrorContains(t, err, "is not a stream ingestion job")
 	require.Equal(t, "replication error", status)
+	c.DestSysSQL.CheckQueryResults(t, "SELECT count(*) > 0 FROM crdb_internal.cluster_replication_spans", [][]string{{"true"}})
+	c.DestSysSQL.Exec(t, fmt.Sprintf("CREATE USER %s", username.TestUser))
+	noPrivs := sqlutils.MakeSQLRunner(c.DestSysServer.SQLConn(t, serverutils.User(username.TestUser)))
+	noPrivs.CheckQueryResults(t, "SELECT count(*) > 0 FROM crdb_internal.cluster_replication_spans", [][]string{{"false"}})
 }
 
 // TestAlterTenantHandleFutureProtectedTimestamp verifies that cutting over "TO
@@ -573,25 +614,5 @@ func TestAlterReplicationJobErrors(t *testing.T) {
 		testuser.ExpectErr(t, "user testuser does not have REPLICATIONSOURCE system privilege", cmd)
 		db.Exec(t, fmt.Sprintf("GRANT SYSTEM REPLICATIONSOURCE TO %s", username.TestUser))
 		testuser.Exec(t, cmd)
-	})
-	t.Run("alter replication dest priv 24.3", func(t *testing.T) {
-		params := base.TestServerArgs{
-			DefaultTestTenant: base.TestControlsTenantsExplicitly,
-		}
-		params.Knobs.Server = &server.TestingKnobs{
-			ClusterVersionOverride:         clusterversion.V24_3.Version(),
-			DisableAutomaticVersionUpgrade: make(chan struct{}),
-		}
-
-		srv, sqlDB, _ := serverutils.StartServer(t, params)
-		defer srv.Stopper().Stop(ctx)
-		db := sqlutils.MakeSQLRunner(sqlDB)
-		db.Exec(t, "CREATE TENANT t1")
-		db.Exec(t, fmt.Sprintf("CREATE USER %s", username.TestUser))
-		testuser := sqlutils.MakeSQLRunner(srv.SQLConn(t, serverutils.User(username.TestUser)))
-		db.Exec(t, fmt.Sprintf("GRANT SYSTEM MANAGEVIRTUALCLUSTER TO %s", username.TestUser))
-		// Implies we got past the priv checks, without REPLICATIONDEST.
-		cmd := "ALTER TENANT t1 SET REPLICATION RETENTION ='100ms'"
-		testuser.ExpectErr(t, `does not have an active replication consumer job`, cmd)
 	})
 }

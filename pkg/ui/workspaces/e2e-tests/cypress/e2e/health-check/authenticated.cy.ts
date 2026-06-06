@@ -4,6 +4,7 @@
 // included in the /LICENSE file.
 
 import { SQLPrivilege } from "../../support/types";
+import { isTextGreaterThanZero } from "../../support/utils";
 
 describe("health check: authenticated user", () => {
   it("serves a DB Console overview page", () => {
@@ -34,15 +35,9 @@ describe("health check: authenticated user", () => {
       cy.findByRole("link", { name: "Metrics" });
       cy.findByRole("link", { name: "Databases" });
       cy.findByRole("link", { name: "SQL Activity" });
-      cy.findByRole("link", { name: "Hot Ranges" });
+      cy.findByRole("link", { name: /^(Hot|Top) Ranges$/ });
       cy.findByRole("link", { name: "Jobs" });
       cy.findByRole("link", { name: "Advanced Debug" });
     });
   });
 });
-
-const isTextGreaterThanZero = (ele: JQuery<HTMLElement>) => {
-  const text = ele.get()[0].innerText;
-  const textAsFloat = parseFloat(text);
-  expect(textAsFloat).to.be.greaterThan(0);
-};

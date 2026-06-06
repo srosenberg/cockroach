@@ -54,7 +54,7 @@ const (
 // statements to be prepared, etc. At any point in time the buffer contains
 // outstanding commands that have yet to be executed, and it can also contain
 // some history of commands that we might want to retry - in the case of a
-// retriable error, we'd like to retry all the commands pertaining to the
+// retryable error, we'd like to retry all the commands pertaining to the
 // current SQL transaction.
 //
 // The buffer is supposed to be used by one reader and one writer. The writer
@@ -143,6 +143,8 @@ type ExecStmt struct {
 
 	// LastInBatch indicates if this command contains the last query in a
 	// simple protocol Query message that contains a batch of 1 or more queries.
+	// This is used to determine whether autocommit can be applied to the
+	// transaction, and need not be set for correctness.
 	LastInBatch bool
 	// LastInBatchBeforeShowCommitTimestamp indicates that this command contains
 	// the second-to-last query in a simple protocol Query message that contains
@@ -151,7 +153,9 @@ type ExecStmt struct {
 	// such that the SHOW COMMIT TIMESTAMP statement can return the timestamp of
 	// the transaction which applied to all the other statements in the batch.
 	// Note that SHOW COMMIT TIMESTAMP is not permitted in any other position in
-	// such a multi-statement implicit transaction.
+	// such a multi-statement implicit transaction. This is used to determine
+	// whether autocommit can be applied to the transaction, and need not be set
+	// for correctness.
 	LastInBatchBeforeShowCommitTimestamp bool
 }
 
@@ -277,14 +281,14 @@ type BindStmt struct {
 	// code, in which case that code will be applied to all arguments.
 	ArgFormatCodes []pgwirebase.FormatCode
 
-	// internalArgs, if not nil, represents the arguments for the prepared
+	// InternalArgs, if not nil, represents the arguments for the prepared
 	// statements as produced by the internal clients. These don't need to go
 	// through encoding/decoding of the args. However, the types of the datums
 	// must correspond exactly to the inferred types (but note that the types of
 	// the datums are passes as type hints to the PrepareStmt command, so the
 	// inferred types should reflect that).
-	// If internalArgs is specified, Args and ArgFormatCodes are ignored.
-	internalArgs []tree.Datum
+	// If InternalArgs is specified, Args and ArgFormatCodes are ignored.
+	InternalArgs []tree.Datum
 }
 
 // command implements the Command interface.
@@ -554,6 +558,23 @@ func (buf *StmtBuf) CurCmd() (Command, CmdPos, error) {
 	}
 }
 
+// Empty returns true if there are no unprocessed commands in the buffer.
+// If the buffer is closed, it returns io.EOF.
+func (buf *StmtBuf) Empty() (bool, error) {
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+
+	if buf.mu.closed {
+		return false, io.EOF
+	}
+	curPos := buf.mu.curPos
+	cmdIdx, err := buf.translatePosLocked(curPos)
+	if err != nil {
+		return false, err
+	}
+	return !(cmdIdx < buf.mu.data.Len()), nil
+}
+
 // translatePosLocked translates an absolute position of a command (counting
 // from the connection start) to the index of the respective command in the
 // buffer (so, it returns an index relative to the start of the buffer).
@@ -577,11 +598,11 @@ func (buf *StmtBuf) Ltrim(ctx context.Context, pos CmdPos) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	if pos < buf.mu.startPos {
-		log.Fatalf(ctx, "invalid ltrim position: %d. buf starting at: %d",
+		log.Dev.Fatalf(ctx, "invalid ltrim position: %d. buf starting at: %d",
 			pos, buf.mu.startPos)
 	}
 	if buf.mu.curPos < pos {
-		log.Fatalf(ctx, "invalid ltrim position: %d when cursor is: %d",
+		log.Dev.Fatalf(ctx, "invalid ltrim position: %d when cursor is: %d",
 			pos, buf.mu.curPos)
 	}
 	// Remove commands one by one.
@@ -679,7 +700,7 @@ func (buf *StmtBuf) Rewind(ctx context.Context, pos CmdPos) {
 	buf.mu.Lock()
 	defer buf.mu.Unlock()
 	if pos < buf.mu.startPos {
-		log.Fatalf(ctx, "attempting to rewind below buffer start")
+		log.Dev.Fatalf(ctx, "attempting to rewind below buffer start")
 	}
 	if buf.PipelineCount != nil {
 		buf.PipelineCount.Inc(int64(buf.mu.curPos - pos))
@@ -846,7 +867,7 @@ type RestrictedCommandResult interface {
 	// can be nil.
 	//
 	// This needs to be called (once) before AddRow.
-	SetColumns(context.Context, colinfo.ResultColumns)
+	SetColumns(ctx context.Context, cols colinfo.ResultColumns, skipRowDescription bool)
 
 	// ResetStmtType allows a client to change the statement type of the current
 	// result, from the original one set when the result was created trough
@@ -912,6 +933,12 @@ type RestrictedCommandResult interface {
 	RevokePortalPausability() error
 }
 
+// resultBufferingDisabler is the subset of RestrictedCommandResult used to
+// flush a statement's result writer mid-execution (see DisableBuffering).
+type resultBufferingDisabler interface {
+	DisableBuffering()
+}
+
 // DescribeResult represents the result of a Describe command (for either
 // describing a prepared statement or a portal).
 type DescribeResult interface {
@@ -927,7 +954,7 @@ type DescribeResult interface {
 	SetPrepStmtOutput(context.Context, colinfo.ResultColumns)
 	// SetPortalOutput tells the client about the results schema and formatting of
 	// a portal.
-	SetPortalOutput(context.Context, colinfo.ResultColumns, []pgwirebase.FormatCode)
+	SetPortalOutput(ctx context.Context, cols colinfo.ResultColumns, fmtCode []pgwirebase.FormatCode)
 }
 
 // ParseResult represents the result of a Parse command.
@@ -1093,7 +1120,9 @@ func (r *streamingCommandResult) RevokePortalPausability() error {
 }
 
 // SetColumns is part of the RestrictedCommandResult interface.
-func (r *streamingCommandResult) SetColumns(ctx context.Context, cols colinfo.ResultColumns) {
+func (r *streamingCommandResult) SetColumns(
+	ctx context.Context, cols colinfo.ResultColumns, skipRowDescription bool,
+) {
 	// The interface allows for cols to be nil, yet the iterator result expects
 	// non-nil value to indicate that it was the column metadata.
 	if cols == nil {

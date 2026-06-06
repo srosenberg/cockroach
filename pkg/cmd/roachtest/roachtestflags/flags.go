@@ -12,7 +12,6 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/vm"
-	"github.com/cockroachdb/cockroach/pkg/util/randutil"
 	"github.com/spf13/pflag"
 )
 
@@ -59,6 +58,12 @@ var (
 	_              = registerListFlag(&OnlyBenchmarks, FlagInfo{
 		Name:  "bench",
 		Usage: `List only benchmarks`,
+	})
+
+	ListDetails bool
+	_           = registerListFlag(&ListDetails, FlagInfo{
+		Name:  "details",
+		Usage: `Include additional per-test fields (e.g. SkipPostValidations) in the listing`,
 	})
 
 	ForceCloudCompat bool
@@ -110,6 +115,15 @@ var (
 	_             = registerRunFlag(&CockroachPath, FlagInfo{
 		Name:  "cockroach",
 		Usage: `Absolute path to cockroach binary to use`,
+	})
+
+	CockroachStage string
+	_              = registerRunFlag(&CockroachStage, FlagInfo{
+		Name: "cockroach-stage",
+		Usage: `
+			Stage cockroach binary from cloud storage instead of uploading local binary.
+			Specify version/SHA (e.g., "latest", "v23.2.0", or commit SHA).
+			Mutually exclusive with --cockroach.`,
 	})
 
 	ConfigPath string
@@ -334,6 +348,18 @@ var (
 		Usage: `flag to pass custom labels to pass to openmetrics for performance metrics,`,
 	})
 
+	DatadogSendLogsAnyBranch bool = false
+	_                             = registerRunFlag(&DatadogSendLogsAnyBranch, FlagInfo{
+		Name:  "datadog-send-logs-any-branch",
+		Usage: `Upload roachtest logs to Datadog from any branch. By default, only logs from master and release branches are uploaded.`,
+	})
+
+	DatadogSendLogsAnyResult bool = false
+	_                             = registerRunFlag(&DatadogSendLogsAnyResult, FlagInfo{
+		Name:  "datadog-send-logs-any-result",
+		Usage: `Upload roachtest logs to Datadog regardless of test result. By default, only failed test logs are uploaded.`,
+	})
+
 	DatadogSite string = "us5.datadoghq.com"
 	_                  = registerRunOpsFlag(&DatadogSite, FlagInfo{
 		Name:  "datadog-site",
@@ -384,6 +410,12 @@ var (
 		Usage: "Interval to wait before the operation next execution after the previous run.",
 	})
 
+	SkipOperations string = ""
+	_                     = registerRunOpsFlag(&SkipOperations, FlagInfo{
+		Name:  "skip",
+		Usage: "A regex pattern for operations to exclude from running.",
+	})
+
 	RunForever bool = false
 	_               = registerRunOpsFlag(&RunForever, FlagInfo{
 		Name:  "run-forever",
@@ -395,15 +427,6 @@ var (
 		Name: "workload-cluster",
 		Usage: "Specify the name of the workload cluster. The workload cluster is the one running operations and " +
 			"workloads, such as TPC-C, on the cluster",
-	})
-
-	SideEyeApiToken string = ""
-	_                      = registerRunFlag(&SideEyeApiToken, FlagInfo{
-		Name: "side-eye-token",
-		Usage: `The API token to use for configuring the Side-Eye agents running on the
-						created clusters. If empty, the Side-Eye agents will not be started.
-						When set, app.side-eye.io can be used to monitor running clusters and also
-						timing out tests will get a snapshot before their clusters are destroyed.`,
 	})
 
 	PreferLocalSSD bool = true
@@ -446,12 +469,24 @@ var (
 		Usage: `Disable posting GitHub issue for failures`,
 	})
 
+	DryRunIssuePosting bool
+	_                  = registerRunFlag(&DryRunIssuePosting, FlagInfo{
+		Name:  "dry-run-issue-posting",
+		Usage: `Enable dry-run mode for GitHub issue posting (formats issues but doesn't post them)`,
+	})
+
 	PromPort int = 2113
 	_            = registerRunFlag(&PromPort, FlagInfo{
 		Name: "prom-port",
 		Usage: `
 			The http port on which to expose prom metrics from the roachtest
 			process`,
+	})
+	_ = registerRunOpsFlag(&PromPort, FlagInfo{
+		Name: "prom-port",
+		Usage: `
+			The http port on which to expose prom metrics from the roachtest
+			operations runner process`,
 	})
 
 	SelectProbability float64 = 1.0
@@ -476,12 +511,6 @@ var (
 		Usage: `Percentage of failed tests before all remaining tests are automatically terminated.`,
 	})
 
-	GlobalSeed int64 = randutil.NewPseudoSeed()
-	_                = registerRunFlag(&GlobalSeed, FlagInfo{
-		Name:  "global-seed",
-		Usage: `The global random seed used for all tests.`,
-	})
-
 	ClearClusterCache bool = true
 	_                      = registerRunFlag(&ClearClusterCache, FlagInfo{
 		Name: "clear-cluster-cache",
@@ -497,6 +526,42 @@ var (
 		Usage: `
 						Always collect artifacts during test teardown, even if the test did not
 						time out or fail.`,
+	})
+
+	Caffeinate bool = true
+	_               = registerRunFlag(&Caffeinate, FlagInfo{
+		Name: "caffeinate",
+		Usage: `
+						On Darwin, prevent the system from sleeping while roachtest is running
+						by invoking caffeinate -i -w <pid>. Default is true.`,
+	})
+
+	StartEnv []string
+	_        = registerRunFlag(&StartEnv, FlagInfo{
+		Name: "start-env",
+		Usage: `
+			Environment variable to inject at cluster Start() time. Can be specified
+			multiple times. These are applied before test-specific settings, so tests
+			may override them. Example: --start-env=GODEBUG=gctrace=1`,
+	})
+
+	StartSettings map[string]string
+	_             = registerRunFlag(&StartSettings, FlagInfo{
+		Name: "start-setting",
+		Usage: `
+			Cluster setting to apply at cluster Start() time (key=value format). Can
+			be specified multiple times. These are applied via SQL after cluster
+			startup but before the test body runs, so tests may override them.
+			Example: --start-setting=kv.range_split.by_load_enabled=false`,
+	})
+
+	ForceDRPC bool = false
+	_              = registerRunFlag(&ForceDRPC, FlagInfo{
+		Name: "force-drpc",
+		Usage: `
+			Force DRPC (--use-new-rpc) to be enabled for all tests.
+			Older binaries that don't support "--use-new-rpc" will
+			skip it automatically.`,
 	})
 )
 
@@ -516,10 +581,10 @@ var (
 		Usage: `Override use of local SSD`,
 	})
 
-	OverrideFilesystem string
+	OverrideFilesystem vm.Filesystem
 	_                  = registerRunFlag(&OverrideFilesystem, FlagInfo{
 		Name:  "filesystem",
-		Usage: `Override the underlying file system(ext4/zfs)`,
+		Usage: `Override the underlying file system(ext4/zfs/xfs/f2fs/btrfs)`,
 	})
 
 	OverrideNoExt4Barrier bool

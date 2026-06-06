@@ -28,11 +28,16 @@ type (
 		Iterations   int      `yaml:"iterations"`
 		CompareAlpha float64  `yaml:"compare_alpha"`
 		Retries      int      `yaml:"retries"`
-		Metrics      []string `yaml:"metrics"`
+		Metrics      []Metric `yaml:"metrics"`
 	}
 	Benchmarks  []Benchmark
 	ProfileType string
 )
+
+type Metric struct {
+	Name      string  `yaml:"name"`
+	Threshold float64 `yaml:"threshold"`
+}
 
 const (
 	ProfileCPU    ProfileType = "cpu"
@@ -48,6 +53,10 @@ func (b *Benchmark) sanitizedPackageName() string {
 
 func (b *Benchmark) sanitizedName() string {
 	return sanitizeRe.ReplaceAllString(strings.TrimPrefix(b.Name, "Benchmark"), "_")
+}
+
+func (b *Benchmark) markerName(status Status) string {
+	return b.sanitizedName() + "." + strings.ToUpper(status.String())
 }
 
 func (b *Benchmark) binaryName() string {

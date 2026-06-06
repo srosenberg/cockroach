@@ -26,10 +26,11 @@ func registerJobsMixedVersions(r registry.Registry) {
 			3, /* nodeCount */
 			spec.CPU(4),
 			spec.Geo(),
-			spec.GCEZones("us-east1-b,us-west1-b,europe-west2-b"),
+			spec.GCEZones("us-east1-b,us-west1-c,europe-west2-b"),
 		),
 		CompatibleClouds: registry.OnlyGCE,
 		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
+		Monitor:          true,
 		Randomized:       true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runJobsMixedVersions(ctx, t, c)
@@ -41,7 +42,7 @@ func runJobsMixedVersions(ctx context.Context, t test.Test, c cluster.Cluster) {
 	mvt := mixedversion.NewTest(
 		ctx, t, t.L(), c, c.All(),
 		mixedversion.NumUpgrades(2),
-		mixedversion.UpgradeTimeout(time.Minute*30),
+		mixedversion.UpgradeTimeout(time.Hour),
 		mixedversion.MinimumSupportedVersion("v24.3.0"),
 		mixedversion.AlwaysUseLatestPredecessors,
 		mixedversion.NeverUseFixtures,

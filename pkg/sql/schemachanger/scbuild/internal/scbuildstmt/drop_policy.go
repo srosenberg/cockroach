@@ -13,7 +13,6 @@ import (
 
 // DropPolicy implements DROP POLICY.
 func DropPolicy(b BuildCtx, n *tree.DropPolicy) {
-	failIfRLSIsNotEnabled(b)
 	noticeSender := b.EvalCtx().ClientNoticeSender
 	tableElems := b.ResolveTable(n.TableName, ResolveParams{
 		IsExistenceOptional: n.IfExists,
@@ -25,7 +24,7 @@ func DropPolicy(b BuildCtx, n *tree.DropPolicy) {
 			pgnotice.Newf("relation %q does not exist, skipping", n.TableName.String()))
 		return
 	}
-	panicIfSchemaChangeIsDisallowed(tableElems, n)
+	defer checkTableSchemaChangePrerequisites(b, tableElems, n)()
 
 	policyElems := b.ResolvePolicy(tbl.TableID, n.PolicyName, ResolveParams{
 		IsExistenceOptional: n.IfExists,

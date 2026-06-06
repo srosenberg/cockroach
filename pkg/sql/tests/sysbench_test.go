@@ -26,8 +26,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/rpc"
 	"github.com/cockroachdb/cockroach/pkg/rpc/nodedialer"
+	"github.com/cockroachdb/cockroach/pkg/server"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
@@ -164,25 +167,42 @@ func newTestCluster(
 	// also moderately less realistic.
 	disableBackgroundWork(st)
 	const cacheSize = 2 * 1024 * 1024 * 1024 // 2GB
-	return serverutils.StartCluster(b, nodes, base.TestClusterArgs{
+	knobs := base.TestingKnobs{
+		DialerKnobs: nodedialer.DialerTestingKnobs{
+			TestingNoLocalClientOptimization: !localRPCFastPath,
+		},
+		Server: &server.TestingKnobs{
+			ContextTestingKnobs: rpc.ContextTestingKnobs{
+				NoLoopbackDialer: !localRPCFastPath,
+			},
+		},
+		Store: &kvserver.StoreTestingKnobs{
+			// Disable the lease queue to keep leases on s1 (otherwise, lease
+			// count rebalancing might move one lease, and splits might copy
+			// that lease to a number of additional ranges). Communication
+			// between the gateway node (always n1) and the KV servers always
+			// goes through TCP regardless of whether the gateway node equals
+			// the KV node, but there are still subtle (and not well understood)
+			// performance differences between then n1->n1 and n1->n[23] cases,
+			// which add variance to the results.
+			DisableLeaseQueue: true,
+		},
+	}
+	tc := serverutils.StartCluster(b, nodes, base.TestClusterArgs{
 		ServerArgs: base.TestServerArgs{
 			Settings:  st,
 			CacheSize: cacheSize,
-			Knobs: base.TestingKnobs{
-				DialerKnobs: nodedialer.DialerTestingKnobs{
-					TestingNoLocalClientOptimization: !localRPCFastPath,
-				},
-			},
+			Knobs:     knobs,
 		}},
 	)
+	if nodes > 1 {
+		try0(tc.WaitForFullReplication())
+	}
+	return tc
 }
 
 // sysbenchSQL is SQL-based implementation of sysbenchDriver. It runs SQL
 // statements against a single node cluster.
-//
-// TODO(nvanbenschoten): add a 3-node cluster variant of this driver.
-// TODO(nvanbenschoten): add a variant of this driver which bypasses the gRPC
-// local fast-path optimization.
 type sysbenchSQL struct {
 	ctx     context.Context
 	stopper *stop.Stopper
@@ -195,7 +215,6 @@ func newSysbenchSQL(nodes int, localRPCFastPath bool) sysbenchDriverConstructor 
 		for i := 0; i < nodes; i++ {
 			tc.Server(i).SQLServer().(*sql.Server).GetExecutorConfig().LicenseEnforcer.Disable(ctx)
 		}
-		try0(tc.WaitForFullReplication())
 		pgURL, cleanupURL := tc.ApplicationLayer(0).PGUrl(b, serverutils.DBName(sysbenchDB))
 		cleanup := func() {
 			cleanupURL()
@@ -376,12 +395,9 @@ func (s *sysbenchSQLClient) prepConn() {
 // sysbenchKV is KV-based implementation of sysbenchDriver. It bypasses the SQL
 // layer and runs the workload directly against the KV layer, on a single node
 // cluster.
-//
-// TODO(nvanbenschoten): add a 3-node cluster variant of this driver.
-// TODO(nvanbenschoten): add a variant of this driver which bypasses the gRPC
-// local fast-path optimization.
 type sysbenchKV struct {
 	ctx         context.Context
+	codec       keys.SQLCodec
 	db          *kv.DB
 	pkPrefix    [sysbenchTables]roachpb.Key
 	indexPrefix [sysbenchTables]roachpb.Key
@@ -390,13 +406,15 @@ type sysbenchKV struct {
 func newSysbenchKV(nodes int, localRPCFastPath bool) sysbenchDriverConstructor {
 	return func(ctx context.Context, b *testing.B) (sysbenchDriver, func()) {
 		tc := newTestCluster(b, nodes, localRPCFastPath)
-		db := tc.Server(0).DB()
+		s := tc.ApplicationLayer(0)
+		db := s.DB()
 		cleanup := func() {
 			tc.Stopper().Stop(ctx)
 		}
 		return &sysbenchKV{
-			ctx: ctx,
-			db:  db,
+			ctx:   ctx,
+			codec: s.Codec(),
+			db:    db,
 		}, cleanup
 	}
 }
@@ -621,9 +639,9 @@ func (s *sysbenchKV) prep(rng *rand.Rand) {
 func (s *sysbenchKV) prepKeyPrefixes() {
 	const tableNumOffset = 100
 	for i := range sysbenchTables {
-		s.pkPrefix[i] = keys.SystemSQLCodec.IndexPrefix(uint32(tableNumOffset+i), 1)
+		s.pkPrefix[i] = s.codec.IndexPrefix(uint32(tableNumOffset+i), 1)
 		s.pkPrefix[i] = slices.Clip(s.pkPrefix[i])
-		s.indexPrefix[i] = keys.SystemSQLCodec.IndexPrefix(uint32(tableNumOffset+i), 2)
+		s.indexPrefix[i] = s.codec.IndexPrefix(uint32(tableNumOffset+i), 2)
 		s.indexPrefix[i] = slices.Clip(s.indexPrefix[i])
 	}
 }
@@ -863,6 +881,8 @@ func benchmarkSysbenchImpl(b *testing.B, parallel bool) {
 	for _, driver := range drivers {
 		b.Run(driver.name, func(b *testing.B) {
 			for _, workload := range workloads {
+				var sys sysbenchDriver
+				var cleanup func()
 				b.Run(workload.name, func(b *testing.B) {
 					defer func() {
 						if r := recover(); r != nil {
@@ -870,34 +890,41 @@ func benchmarkSysbenchImpl(b *testing.B, parallel bool) {
 						}
 					}()
 
-					// NB: this can be removed once this test is refactored to use `b.Loop`
-					// available starting in go1.24[1]
+					// NB: this can be removed once this test is refactored to
+					// use `b.Loop` available starting in go1.24[1]
 					//
 					// [1]: https://tip.golang.org/doc/go1.24#new-benchmark-function
-					var benchtime string
-					require.NoError(b, sniffarg.DoEnv("test.benchtime", &benchtime))
-					if strings.HasSuffix(benchtime, "x") && b.N == 1 && benchtime != "1x" {
-						// The Go benchmark harness invokes tests first with b.N == 1 which
-						// helps it adjust the number of iterations to run to the benchtime.
-						// But if we specify the number of iterations, there's no point in
-						// it doing that, so we no-op on the first run.
-						// This speeds up benchmarking (by several seconds per subtest!)
-						// since it avoids setting up an extra test cluster.
-						b.Log("skipping benchmark on initial run; benchtime specifies an iteration count")
-						return
+					if b.N == 1 && sys != nil {
+						// The Go benchmark harness will run a benchmark with
+						// b.N=1 first, and ramp up b.N until the benchmark hits
+						// a time threshold. This means that the setup code will
+						// run multiple times for a single benchmark result. To
+						// avoid repeatedly incurring the overhead of
+						// re-prepping the test cluster, we only run the setup
+						// code when on the first execution of each iteration of
+						// the benchmark, when b.N=1. If the benchmark is run
+						// with --count greater than 1, then b.N will be reset
+						// to 1 for each iteration, and a new cluster will be
+						// created, ensuring benchmark results across
+						// interations remain independent.
+						cleanup()
+						sys = nil
 					}
-					sys, cleanup := driver.constructorFn(context.Background(), b)
-					defer cleanup()
+					if sys == nil {
+						sys, cleanup = driver.constructorFn(context.Background(), b)
+						sys.prep(rand.New(rand.NewSource(0)))
+					}
 					runSysbenchOuter(b, sys, workload.opFn, parallel)
 				})
+				if cleanup != nil {
+					cleanup()
+				}
 			}
 		})
 	}
 }
 
 func runSysbenchOuter(b *testing.B, sys sysbenchDriver, opFn sysbenchWorkload, parallel bool) {
-	sys.prep(rand.New(rand.NewSource(0)))
-
 	defer startAllocsProfile(b).Stop(b)
 	defer b.StopTimer()
 
@@ -984,24 +1011,53 @@ func (f doneFn) Stop(b testing.TB) {
 }
 
 func startAllocsProfile(b testing.TB) doneFn {
-	out := benchmemFile(b)
-	if out == "" {
-		return func(tb testing.TB) {}
-	}
+	outAllocs := testProfileFile(b, "memprofile")
+	diffAllocs := diffProfile(b, func() []byte {
+		if outAllocs == "" {
+			return nil
+		}
+		p := runtimepprof.Lookup("allocs")
+		var buf bytes.Buffer
 
-	// The below is essentially cribbed from pprof.go in net/http/pprof.
-	p := runtimepprof.Lookup("allocs")
-	var buf bytes.Buffer
-	runtime.GC()
-	require.NoError(b, p.WriteTo(&buf, 0))
-	pBase, err := profile.ParseData(buf.Bytes())
-	require.NoError(b, err)
-
-	return func(b testing.TB) {
 		runtime.GC()
+		require.NoError(b, p.WriteTo(&buf, 0))
+
+		return buf.Bytes()
+	})
+
+	outMutex := testProfileFile(b, "mutexprofile")
+	diffMutex := diffProfile(b, func() []byte {
+		if outMutex == "" {
+			return nil
+		}
+		p := runtimepprof.Lookup("mutex")
 		var buf bytes.Buffer
 		require.NoError(b, p.WriteTo(&buf, 0))
-		pNew, err := profile.ParseData(buf.Bytes())
+		return buf.Bytes()
+	})
+
+	return func(b testing.TB) {
+		if sl := diffAllocs(b); len(sl) > 0 {
+			require.NoError(b, os.WriteFile(outAllocs, sl, 0644))
+		}
+		if sl := diffMutex(b); len(sl) > 0 {
+			require.NoError(b, os.WriteFile(outMutex, sl, 0644))
+		}
+	}
+}
+
+func diffProfile(b testing.TB, take func() []byte) func(testing.TB) []byte {
+	// The below is essentially cribbed from pprof.go in net/http/pprof.
+
+	baseBytes := take()
+	if baseBytes == nil {
+		return func(tb testing.TB) []byte { return nil }
+	}
+	pBase, err := profile.ParseData(baseBytes)
+	require.NoError(b, err)
+
+	return func(b testing.TB) []byte {
+		pNew, err := profile.ParseData(take())
 		require.NoError(b, err)
 		pBase.Scale(-1)
 		pMerged, err := profile.Merge([]*profile.Profile{pBase, pNew})
@@ -1009,32 +1065,33 @@ func startAllocsProfile(b testing.TB) doneFn {
 		pMerged.TimeNanos = pNew.TimeNanos
 		pMerged.DurationNanos = pNew.TimeNanos - pBase.TimeNanos
 
-		buf = bytes.Buffer{}
+		buf := bytes.Buffer{}
 		require.NoError(b, pMerged.Write(&buf))
-		require.NoError(b, os.WriteFile(out, buf.Bytes(), 0644))
+		return buf.Bytes()
 	}
 }
 
-// If -test.benchmem is passed, also write a base alloc profile when the
-// setup is done. This can be used via `pprof -base` to show only the
-// allocs during run (excluding the setup).
+// If -test.<something> is passed for the flag corresponding to the given
+// profile, also write a base profile when the setup is done. This can be used
+// via `pprof -base` to show only the samples from during run (excluding the
+// setup).
 //
-// The file name for the base profile will be derived from -test.memprofile, and
+// The file name for the base profile will be derived from -test.<flag>, and
 // will contain it as a prefix (mod the file extension).
-func benchmemFile(b testing.TB) string {
+func testProfileFile(b testing.TB, flagWithoutTestPrefix string) string {
 	b.Helper()
-	var benchMemFile string
+	var flagFile string
 	var outputDir string
-	require.NoError(b, sniffarg.DoEnv("test.memprofile", &benchMemFile))
+	require.NoError(b, sniffarg.DoEnv("test."+flagWithoutTestPrefix, &flagFile))
 	require.NoError(b, sniffarg.DoEnv("test.outputdir", &outputDir))
 
-	if benchMemFile == "" {
+	if flagFile == "" {
 		return ""
 	}
 
 	saniRE := regexp.MustCompile(`\W+`)
 	saniName := saniRE.ReplaceAllString(strings.TrimPrefix(b.Name(), "Benchmark"), "_")
-	dest := strings.Replace(benchMemFile, ".", "_"+saniName+".", 1)
+	dest := strings.Replace(flagFile, ".", "_"+saniName+".", 1)
 	if outputDir != "" {
 		dest = filepath.Join(outputDir, dest)
 	}

@@ -13,8 +13,10 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 
 	"github.com/Azure/go-autorest/autorest/azure"
+	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/cloud/cloudpb"
 	"github.com/cockroachdb/cockroach/pkg/cloud/cloudtestutils"
@@ -24,6 +26,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 	"github.com/cockroachdb/cockroach/pkg/util/envutil"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -151,6 +154,47 @@ func TestAzureSchemes(t *testing.T) {
 	}
 }
 
+func TestAzureFaultInjection(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	cfg, err := getAzureConfig()
+	if err != nil {
+		skip.IgnoreLint(t, "Test not configured for Azure")
+		return
+	}
+
+	// Enable cloud transport logging.
+	defer log.Scope(t).Close(t)
+	testutils.SetVModule(t, "cloud_logging_transport=1")
+
+	testID := cloudtestutils.NewTestID()
+	uri := cfg.filePathImplicitAuth(fmt.Sprintf("%d-fault-injection-test", testID))
+
+	// Inject faults for 15-45 seconds after the storage is opened.
+	middleware := cloudtestutils.BrownoutMiddleware(time.Second*15, time.Second*45)
+
+	conf, err := cloud.ExternalStorageConfFromURI(uri, username.RootUserName())
+	require.NoError(t, err)
+
+	settings := cluster.MakeTestingClusterSettings()
+	tryTimeout.Override(context.Background(), &settings.SV, time.Minute)
+
+	args := cloud.EarlyBootExternalStorageContext{
+		IOConf:          base.ExternalIODirConfig{},
+		Settings:        settings,
+		Options:         nil,
+		Limiters:        nil,
+		MetricsRecorder: cloud.NilMetrics,
+		HttpMiddleware:  middleware,
+	}
+
+	storage, err := makeAzureStorage(context.Background(), args, conf)
+	require.NoError(t, err)
+	defer storage.Close()
+
+	cloudtestutils.RunCloudNemesisTest(t, storage)
+}
+
 func TestAntagonisticAzureRead(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 
@@ -183,6 +227,7 @@ func TestAntagonisticAzureRead(t *testing.T) {
 }
 
 func TestParseAzureURL(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	t.Run("Defaults to Public Cloud when AZURE_ENVIRONEMNT unset", func(t *testing.T) {
 		u, err := url.Parse("azure://container/path?AZURE_ACCOUNT_NAME=account&AZURE_ACCOUNT_KEY=key")
 		require.NoError(t, err)
@@ -230,6 +275,7 @@ func TestParseAzureURL(t *testing.T) {
 }
 
 func TestMakeAzureStorageURLFromEnvironment(t *testing.T) {
+	defer leaktest.AfterTest(t)()
 	for _, tt := range []struct {
 		environment string
 		expected    string

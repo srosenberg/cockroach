@@ -57,7 +57,7 @@ CREATE TABLE sc1.t1 (
 	b INT8 NULL,
 	CONSTRAINT t1_pkey PRIMARY KEY (a ASC),
 	CONSTRAINT check_b CHECK (sc1.f1(b) > 1:::INT8)
-)
+) WITH (schema_locked = true);
 
 # Make sure that the CHECK constraint still applies correctly
 query-sql
@@ -142,7 +142,7 @@ CREATE TABLE sc1.t1 (
 	b INT8 NULL,
 	CONSTRAINT t1_pkey PRIMARY KEY (a ASC),
 	CONSTRAINT check_b CHECK (sc1.f1(b) > 1:::INT8)
-)
+) WITH (schema_locked = true);
 
 # Make sure that CHECK constraint still applies correctly
 query-sql
@@ -231,7 +231,7 @@ CREATE TABLE sc1.t1 (
 	a INT8 NOT NULL,
 	b INT8 NULL,
 	CONSTRAINT t1_pkey PRIMARY KEY (a ASC)
-)
+) WITH (schema_locked = true);
 
 exec-sql
 USE db1
@@ -249,6 +249,7 @@ SELECT database_name, parent_schema_name, object_name, object_type, is_full_clus
 ----
 <nil> <nil> db1 database false
 db1 <nil> sc1 schema false
+db1 sc1 f1 function false
 db1 sc1 t1 table false
 
 exec-sql expect-error-regex=(cannot restore table "t1" without referenced function [0-9]+ \(or "skip_missing_udfs" option\))
@@ -272,4 +273,4 @@ CREATE TABLE sc1.t1 (
 	a INT8 NOT NULL,
 	b INT8 NULL,
 	CONSTRAINT t1_pkey PRIMARY KEY (a ASC)
-)
+) WITH (schema_locked = true);

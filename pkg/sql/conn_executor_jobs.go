@@ -6,6 +6,7 @@
 package sql
 
 import (
+	"context"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/jobs"
@@ -23,9 +24,12 @@ import (
 // this to make sure all descriptors mutated are at one version when the schema
 // change finish in the user transaction. In schema change jobs, we do similar
 // thing for affected descriptors. But, in some scenario, jobs are not created
-// for mutated descriptors.
+// for mutated descriptors. Some descriptors only have their versions bumped and
+// those are not waited on.
 func (ex *connExecutor) waitOneVersionForNewVersionDescriptorsWithoutJobs(
-	descIDsInJobs catalog.DescriptorIDSet, cachedRegions *regions.CachedDatabaseRegions,
+	ctx context.Context,
+	descIDsInJobs catalog.DescriptorIDSet,
+	cachedRegions *regions.CachedDatabaseRegions,
 ) error {
 	withNewVersion, err := ex.extraTxnState.descCollection.GetOriginalPreviousIDVersionsForUncommitted()
 	if err != nil {
@@ -39,7 +43,10 @@ func (ex *connExecutor) waitOneVersionForNewVersionDescriptorsWithoutJobs(
 		if descIDsInJobs.Contains(idVersion.ID) {
 			continue
 		}
-		if _, err := WaitToUpdateLeases(ex.Ctx(), ex.planner.LeaseMgr(), cachedRegions, idVersion.ID); err != nil {
+		if ex.extraTxnState.descCollection.IsVersionBumpOfUncommittedDescriptor(idVersion.ID) {
+			continue
+		}
+		if _, err := WaitToUpdateLeases(ctx, ex.planner.LeaseMgr(), cachedRegions, idVersion.ID); err != nil {
 			// In most cases (normal schema changes), deleted descriptor should have
 			// been handled by jobs. So, normally we won't hit into the situation of
 			// wait for one version of a deleted descriptor. However, we need catch
@@ -55,8 +62,47 @@ func (ex *connExecutor) waitOneVersionForNewVersionDescriptorsWithoutJobs(
 	return nil
 }
 
-func (ex *connExecutor) waitForInitialVersionForNewDescriptors(
+// waitForNewDescriptorsVersionPropagation is used to wait until descriptors
+// that were version bumped but not mutated propagate to all nodes across the
+// cluster.
+//
+// This is used to support cache invalidation of the internal user and role
+// tables without blocking on long-running transactions.
+func (ex *connExecutor) waitForNewVersionPropagation(
+	ctx context.Context,
+	descIDsInJobs catalog.DescriptorIDSet,
 	cachedRegions *regions.CachedDatabaseRegions,
+) error {
+	withNewVersion, err := ex.extraTxnState.descCollection.GetOriginalPreviousIDVersionsForUncommitted()
+	if err != nil {
+		return err
+	}
+	// If no schema change occurred, then nothing needs to be done here.
+	if len(withNewVersion) == 0 {
+		return nil
+	}
+	for _, idVersion := range withNewVersion {
+		if descIDsInJobs.Contains(idVersion.ID) {
+			continue
+		}
+		if !ex.extraTxnState.descCollection.IsVersionBumpOfUncommittedDescriptor(idVersion.ID) {
+			continue
+		}
+
+		if _, err := ex.planner.LeaseMgr().WaitForNewVersion(ctx, idVersion.ID, cachedRegions,
+			retry.Options{
+				InitialBackoff: time.Millisecond,
+				MaxBackoff:     time.Second,
+				Multiplier:     1.5,
+			}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (ex *connExecutor) waitForInitialVersionForNewDescriptors(
+	ctx context.Context, cachedRegions *regions.CachedDatabaseRegions,
 ) error {
 	// Detect any tables that have just been created, we will confirm that all
 	// nodes that have leased the schema for them out are aware of the new object.
@@ -68,11 +114,11 @@ func (ex *connExecutor) waitForInitialVersionForNewDescriptors(
 			descriptorIDs = append(descriptorIDs, tbl.GetID())
 		}
 	}
-	return ex.planner.LeaseMgr().WaitForInitialVersion(ex.Ctx(), descriptorIDs, retry.Options{
+	return ex.planner.LeaseMgr().WaitForInitialVersion(ctx, descriptorIDs, cachedRegions, retry.Options{
 		InitialBackoff: time.Millisecond,
 		MaxBackoff:     time.Second,
 		Multiplier:     1.5,
-	}, cachedRegions)
+	})
 }
 
 // descIDsInSchemaChangeJobs returns all descriptor IDs with which schema change
@@ -115,6 +161,13 @@ func (ex *connExecutor) descIDsInSchemaChangeJobs() (catalog.DescriptorIDSet, er
 			}
 			descIDsInJobs.Add(t.DroppedDatabaseID)
 			descIDsInJobs.Add(t.DescID)
+		case jobspb.TypeSchemaChangeDetails:
+			// The type schema-change job drains old leases on the type
+			// descriptor itself (via refreshTypeDescriptorLeases). Register
+			// the type ID here so waitOneVersionForNewVersionDescriptorsWithoutJobs
+			// skips it and the user session does not redundantly wait for the
+			// same leases to converge.
+			descIDsInJobs.Add(t.TypeID)
 		}
 		return nil
 	}); err != nil {

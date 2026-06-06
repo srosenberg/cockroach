@@ -14,8 +14,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/allocator/storepool"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/multiqueue"
-	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/stateloader"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
@@ -34,7 +34,6 @@ import (
 	"github.com/cockroachdb/pebble/objstorage"
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/time/rate"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -297,7 +296,7 @@ func (s *Store) throttleSnapshot(
 	// NB: this log message is skipped in test builds as many tests do not mock
 	// all of the objects being logged.
 	if elapsed > snapshotReservationWaitWarnThreshold && !buildutil.CrdbTestBuild {
-		log.Infof(
+		log.KvDistribution.Infof(
 			ctx,
 			"waited for %.1fs to acquire snapshot reservation to r%d",
 			elapsed.Seconds(),
@@ -350,7 +349,7 @@ func (s *Store) canAcceptSnapshotLocked(
 	existingRepl.mu.RLock()
 	existingDesc := existingRepl.shMu.state.Desc
 	existingIsInitialized := existingDesc.IsInitialized()
-	existingDestroyStatus := existingRepl.mu.destroyStatus
+	existingDestroyStatus := existingRepl.shMu.destroyStatus
 	existingRepl.mu.RUnlock()
 
 	if existingIsInitialized {
@@ -404,14 +403,14 @@ func (s *Store) checkSnapshotOverlapLocked(
 
 	// TODO(benesch): consider discovering and GC'ing *all* overlapping ranges,
 	// not just the first one that getOverlappingKeyRangeLocked happens to return.
-	if it := s.getOverlappingKeyRangeLocked(&desc); it.item != nil {
+	if it := s.getOverlappingKeyRangeLocked(&desc); !it.isEmpty() {
 		// We have a conflicting range, so we must block the snapshot.
 		// When such a conflict exists, it will be resolved by one range
 		// either being split or garbage collected.
 		exReplica, err := s.GetReplica(it.Desc().RangeID)
 		msg := IntersectingSnapshotMsg
 		if err != nil {
-			log.Warningf(ctx, "unable to look up overlapping replica on %s: %v", exReplica, err)
+			log.KvDistribution.Warningf(ctx, "unable to look up overlapping replica on %s: %v", exReplica, err)
 		} else {
 			inactive := func(r *Replica) bool {
 				if r.RaftStatus() == nil {
@@ -468,7 +467,7 @@ func (s *Store) receiveSnapshot(
 	ctx context.Context, header *kvserverpb.SnapshotRequest_Header, stream incomingSnapshotStream,
 ) error {
 	// Draining nodes will generally not be rebalanced to (see the filtering that
-	// happens in getStoreListFromIDsLocked()), but in case they are, they should
+	// happens in getStoreListFromIDs()), but in case they are, they should
 	// reject the incoming rebalancing snapshots.
 	if s.IsDraining() {
 		switch t := header.SenderQueueName; t {
@@ -532,7 +531,7 @@ func (s *Store) receiveSnapshot(
 			}
 			return nil
 		}); pErr != nil {
-		log.Infof(ctx, "cannot accept snapshot: %s", pErr)
+		log.KvDistribution.Infof(ctx, "cannot accept snapshot: %s", pErr)
 		return sendSnapshotError(ctx, s, stream, pErr.GoError())
 	}
 
@@ -541,7 +540,7 @@ func (s *Store) receiveSnapshot(
 			// Remove the placeholder, if it's still there. Most of the time it will
 			// have been filled and this is a no-op.
 			if _, err := s.removePlaceholder(ctx, placeholder, removePlaceholderFailed); err != nil {
-				log.Fatalf(ctx, "unable to remove placeholder: %s", err)
+				log.KvDistribution.Fatalf(ctx, "unable to remove placeholder: %s", err)
 			}
 		}
 	}()
@@ -553,7 +552,7 @@ func (s *Store) receiveSnapshot(
 	}
 
 	ss := &kvBatchSnapshotStrategy{
-		scratch:      s.sstSnapshotStorage.NewScratchSpace(header.State.Desc.RangeID, snapUUID),
+		scratch:      s.sstSnapshotStorage.NewScratchSpace(header.State.Desc.RangeID, snapUUID, s.ClusterSettings()),
 		sstChunkSize: snapshotSSTWriteSyncRate.Get(&s.cfg.Settings.SV),
 		st:           s.ClusterSettings(),
 		clusterID:    s.ClusterID(),
@@ -564,7 +563,7 @@ func (s *Store) receiveSnapshot(
 		return err
 	}
 	if log.V(2) {
-		log.Infof(ctx, "accepted snapshot reservation for r%d", header.State.Desc.RangeID)
+		log.KvDistribution.Infof(ctx, "accepted snapshot reservation for r%d", header.State.Desc.RangeID)
 	}
 
 	comparisonResult := s.getLocalityComparison(header.RaftMessageRequest.FromReplica.NodeID,
@@ -669,7 +668,7 @@ func SendEmptySnapshot(
 	clusterID uuid.UUID,
 	st *cluster.Settings,
 	tracer *tracing.Tracer,
-	cc *grpc.ClientConn,
+	mrc RPCMultiRaftClient,
 	now hlc.Timestamp,
 	desc roachpb.RangeDescriptor,
 	to roachpb.ReplicaDescriptor,
@@ -694,7 +693,7 @@ func SendEmptySnapshot(
 		return err
 	}
 
-	ms, err = stateloader.WriteInitialReplicaState(
+	ms, err = kvstorage.WriteInitialReplicaState(
 		ctx,
 		eng,
 		ms,
@@ -709,7 +708,7 @@ func SendEmptySnapshot(
 	}
 
 	// Use stateloader to load state out of memory from the previously created engine.
-	sl := stateloader.Make(desc.RangeID)
+	sl := kvstorage.MakeStateLoader(desc.RangeID)
 	state, err := sl.Load(ctx, eng, &desc)
 	if err != nil {
 		return err
@@ -766,17 +765,16 @@ func SendEmptySnapshot(
 		State:              state,
 		RaftMessageRequest: req,
 		RangeSize:          ms.Total(),
-		RangeKeysInOrder:   true,
 	}
 
-	stream, err := NewMultiRaftClient(cc).RaftSnapshot(ctx)
+	stream, err := mrc.RaftSnapshot(ctx)
 	if err != nil {
 		return err
 	}
 
 	defer func() {
 		if err := stream.CloseSend(); err != nil {
-			log.Warningf(ctx, "failed to close snapshot stream: %+v", err)
+			log.KvDistribution.Warningf(ctx, "failed to close snapshot stream: %+v", err)
 		}
 	}()
 

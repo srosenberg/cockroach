@@ -39,20 +39,9 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-const (
-	// None is a placeholder node ID used when there is no leader.
-	//
-	// TODO(arul): consider pulling these into raftpb as well.
-	None pb.PeerID = 0
-	// LocalAppendThread is a reference to a local thread that saves unstable
-	// log entries and snapshots to stable storage. The identifier is used as a
-	// target for MsgStorageAppend messages when AsyncStorageWrites is enabled.
-	LocalAppendThread pb.PeerID = math.MaxUint64
-	// LocalApplyThread is a reference to a local thread that applies committed
-	// log entries to the local state machine. The identifier is used as a
-	// target for MsgStorageApply messages when AsyncStorageWrites is enabled.
-	LocalApplyThread pb.PeerID = math.MaxUint64 - 1
-)
+// None is a placeholder node ID used when there is no leader.
+// TODO(arul): consider pulling these into raftpb as well.
+const None pb.PeerID = 0
 
 // Possible values for CampaignType
 const (
@@ -159,9 +148,9 @@ type Config struct {
 	// threads are not responsible for understanding the response messages, only
 	// for delivering them to the correct target after performing the storage
 	// write.
-	// TODO(#129411): deprecate !AsyncStorageWrites mode as it's not used in
-	// CRDB.
-	AsyncStorageWrites bool
+	// TODO(pav-kv): this comment is a remnant of the AsyncStorageWrites option,
+	// which is now implicitly always true. Move the comment to a better place.
+
 	// LazyReplication instructs raft to hold off constructing MsgApp messages
 	// eagerly in reaction to Step() calls.
 	//
@@ -185,7 +174,8 @@ type Config struct {
 	//
 	// Despite its name (preserved for compatibility), this quota applies across
 	// Ready structs to encompass all outstanding entries in unacknowledged
-	// MsgStorageApply messages when AsyncStorageWrites is enabled.
+	// MsgStorageApply messages.
+	// TODO(pav-kv): make the name better.
 	MaxCommittedSizePerReady uint64
 	// MaxUncommittedEntriesSize limits the aggregate byte size of the
 	// uncommitted entries that may be appended to a leader's log. Once this
@@ -269,9 +259,6 @@ func (c *Config) validate() error {
 	if c.ID == None {
 		return errors.New("cannot use none as id")
 	}
-	if IsLocalMsgTarget(c.ID) {
-		return errors.New("cannot use local target as id")
-	}
 
 	if c.HeartbeatTick <= 0 {
 		return errors.New("heartbeat tick must be greater than 0")
@@ -326,6 +313,10 @@ type raft struct {
 
 	maxMsgSize         entryEncodingSize
 	maxUncommittedSize entryPayloadSize
+	// maxCommittedPageSize limits the size of committed entries that can be
+	// loaded into memory in hasUnappliedConfChanges.
+	// TODO(#131559): avoid this loading in the first place, and remove this.
+	maxCommittedPageSize entryEncodingSize
 
 	config               quorum.Config
 	trk                  tracker.ProgressTracker
@@ -334,16 +325,6 @@ type raft struct {
 	lazyReplication      bool
 
 	state pb.StateType
-
-	// idxPreLeading is the last log index as of when this node became the
-	// leader. Separates entries proposed by previous leaders from the entries
-	// proposed by the current leader. Used only in StateLeader, and updated
-	// when entering StateLeader (in becomeLeader()).
-	//
-	// Invariants (when in StateLeader at raft.Term):
-	//	- entries at indices <= idxPreLeading have term < raft.Term
-	//	- entries at indices > idxPreLeading have term == raft.Term
-	idxPreLeading uint64
 
 	// isLearner is true if the local raft node is a learner.
 	isLearner bool
@@ -458,7 +439,7 @@ func newRaft(c *Config) *raft {
 	if err := c.validate(); err != nil {
 		panic(err.Error())
 	}
-	raftlog := newLogWithSize(c.Storage, c.Logger, entryEncodingSize(c.MaxCommittedSizePerReady))
+	raftlog := newLog(c.Storage, c.Logger)
 	hs, cs, err := c.Storage.InitialState()
 	if err != nil {
 		panic(err) // TODO(bdarnell)
@@ -470,6 +451,7 @@ func newRaft(c *Config) *raft {
 		raftLog:                     raftlog,
 		maxMsgSize:                  entryEncodingSize(c.MaxSizePerMsg),
 		maxUncommittedSize:          entryPayloadSize(c.MaxUncommittedEntriesSize),
+		maxCommittedPageSize:        entryEncodingSize(c.MaxCommittedSizePerReady),
 		lazyReplication:             c.LazyReplication,
 		electionTimeout:             c.ElectionTick,
 		electionTimeoutJitter:       c.ElectionJitterTick,
@@ -507,7 +489,7 @@ func newRaft(c *Config) *raft {
 		r.loadState(hs)
 	}
 	if c.Applied > 0 {
-		raftlog.appliedTo(c.Applied, 0 /* size */)
+		raftlog.appliedTo(c.Applied)
 	}
 
 	if r.lead == r.id {
@@ -558,13 +540,11 @@ func (r *raft) hardState() pb.HardState {
 // next Ready handling cycle, except in one condition below.
 //
 // Certain message types are scheduled for being sent *after* the unstable state
-// is durably persisted in storage. If AsyncStorageWrites config flag is true,
-// the responsibility of upholding this condition is on the application, so the
-// message will be handed over via the next Ready as usually; if false, the
-// message will skip one Ready handling cycle, and will be sent after the
-// application has persisted the state.
-//
-// TODO(pav-kv): remove this special case after !AsyncStorageWrites is removed.
+// is durably persisted in storage. These messages are nevertheless included in
+// Ready.Messages, and the responsibility of upholding this condition is on the
+// application.
+// TODO(pav-kv): make this requirement explicit in the API, instead of mixing
+// the two kinds of messages together.
 func (r *raft) send(m pb.Message) {
 	if m.From == None {
 		m.From = r.id
@@ -652,6 +632,9 @@ func (r *raft) send(m pb.Message) {
 		// because the safety of such behavior has not been formally verified,
 		// we err on the side of safety and omit a `&& !m.Reject` condition
 		// above.
+		//
+		// TODO(pav-kv): MsgPreVoteResp does not require sync. Consider sending it
+		// immediately.
 		r.msgsAfterAppend = append(r.msgsAfterAppend, m)
 	default:
 		if m.To == r.id {
@@ -781,8 +764,7 @@ func (r *raft) maybeSendSnapshot(to pb.PeerID, pr *tracker.Progress) bool {
 	snapshot, err := r.raftLog.snapshot()
 	if err != nil {
 		panic(err) // TODO(pav-kv): handle storage errors uniformly.
-	}
-	if IsEmptySnap(snapshot) {
+	} else if snapshot == nil {
 		panic("need non-empty snapshot")
 	}
 	sindex, sterm := snapshot.Metadata.Index, snapshot.Metadata.Term
@@ -791,7 +773,7 @@ func (r *raft) maybeSendSnapshot(to pb.PeerID, pr *tracker.Progress) bool {
 	r.becomeSnapshot(pr, sindex)
 	r.logger.Debugf("%x paused sending replication messages to %x [%s]", r.id, to, pr)
 
-	r.send(pb.Message{To: to, Type: pb.MsgSnap, Snapshot: &snapshot})
+	r.send(pb.Message{To: to, Type: pb.MsgSnap, Snapshot: snapshot})
 	return true
 }
 
@@ -992,10 +974,10 @@ func (r *raft) maybeUnpauseAndBcastAppend() {
 	})
 }
 
-func (r *raft) appliedTo(index uint64, size entryEncodingSize) {
+func (r *raft) appliedTo(index uint64) {
 	oldApplied := r.raftLog.applied
 	newApplied := max(index, oldApplied)
-	r.raftLog.appliedTo(newApplied, size)
+	r.raftLog.appliedTo(newApplied)
 
 	if r.config.AutoLeave && newApplied >= r.pendingConfIndex && r.state == pb.StateLeader {
 		// If the current (and most recent, at least for this leader's term)
@@ -1007,11 +989,11 @@ func (r *raft) appliedTo(index uint64, size entryEncodingSize) {
 		if err != nil {
 			panic(err)
 		}
-		// NB: this proposal can't be dropped due to size, but can be
-		// dropped if a leadership transfer is in progress. We'll keep
-		// checking this condition on each applied entry, so either the
-		// leadership transfer will succeed and the new leader will leave
-		// the joint configuration, or the leadership transfer will fail,
+		// NB: this proposal can't be dropped due to size, but can be dropped if a
+		// leadership transfer is in progress or the config change is not allowed
+		// for another reason. We'll keep checking this condition on each applied
+		// entry, so either the leadership transfer will succeed and the new leader
+		// will leave the joint configuration, or the leadership transfer will fail,
 		// and we will propose the config change on the next advance.
 		if err := r.Step(m); err != nil {
 			r.logger.Debugf("not initiating automatic transition out of joint configuration %s: %v", r.config, err)
@@ -1021,10 +1003,9 @@ func (r *raft) appliedTo(index uint64, size entryEncodingSize) {
 	}
 }
 
-func (r *raft) appliedSnap(snap *pb.Snapshot) {
-	index := snap.Metadata.Index
+func (r *raft) appliedSnap(index uint64) {
 	r.raftLog.stableSnapTo(index)
-	r.appliedTo(index, 0 /* size */)
+	r.appliedTo(index)
 }
 
 // maybeCommit attempts to advance the commit index. Returns true if the commit
@@ -1047,7 +1028,9 @@ func (r *raft) maybeCommit() bool {
 	// This comparison is equivalent in output to:
 	// if !r.raftLog.matchTerm(entryID{term: r.Term, index: index})
 	// But avoids (potentially) loading the entry term from storage.
-	if index <= r.idxPreLeading {
+	// termCache.last() stores the first entryID added to raftLog in the
+	// current leader term by invariants.
+	if index < r.raftLog.termCache.last().index {
 		return false
 	}
 
@@ -1087,9 +1070,6 @@ func (r *raft) reset(term uint64) {
 			Next:        r.raftLog.lastIndex() + 1,
 			Inflights:   tracker.NewInflights(r.maxInflight, r.maxInflightBytes),
 			IsLearner:   pr.IsLearner,
-		}
-		if id == r.id {
-			pr.Match = r.raftLog.lastIndex()
 		}
 	})
 
@@ -1386,11 +1366,6 @@ func (r *raft) becomeLeader() {
 	// could be expensive.
 	r.pendingConfIndex = r.raftLog.lastIndex()
 
-	// Remember the last log index before the term advances to
-	// our current (leader) term.
-	// See the idxPreLeading comment for more details.
-	r.idxPreLeading = r.raftLog.lastIndex()
-
 	emptyEnt := pb.Entry{Data: nil}
 	if !r.appendEntry(emptyEnt) {
 		// This won't happen because we just called reset() above.
@@ -1492,13 +1467,7 @@ func (r *raft) hasUnappliedConfChanges() bool {
 	// Scan all unapplied committed entries to find a config change. Paginate the
 	// scan, to avoid a potentially unlimited memory spike.
 	lo, hi := r.raftLog.applied, r.raftLog.committed
-	// Reuse the maxApplyingEntsSize limit because it is used for similar purposes
-	// (limiting the read of unapplied committed entries) when raft sends entries
-	// via the Ready struct for application.
-	// TODO(pavelkalinnikov): find a way to budget memory/bandwidth for this scan
-	// outside the raft package.
-	pageSize := r.raftLog.maxApplyingEntsSize
-	if err := r.raftLog.scan(lo, hi, pageSize, func(ents []pb.Entry) error {
+	if err := r.raftLog.scan(lo, hi, r.maxCommittedPageSize, func(ents []pb.Entry) error {
 		for i := range ents {
 			if ents[i].Type == pb.EntryConfChange || ents[i].Type == pb.EntryConfChangeV2 {
 				found = true
@@ -1734,23 +1703,6 @@ func (r *raft) Step(m pb.Message) error {
 			r.hup(campaignElection)
 		}
 
-	case pb.MsgStorageAppendResp:
-		// The snapshot precedes the entries. We acknowledge the snapshot first,
-		// then the entries, as required by the unstable structure.
-		if m.Snapshot != nil {
-			r.appliedSnap(m.Snapshot)
-		}
-		if m.Index != 0 {
-			r.raftLog.stableTo(LogMark{Term: m.LogTerm, Index: m.Index})
-		}
-
-	case pb.MsgStorageApplyResp:
-		if len(m.Entries) > 0 {
-			index := m.Entries[len(m.Entries)-1].Index
-			r.appliedTo(index, entsSize(m.Entries))
-			r.reduceUncommittedSize(payloadsSize(m.Entries))
-		}
-
 	case pb.MsgVote, pb.MsgPreVote:
 		// We can vote if this is a repeat of a vote we've already cast...
 		canVote := r.Vote == m.From ||
@@ -1890,6 +1842,10 @@ func stepLeader(r *raft, m pb.Message) error {
 			return ErrProposalDropped
 		}
 
+		// Scan entries for config changes. Config change entries must be proposed
+		// alone in a MsgProp (not batched with other entries), as ensured by
+		// confChangeToMsg. This allows the leader to reject the entire MsgProp
+		// if config change validation fails.
 		for i := range m.Entries {
 			e := &m.Entries[i]
 			var cc pb.ConfChangeI
@@ -1907,6 +1863,14 @@ func stepLeader(r *raft, m pb.Message) error {
 				cc = ccc
 			}
 			if cc != nil {
+				// Config change entries must be proposed alone, not batched with
+				// other entries. See confChangeToMsg.
+				if len(m.Entries) != 1 {
+					r.logger.Panicf(
+						"%x conf change entry at index %d must be proposed alone, got %d entries",
+						r.id, i, len(m.Entries),
+					)
+				}
 				ccCtx := confchange.ValidationContext{
 					CurConfig:                         &r.config,
 					Applied:                           r.raftLog.applied,
@@ -1916,10 +1880,9 @@ func stepLeader(r *raft, m pb.Message) error {
 				}
 				if err := confchange.ValidateProp(ccCtx, cc.AsV2()); err != nil {
 					r.logger.Infof("%x ignoring conf change %v at config %s: %s", r.id, cc, r.config, err)
-					m.Entries[i] = pb.Entry{Type: pb.EntryNormal}
-				} else {
-					r.pendingConfIndex = r.raftLog.lastIndex() + uint64(i) + 1
+					return ErrProposalDropped
 				}
+				r.pendingConfIndex = r.raftLog.lastIndex() + uint64(i) + 1
 			}
 		}
 
@@ -2393,11 +2356,26 @@ func (r *raft) handleAppendEntries(m pb.Message) {
 		return
 	}
 
-	if a.prev.index < r.raftLog.committed {
-		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: r.raftLog.committed,
-			Commit: r.raftLog.committed})
+	// If the appended batch has no entries above the committed index, there is no
+	// new information in it. Instruct the leader to at least send a batch above
+	// the committed index.
+	if commit := r.raftLog.committed; a.lastIndex() <= commit {
+		// NB: A prerequisite for sending MsgAppResp, which is met here, is that the
+		// entry at Index is durable and matches the leader's. The durability is
+		// guaranteed due to the way r.send is handled. There is also a guarantee
+		// that all the leaders at term >= r.Term have the same committed prefix.
+		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: commit, Commit: commit})
 		return
+	} else if a.prev.index < commit {
+		// Discard the already committed entries from the appended log slice. They
+		// might have been already compacted out, so we don't try to match against
+		// them, but we could as a matter of an assertion. The maybeAppend call
+		// below still makes sure that the new "prev" entry ID in the appended log
+		// slice matches our log, so, by the Log Matching Property, all the
+		// preceding entries must have matched too.
+		a.LogSlice = a.forward(commit)
 	}
+
 	if r.raftLog.maybeAppend(a) {
 		// TODO(pav-kv): make it possible to commit even if the append did not
 		// succeed or is stale. If accTerm >= m.Term, then our log contains all
@@ -2428,8 +2406,7 @@ func (r *raft) handleAppendEntries(m pb.Message) {
 	// the valid interval, which then will return a valid (index, term) pair with
 	// a non-zero term (unless the log is empty). However, it is safe to send a zero
 	// LogTerm in this response in any case, so we don't verify it here.
-	hintIndex := min(m.Index, r.raftLog.lastIndex())
-	hintIndex, hintTerm := r.raftLog.findConflictByTerm(hintIndex, m.LogTerm)
+	hintIndex, hintTerm := r.raftLog.findConflictByTerm(m.Index, m.LogTerm)
 	r.send(pb.Message{
 		To:    m.From,
 		Type:  pb.MsgAppResp,

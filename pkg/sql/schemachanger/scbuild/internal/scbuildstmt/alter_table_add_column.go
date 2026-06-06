@@ -13,7 +13,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/docs"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catenumpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
@@ -51,7 +50,13 @@ func alterTableAddColumn(
 		RequiredPrivilege:   privilege.CREATE,
 	})
 	_, colTargetStatus, col := scpb.FindColumn(elts)
-	columnAlreadyExists := col != nil && colTargetStatus != scpb.ToAbsent
+	_, colNameTargetStatus, colName := scpb.FindColumnName(elts)
+	// A column name already exists if both the Column and ColumnName elements exist
+	// and are not transitioning to ABSENT. When a column is being renamed, the
+	// Column remains but the old ColumnName transitions to ABSENT, freeing up the
+	// name for reuse.
+	columnAlreadyExists := col != nil && colTargetStatus != scpb.ToAbsent &&
+		colName != nil && colNameTargetStatus != scpb.ToAbsent
 	// If the column exists and IF NOT EXISTS is specified, continue parsing
 	// to ensure there are no other errors before treating the operation as a no-op.
 	if columnAlreadyExists && !t.IfNotExists {
@@ -111,32 +116,26 @@ func alterTableAddColumn(
 	spec := addColumnSpec{
 		tbl: tbl,
 		col: &scpb.Column{
-			TableID:                 tbl.TableID,
-			ColumnID:                desc.ID,
-			IsHidden:                desc.Hidden,
-			IsInaccessible:          desc.Inaccessible,
-			GeneratedAsIdentityType: desc.GeneratedAsIdentityType,
+			TableID:        tbl.TableID,
+			ColumnID:       desc.ID,
+			IsInaccessible: desc.Inaccessible,
 		},
 		unique:  d.Unique.IsUnique,
 		notNull: !desc.Nullable,
+	}
+	if spec.unique {
+		b.IncrementSchemaChangeAddColumnQualificationCounter("unique")
 	}
 
 	idx := cdd.PrimaryKeyOrUniqueIndexDescriptor
 	isRBR := b.QueryByID(tbl.TableID).FilterTableLocalityRegionalByRow().MustGetZeroOrOneElement() != nil
 	if idx != nil {
 		panicIfRegionChangeUnderwayOnRBRTable(b, "add a UNIQUE COLUMN", tbl.TableID)
-		*idx, err = configureIndexDescForNewIndexPartitioning(b, tbl.TableID, *idx, nil /* partitionByIndex */)
-		if err != nil {
-			return
-		}
 	}
 
 	// Only set PgAttributeNum if it differs from ColumnID.
 	if pgAttNum := desc.GetPGAttributeNum(); pgAttNum != catid.PGAttributeNum(desc.ID) {
 		spec.col.PgAttributeNum = pgAttNum
-	}
-	if ptr := desc.GeneratedAsIdentitySequenceOption; ptr != nil {
-		spec.col.GeneratedAsIdentitySequenceOption = *ptr
 	}
 	spec.name = &scpb.ColumnName{
 		TableID:  tbl.TableID,
@@ -146,7 +145,6 @@ func alterTableAddColumn(
 	spec.colType = &scpb.ColumnType{
 		TableID:                 tbl.TableID,
 		ColumnID:                spec.col.ColumnID,
-		IsNullable:              desc.Nullable,
 		IsVirtual:               desc.Virtual,
 		ElementCreationMetadata: scdecomp.NewElementCreationMetadata(b.EvalCtx().Settings.Version.ActiveVersion(b)),
 	}
@@ -173,15 +171,20 @@ func alterTableAddColumn(
 		))
 	}
 	if desc.IsComputed() {
-		expr := b.WrapExpression(tbl.TableID, b.ComputedColumnExpression(tbl, d))
-		if spec.colType.ElementCreationMetadata.In_24_3OrLater {
-			spec.compute = &scpb.ColumnComputeExpression{
-				TableID:    tbl.TableID,
-				ColumnID:   spec.col.ColumnID,
-				Expression: *expr,
-			}
-		} else {
-			spec.colType.ComputeExpr = expr
+		validExpr, _ := b.ComputedColumnExpression(
+			tbl, d, tree.ComputedColumnExprContext(d.IsVirtual()),
+			func() colinfo.ResultColumns {
+				return getNonDropResultColumns(b, tbl.TableID)
+			},
+			func(columnName tree.Name) (exists, accessible, computed bool, id catid.ColumnID, typ *types.T) {
+				return columnLookupFn(b, tbl.TableID, columnName)
+			},
+		)
+		expr := b.WrapExpression(tbl.TableID, validExpr)
+		spec.compute = &scpb.ColumnComputeExpression{
+			TableID:    tbl.TableID,
+			ColumnID:   spec.col.ColumnID,
+			Expression: *expr,
 		}
 		if desc.Virtual {
 			b.IncrementSchemaChangeAddColumnQualificationCounter("virtual")
@@ -278,6 +281,35 @@ func alterTableAddColumn(
 		}
 		b.IncrementSchemaChangeAddColumnQualificationCounter("on_update")
 	}
+	if d.GeneratedIdentity.IsGeneratedAsIdentity {
+		generatedAsIdentityType := desc.GeneratedAsIdentityType
+		seqOptions := ""
+		if ptr := desc.GeneratedAsIdentitySequenceOption; ptr != nil {
+			seqOptions = *ptr
+		}
+		// Versions from 26.1 GeneratedAsIdentity will have a separate element for
+		// GeneratedAsIdentity. Older versions store it in the column element.
+		if spec.colType.ElementCreationMetadata.In_26_1OrLater {
+			spec.generatedAsID = &scpb.ColumnGeneratedAsIdentity{
+				TableID:        tbl.TableID,
+				ColumnID:       spec.col.ColumnID,
+				Type:           generatedAsIdentityType,
+				SequenceOption: seqOptions,
+			}
+		} else {
+			spec.col.GeneratedAsIdentityType = generatedAsIdentityType
+			spec.col.GeneratedAsIdentitySequenceOption = seqOptions
+		}
+	}
+
+	if d.Hidden {
+		if spec.colType.ElementCreationMetadata.In_26_1OrLater {
+			spec.hidden = true
+		} else {
+			spec.col.IsHidden = true
+		}
+	}
+
 	// Add secondary indexes for this column.
 	backing := addColumn(b, spec, t)
 	if idx != nil {
@@ -371,35 +403,33 @@ func alterTableAddColumnSerialOrGeneratedIdentity(
 		return catalog.UseUnorderedRowID(*d), nil
 	}
 
-	// Start with a fixed sequence number and find the first one
-	// that is free.
-	nameBase := tree.Name(tn.Table() + "_" + string(d.Name) + "_seq")
-	seqName := tree.NewTableNameWithSchema(
-		tn.CatalogName,
-		tn.SchemaName,
-		nameBase)
+	return alterTableCreateColumnSequence(b, d, tn, serialNormalizationMode, defType)
+}
 
-	for idx := 0; ; idx++ {
-		ers := b.ResolveRelation(seqName.ToUnresolvedObjectName(),
-			ResolveParams{
-				IsExistenceOptional: true,
-				RequiredPrivilege:   privilege.USAGE,
-				WithOffline:         true, // We search sequence with provided name, including offline ones.
-				ResolveTypes:        true, // Check for collisions with type names.
-			})
-		if ers.IsEmpty() {
-			break
-		}
-		seqName.ObjectName = tree.Name(fmt.Sprintf("%s%d", nameBase, idx))
-	}
-
+func alterTableCreateColumnSequence(
+	b BuildCtx,
+	d *tree.ColumnTableDef,
+	tn *tree.TableName,
+	serialNormalizationMode sessiondatapb.SerialNormalizationMode,
+	defType *types.T,
+) (newDef *tree.ColumnTableDef, colDefaultExpression *scpb.Expression) {
 	seqOptions, err := catalog.SequenceOptionsFromNormalizationMode(serialNormalizationMode, b.ClusterSettings(), d, defType)
 	if err != nil {
 		panic(err)
 	}
-	// For generated identities inherit the sequence options from the AST.
+	// For generated identities, inherit the sequence options from the AST and
+	// honor the PG18 SEQUENCE NAME clause (if present) by using its name as the
+	// sequence's name instead of an auto-generated one.
+	var explicitSeqName *tree.TableName
 	if d.GeneratedIdentity.IsGeneratedAsIdentity {
+		explicitSeqName, d.GeneratedIdentity.SeqOptions = d.GeneratedIdentity.SeqOptions.ExtractIdentitySeqName()
 		seqOptions = d.GeneratedIdentity.SeqOptions
+	}
+	var seqName *tree.TableName
+	if explicitSeqName != nil {
+		seqName = qualifyExplicitSeqName(b, explicitSeqName, tn)
+	} else {
+		seqName = getNextAvailableSeqName(b, d.Name, tn)
 	}
 
 	// Create the sequence and fetch the element after. The full descriptor
@@ -424,6 +454,64 @@ func alterTableAddColumnSerialOrGeneratedIdentity(
 	}
 }
 
+// qualifyExplicitSeqName resolves any unqualified parts of an explicit
+// SEQUENCE NAME against the owning table's database/schema, and panics with a
+// duplicate-relation error if an object with that name already exists. This
+// matches PostgreSQL's behavior, which does not auto-suffix user-supplied
+// sequence names on collision.
+func qualifyExplicitSeqName(
+	b BuildCtx, explicit *tree.TableName, tn *tree.TableName,
+) *tree.TableName {
+	seqName := tree.NewTableNameWithSchema(
+		explicit.CatalogName, explicit.SchemaName, explicit.ObjectName,
+	)
+	if seqName.SchemaName == "" {
+		seqName.SchemaName = tn.SchemaName
+		seqName.ExplicitSchema = tn.ExplicitSchema
+	}
+	if seqName.CatalogName == "" {
+		seqName.CatalogName = tn.CatalogName
+		seqName.ExplicitCatalog = tn.ExplicitCatalog
+	}
+	ers := b.ResolveRelation(seqName.ToUnresolvedObjectName(),
+		ResolveParams{
+			IsExistenceOptional: true,
+			RequiredPrivilege:   privilege.USAGE,
+			WithOffline:         true,
+			ResolveTypes:        true,
+		})
+	if !ers.IsEmpty() {
+		panic(pgerror.Newf(pgcode.DuplicateRelation,
+			"relation %q already exists", seqName.Object()))
+	}
+	return seqName
+}
+
+func getNextAvailableSeqName(b BuildCtx, colName tree.Name, tn *tree.TableName) *tree.TableName {
+	// Start with a fixed sequence number and find the first one
+	// that is free.
+	nameBase := tree.Name(tn.Table() + "_" + string(colName) + "_seq")
+	seqName := tree.NewTableNameWithSchema(
+		tn.CatalogName,
+		tn.SchemaName,
+		nameBase)
+
+	for idx := 0; ; idx++ {
+		ers := b.ResolveRelation(seqName.ToUnresolvedObjectName(),
+			ResolveParams{
+				IsExistenceOptional: true,
+				RequiredPrivilege:   privilege.USAGE,
+				WithOffline:         true, // We search sequence with provided name, including offline ones.
+				ResolveTypes:        true, // Check for collisions with type names.
+			})
+		if ers.IsEmpty() {
+			break
+		}
+		seqName.ObjectName = tree.Name(fmt.Sprintf("%s%d", nameBase, idx))
+	}
+	return seqName
+}
+
 func columnNamesToIDs(b BuildCtx, tbl *scpb.Table) map[string]descpb.ColumnID {
 	tableElts := b.QueryByID(tbl.TableID)
 	namesToIDs := make(map[string]descpb.ColumnID)
@@ -446,6 +534,8 @@ type addColumnSpec struct {
 	compute          *scpb.ColumnComputeExpression
 	transientCompute *scpb.ColumnComputeExpression
 	comment          *scpb.ColumnComment
+	generatedAsID    *scpb.ColumnGeneratedAsIdentity
+	hidden           bool
 	unique           bool
 	notNull          bool
 }
@@ -482,13 +572,23 @@ func addColumn(b BuildCtx, spec addColumnSpec, n tree.NodeFormatter) (backing *s
 		if spec.comment != nil {
 			b.Add(spec.comment)
 		}
+		if spec.generatedAsID != nil {
+			b.Add(spec.generatedAsID)
+		}
+		if spec.hidden {
+			elm := scpb.ColumnHidden{
+				TableID:  spec.tbl.TableID,
+				ColumnID: spec.col.ColumnID,
+			}
+			b.Add(&elm)
+		}
 		// Don't need to modify primary indexes for virtual columns.
 		if spec.colType.IsVirtual {
 			return getLatestPrimaryIndex(b, spec.tbl.TableID)
 		}
 
 		inflatedChain := getInflatedPrimaryIndexChain(b, spec.tbl.TableID)
-		if spec.def == nil && spec.colType.ComputeExpr == nil && spec.compute == nil && spec.transientCompute == nil {
+		if spec.def == nil && spec.compute == nil && spec.transientCompute == nil {
 			// Optimization opportunity: if we were to add a new column without default
 			// value nor computed expression, then we can just add the column to existing
 			// non-nil primary indexes without actually backfilling any data. This is
@@ -497,8 +597,8 @@ func addColumn(b BuildCtx, spec addColumnSpec, n tree.NodeFormatter) (backing *s
 			// recognize this and drop redundant primary indexes appropriately.
 			addStoredColumnToPrimaryIndexTargeting(b, spec.tbl.TableID, inflatedChain.oldSpec.primary, spec.col, scpb.ToPublic)
 		}
-		addStoredColumnToPrimaryIndexTargeting(b, spec.tbl.TableID, inflatedChain.inter1Spec.primary, spec.col, scpb.Transient)
-		addStoredColumnToPrimaryIndexTargeting(b, spec.tbl.TableID, inflatedChain.inter2Spec.primary, spec.col, scpb.Transient)
+		addStoredColumnToPrimaryIndexTargeting(b, spec.tbl.TableID, inflatedChain.inter1Spec.primary, spec.col, scpb.TransientAbsent)
+		addStoredColumnToPrimaryIndexTargeting(b, spec.tbl.TableID, inflatedChain.inter2Spec.primary, spec.col, scpb.TransientAbsent)
 		addStoredColumnToPrimaryIndexTargeting(b, spec.tbl.TableID, inflatedChain.finalSpec.primary, spec.col, scpb.ToPublic)
 		return inflatedChain.finalSpec.primary
 	}
@@ -521,8 +621,8 @@ func addColumn(b BuildCtx, spec addColumnSpec, n tree.NodeFormatter) (backing *s
 
 // addStoredColumnToPrimaryIndexTargeting adds a stored column `col` to primary
 // index `idx` and its associated temporary index.
-// The column in primary index is targeting `target` (either ToPublic or Transient),
-// and the column in its temporary index is always targeting Transient.
+// The column in primary index is targeting `target` (either ToPublic or TransientAbsent),
+// and the column in its temporary index is always targeting TransientAbsent.
 func addStoredColumnToPrimaryIndexTargeting(
 	b BuildCtx,
 	tableID catid.DescID,
@@ -531,7 +631,7 @@ func addStoredColumnToPrimaryIndexTargeting(
 	target scpb.TargetStatus,
 ) {
 	addIndexColumnToInternal(b, tableID, idx.IndexID, col.ColumnID, scpb.IndexColumn_STORED, target)
-	addIndexColumnToInternal(b, tableID, idx.TemporaryIndexID, col.ColumnID, scpb.IndexColumn_STORED, scpb.Transient)
+	addIndexColumnToInternal(b, tableID, idx.TemporaryIndexID, col.ColumnID, scpb.IndexColumn_STORED, scpb.TransientAbsent)
 }
 
 func addIndexColumnToInternal(
@@ -569,7 +669,7 @@ func addIndexColumnToInternal(
 	switch target {
 	case scpb.ToPublic:
 		b.Add(&indexCol)
-	case scpb.Transient:
+	case scpb.TransientAbsent:
 		b.AddTransient(&indexCol)
 	default:
 		panic(errors.AssertionFailedf("programming error: add index column element "+
@@ -685,9 +785,40 @@ func getIndexColumns(
 	return keyColumns
 }
 
+func populateColumnsFromIndexDesc(
+	tbl *scpb.Table, indexID catid.IndexID, desc *descpb.IndexDescriptor, spec *indexSpecMutator,
+) {
+	for i, dir := range desc.KeyColumnDirections {
+		spec.appendColumn(&scpb.IndexColumn{
+			TableID:   tbl.TableID,
+			IndexID:   indexID,
+			ColumnID:  desc.KeyColumnIDs[i],
+			Kind:      scpb.IndexColumn_KEY,
+			Direction: dir,
+		})
+	}
+	for _, colID := range desc.KeySuffixColumnIDs {
+		spec.appendColumn(&scpb.IndexColumn{
+			TableID:  tbl.TableID,
+			IndexID:  indexID,
+			ColumnID: colID,
+			Kind:     scpb.IndexColumn_KEY_SUFFIX,
+		})
+	}
+	for _, colID := range desc.StoreColumnIDs {
+		spec.appendColumn(&scpb.IndexColumn{
+			TableID:  tbl.TableID,
+			IndexID:  indexID,
+			ColumnID: colID,
+			Kind:     scpb.IndexColumn_STORED,
+		})
+	}
+}
+
 func addSecondaryIndexTargetsForAddColumn(
 	b BuildCtx, tbl *scpb.Table, desc *descpb.IndexDescriptor, newPrimaryIdx *scpb.PrimaryIndex,
 ) {
+	spec := indexSpecMutator{}
 	var partitioning *catpb.PartitioningDescriptor
 	index := scpb.Index{
 		TableID:       tbl.TableID,
@@ -709,23 +840,53 @@ func addSecondaryIndexTargetsForAddColumn(
 		index.ConstraintID = b.NextTableConstraintID(tbl.TableID)
 	}
 
+	spec.secondary = &scpb.SecondaryIndex{Index: index}
+	spec.data = &scpb.IndexData{TableID: tbl.TableID, IndexID: index.IndexID}
+	// Get the initial partition descriptor from the index.
+	if len(desc.Partitioning.Range) != 0 || len(desc.Partitioning.List) != 0 {
+		partitioning = &desc.Partitioning
+	}
+	if partitioning != nil {
+		spec.partitioning = &scpb.IndexPartitioning{
+			TableID:                tbl.TableID,
+			IndexID:                index.IndexID,
+			PartitioningDescriptor: *protoutil.Clone(partitioning).(*catpb.PartitioningDescriptor),
+		}
+	}
+	populateColumnsFromIndexDesc(tbl, index.IndexID, desc, &spec)
+	// Populate partitioning information next.
+	err := configureIndexDescForNewIndexPartitioning(b, tbl.TableID, 0 /* sourcePartitionIndexID*/, nil /*prevSpec*/, &spec, false /* isPrimary */, nil /* partitionByIndex */, nil)
+	if err != nil {
+		panic(err)
+	}
+	// If no partition descriptor is populated, pick one up from the primary index.
+	if spec.partitioning == nil {
+		indexPart := b.QueryByID(tbl.TableID).FilterIndexPartitioning().Filter(func(current scpb.Status, target scpb.TargetStatus, e *scpb.IndexPartitioning) bool {
+			return e.IndexID == newPrimaryIdx.IndexID
+		}).MustGetZeroOrOneElement()
+		if indexPart != nil {
+			spec.partitioning = &scpb.IndexPartitioning{
+				TableID:                tbl.TableID,
+				IndexID:                index.IndexID,
+				PartitioningDescriptor: *protoutil.Clone(&indexPart.PartitioningDescriptor).(*catpb.PartitioningDescriptor),
+			}
+		}
+	}
+	numImplicitColumns := 0
+	if spec.partitioning != nil {
+		numImplicitColumns = int(spec.partitioning.NumImplicitColumns)
+	}
 	// If necessary add suffix columns, this would normally be done inside
 	// allocateIndexIDs, but we are going to do it explicitly for the declarative
 	// schema changer.
 	{
-		// Apply any implicit partitioning columns first, if they are missing.
-		scpb.ForEachIndexPartitioning(
-			b.QueryByID(tbl.TableID),
-			func(current scpb.Status, target scpb.TargetStatus, e *scpb.IndexPartitioning) {
-				if e.IndexID == newPrimaryIdx.IndexID {
-					partitioning = &e.PartitioningDescriptor
-				}
-			},
-		)
 		keyColSet := catalog.TableColSet{}
 		extraSuffixColumns := catalog.TableColSet{}
-		for _, colID := range desc.KeyColumnIDs {
-			keyColSet.Add(colID)
+		for _, col := range spec.columns {
+			if col.Kind != scpb.IndexColumn_KEY {
+				continue
+			}
+			keyColSet.Add(col.ColumnID)
 		}
 		newPrimaryIdxKeyColumns := getIndexColumns(
 			b.QueryByID(tbl.TableID), newPrimaryIdx.IndexID, scpb.IndexColumn_KEY,
@@ -733,26 +894,19 @@ func addSecondaryIndexTargetsForAddColumn(
 		if partitioning != nil && len(desc.Partitioning.Range) == 0 &&
 			len(desc.Partitioning.List) == 0 &&
 			partitioning.NumImplicitColumns > 0 {
-
-			keyColumnIDs := make(
-				[]descpb.ColumnID, 0,
-				len(desc.KeyColumnIDs)+int(partitioning.NumImplicitColumns),
-			)
-			keyColumnDirs := make(
-				[]catenumpb.IndexColumn_Direction, 0,
-				len(desc.KeyColumnIDs)+int(partitioning.NumImplicitColumns),
-			)
 			for _, c := range newPrimaryIdxKeyColumns[0:partitioning.NumImplicitColumns] {
 				if !keyColSet.Contains(c.ColumnID) {
-					keyColumnIDs = append(keyColumnIDs, c.ColumnID)
-					keyColumnDirs = append(keyColumnDirs, c.Direction)
+					spec.prependColumn(&scpb.IndexColumn{
+						TableID:   tbl.TableID,
+						IndexID:   index.IndexID,
+						ColumnID:  c.ColumnID,
+						Kind:      scpb.IndexColumn_KEY,
+						Implicit:  true,
+						Direction: c.Direction,
+					})
 					keyColSet.Add(c.ColumnID)
 				}
 			}
-			desc.KeyColumnIDs = append(keyColumnIDs, desc.KeyColumnIDs...)
-			desc.KeyColumnDirections = append(keyColumnDirs, desc.KeyColumnDirections...)
-		} else if len(desc.Partitioning.Range) != 0 || len(desc.Partitioning.List) != 0 {
-			partitioning = &desc.Partitioning
 		}
 		for _, c := range newPrimaryIdxKeyColumns {
 			if !keyColSet.Contains(c.ColumnID) {
@@ -760,47 +914,19 @@ func addSecondaryIndexTargetsForAddColumn(
 			}
 		}
 		if !extraSuffixColumns.Empty() {
-			desc.KeySuffixColumnIDs = append(
-				desc.KeySuffixColumnIDs, extraSuffixColumns.Ordered()...,
-			)
+			for _, suffixColumn := range extraSuffixColumns.Ordered() {
+				spec.appendColumn(&scpb.IndexColumn{
+					TableID:  tbl.TableID,
+					IndexID:  spec.indexID(),
+					ColumnID: suffixColumn,
+					Kind:     scpb.IndexColumn_KEY_SUFFIX,
+				})
+			}
 		}
 	}
-	sec := &scpb.SecondaryIndex{Index: index}
-	for i, dir := range desc.KeyColumnDirections {
-		b.Add(&scpb.IndexColumn{
-			TableID:       tbl.TableID,
-			IndexID:       index.IndexID,
-			ColumnID:      desc.KeyColumnIDs[i],
-			OrdinalInKind: uint32(i),
-			Kind:          scpb.IndexColumn_KEY,
-			Direction:     dir,
-		})
-	}
-	for i, colID := range desc.KeySuffixColumnIDs {
-		b.Add(&scpb.IndexColumn{
-			TableID:       tbl.TableID,
-			IndexID:       index.IndexID,
-			ColumnID:      colID,
-			OrdinalInKind: uint32(i),
-			Kind:          scpb.IndexColumn_KEY_SUFFIX,
-		})
-	}
-	for i, colID := range desc.StoreColumnIDs {
-		b.Add(&scpb.IndexColumn{
-			TableID:       tbl.TableID,
-			IndexID:       index.IndexID,
-			ColumnID:      colID,
-			OrdinalInKind: uint32(i),
-			Kind:          scpb.IndexColumn_STORED,
-		})
-	}
-	b.Add(sec)
-	b.Add(&scpb.IndexData{TableID: tbl.TableID, IndexID: index.IndexID})
+
 	indexName := desc.Name
-	numImplicitColumns := 0
-	if partitioning != nil {
-		numImplicitColumns = int(partitioning.NumImplicitColumns)
-	}
+	spec.apply(b.Add)
 	if indexName == "" {
 		indexName = getImplicitSecondaryIndexName(b, tbl.TableID, index.IndexID, numImplicitColumns)
 	}
@@ -809,47 +935,8 @@ func addSecondaryIndexTargetsForAddColumn(
 		IndexID: index.IndexID,
 		Name:    indexName,
 	})
-	temp := &scpb.TemporaryIndex{
-		Index:                    protoutil.Clone(sec).(*scpb.SecondaryIndex).Index,
-		IsUsingSecondaryEncoding: true,
-	}
-	temp.TemporaryIndexID = 0
-	temp.IndexID = nextRelationIndexID(b, tbl)
-	if temp.IndexID != tempIndexID {
-		panic(errors.AssertionFailedf(
-			"assumed temporary index ID %d != %d", tempIndexID, temp.IndexID,
-		))
-	}
-	temp.ConstraintID = index.ConstraintID + 1
-	var tempIndexColumns []*scpb.IndexColumn
-	scpb.ForEachIndexColumn(b.QueryByID(tbl.TableID), func(
-		_ scpb.Status, _ scpb.TargetStatus, e *scpb.IndexColumn,
-	) {
-		if e.IndexID != index.IndexID {
-			return
-		}
-		c := protoutil.Clone(e).(*scpb.IndexColumn)
-		c.IndexID = tempIndexID
-		tempIndexColumns = append(tempIndexColumns, c)
-	})
-	for _, c := range tempIndexColumns {
-		b.AddTransient(c)
-	}
-	b.AddTransient(temp)
-	b.AddTransient(&scpb.IndexData{TableID: temp.TableID, IndexID: temp.IndexID})
-	// Add in the partitioning descriptor for the final and temporary index.
-	if partitioning != nil {
-		b.Add(&scpb.IndexPartitioning{
-			TableID:                tbl.TableID,
-			IndexID:                index.IndexID,
-			PartitioningDescriptor: *protoutil.Clone(partitioning).(*catpb.PartitioningDescriptor),
-		})
-		b.Add(&scpb.IndexPartitioning{
-			TableID:                tbl.TableID,
-			IndexID:                temp.IndexID,
-			PartitioningDescriptor: *protoutil.Clone(partitioning).(*catpb.PartitioningDescriptor),
-		})
-	}
+	tempSpec := makeTempIndexSpec(b, spec.indexSpec)
+	tempSpec.apply(b.AddTransient)
 }
 
 func retrieveTemporaryIndexElem(

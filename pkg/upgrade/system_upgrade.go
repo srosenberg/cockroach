@@ -18,7 +18,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/server/serverpb"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
-	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats"
 	"github.com/cockroachdb/cockroach/pkg/upgrade/upgradebase"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
@@ -44,7 +43,7 @@ type Cluster interface {
 	ForEveryNodeOrServer(
 		ctx context.Context,
 		op string,
-		fn func(context.Context, serverpb.MigrationClient) error,
+		fn func(context.Context, serverpb.RPCMigrationClient) error,
 	) error
 
 	// ValidateAfterUpdateSystemVersion performs any required validation after
@@ -121,7 +120,6 @@ type SystemDeps struct {
 	JobRegistry        *jobs.Registry
 	Stopper            *stop.Stopper
 	KeyVisKnobs        *keyvisualizer.TestingKnobs
-	SQLStatsKnobs      *sqlstats.TestingKnobs
 	TenantInfoAccessor mtinfo.ReadFromTenantInfoAccessor
 	TestingKnobs       *upgradebase.TestingKnobs
 }

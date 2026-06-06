@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/cloud/amazon"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/cluster"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/option"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
+	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"github.com/cockroachdb/cockroach/pkg/util/retry"
 )
 
 // cephDisksScript creates 3 4GB loop devices, e.g. virtual block devices that allows
@@ -23,7 +26,8 @@ import (
 // disks.
 const cephDisksScript = `
 #!/bin/bash
-for l in  a b c; do
+set -e
+for l in a b c; do
   mkdir -p /mnt/data1/disks
   loop_file="$(sudo mktemp -p /mnt/data1/disks XXXX.img)"
   sudo truncate -s 4G "${loop_file}"
@@ -32,9 +36,46 @@ for l in  a b c; do
   # devices so we make those same devices available under alternate
   # names (/dev/sdiY)
   minor="${loop_dev##/dev/loop}"
-  sudo mknod -m 0660 "/dev/sdi${l}" b 7 "${minor}"
-  sudo microceph disk add --wipe "/dev/sdi${l}"
-done`
+  dev="/dev/sdi${l}"
+  sudo mknod -m 0660 "${dev}" b 7 "${minor}"
+
+  # Retry disk add as the OSD service restart can fail sporadically
+  # when multiple disks are added in quick succession.
+  max_attempts=5
+  attempt=0
+  while ! sudo microceph disk add --wipe "${dev}"; do
+    attempt=$((attempt+1))
+    if [ $attempt -ge $max_attempts ]; then
+      echo "failed to add disk ${dev} after $max_attempts attempts"
+      exit 1
+    fi
+    echo "retrying disk add for ${dev} (attempt $attempt)..."
+    sleep 5
+  done
+  # Allow the OSD to settle before adding the next disk.
+  sleep 2
+done
+`
+
+// cephInit initializes microceph.
+const cephInit = `
+#!/bin/bash
+
+# Wait for the daemon socket to be available.
+max_attempts=30
+attempt=0
+while ! sudo test -S /var/snap/microceph/common/state/control.socket; do
+	attempt=$((attempt+1))
+	if [ $attempt -ge $max_attempts ]; then
+		echo "timed out waiting for microceph daemon socket"
+		exit 1
+	fi
+	echo "Waiting for microceph daemon..."
+	sleep 2
+done
+
+sudo microceph cluster bootstrap
+`
 
 // cephCleanup removes microceph and the loop devices.
 const cephCleanup = `
@@ -62,7 +103,7 @@ type cephManager struct {
 	cephNodes option.NodeListOption // The nodes within the cluster used by Ceph.
 	key       string
 	secret    string
-	secure    bool
+	secure    s3CloneSecureOption
 	version   string
 }
 
@@ -77,7 +118,7 @@ func (m cephManager) getBackupURI(ctx context.Context, dest string) (string, err
 	}
 	m.t.Status("cephNode: ", addr)
 	endpointURL := `http://` + addr[0]
-	if m.secure {
+	if m.secure != s3ClonePlain {
 		endpointURL = `https://` + addr[0]
 	}
 	q := make(url.Values)
@@ -87,41 +128,41 @@ func (m cephManager) getBackupURI(ctx context.Context, dest string) (string, err
 	// Region is required in the URL, but not used in Ceph.
 	q.Add(amazon.S3RegionParam, "dummy")
 	q.Add(amazon.AWSEndpointParam, endpointURL)
+	if m.secure == s3CloneTLSWithSkipVerify {
+		q.Add(amazon.AWSSkipTLSVerify, "true")
+	}
 	uri := fmt.Sprintf("s3://%s/%s?%s", m.bucket, dest, q.Encode())
 	return uri, nil
 }
 
 func (m cephManager) cleanup(ctx context.Context) {
-	tmpDir := "/tmp/"
-	cephCleanupPath := filepath.Join(tmpDir, "cleanup.sh")
-	m.put(ctx, cephCleanup, cephCleanupPath)
-	m.run(ctx, "removing ceph", cephCleanupPath, tmpDir)
+	m.runScript(ctx, "cleanup.sh", cephCleanup)
 }
 
 // install a single node microCeph cluster.
 // See https://canonical-microceph.readthedocs-hosted.com/en/squid-stable/how-to/single-node/
 // It is fatal on errors.
 func (m cephManager) install(ctx context.Context) {
-	tmpDir := "/tmp/"
+
 	m.run(ctx, `installing microceph`,
 		fmt.Sprintf(`sudo snap install microceph --channel %s/stable`, m.version))
 	m.run(ctx, `preventing upgrades`, `sudo snap refresh --hold microceph`)
-	m.run(ctx, `initialize microceph`, `sudo microceph cluster bootstrap`)
 
-	cephDisksScriptPath := filepath.Join(tmpDir, "cephDisks.sh")
-	m.put(ctx, cephDisksScript, cephDisksScriptPath)
-	m.run(ctx, "adding disks", cephDisksScriptPath, tmpDir)
+	m.runScript(ctx, "cephInit.sh", cephInit)
+	m.runScript(ctx, "cephDisks.sh", cephDisksScript)
 
 	// Start the Ceph Object Gateway, also known as RADOS Gateway (RGW). RGW is
 	// an object storage interface to provide applications with a RESTful
 	// gateway to Ceph storage clusters, compatible with the S3 APIs.
-	// We are leveraging the node certificates created by cockroach.
 	rgwCmd := "sudo microceph enable rgw "
-	if m.secure {
+	if m.secure != s3ClonePlain {
+		// We are leveraging the node certificates created by cockroach.
 		rgwCmd = rgwCmd + ` --ssl-certificate="$(base64 -w0 certs/node.crt)" --ssl-private-key="$(base64 -w0 certs/node.key)"`
 	}
 	m.run(ctx, `starting object gateway`, rgwCmd)
-
+	// We have seen occasional failures in creating users, so we
+	// wait until a read only request succeeds before proceeding.
+	m.checkRGW(ctx)
 	m.run(ctx, `creating backup user`,
 		`sudo radosgw-admin user create --uid=backup --display-name=backup`)
 	m.run(ctx, `add keys to the user`,
@@ -130,7 +171,7 @@ func (m cephManager) install(ctx context.Context) {
 
 	m.run(ctx, `install s3cmd`, `sudo apt install -y s3cmd`)
 	s3cmd := s3cmdNoSsl
-	if m.secure {
+	if m.secure != s3ClonePlain {
 		s3cmd = s3cmdSsl
 	}
 	m.run(ctx, `creating bucket`,
@@ -142,7 +183,7 @@ func (m cephManager) install(ctx context.Context) {
 
 // maybeInstallCa adds a custom ca in the CockroachDB cluster.
 func (m cephManager) maybeInstallCa(ctx context.Context) error {
-	if !m.secure {
+	if m.secure != s3CloneTLS {
 		return nil
 	}
 	return installCa(ctx, m.t, m.c)
@@ -162,4 +203,28 @@ func (m cephManager) run(ctx context.Context, msg string, cmd ...string) {
 	m.t.Status(cmd)
 	m.c.Run(ctx, option.WithNodes(m.cephNodes), cmd...)
 	m.t.Status(msg, " done")
+}
+
+// run the given script on the ceph node.
+func (m cephManager) runScript(ctx context.Context, name string, script string) {
+	scriptPath := filepath.Join("/tmp/", name)
+	m.put(ctx, script, scriptPath)
+	m.run(ctx, fmt.Sprintf("running %s", name), scriptPath)
+}
+
+// checkRGW verifies that the Ceph Object Gateway is up.
+func (m cephManager) checkRGW(ctx context.Context) {
+	m.t.Status("waiting for Ceph Object Gateway...")
+	if err := m.c.RunE(ctx,
+		option.WithNodes(m.cephNodes).
+			WithRetryOpts(retry.Options{
+				InitialBackoff: 2 * time.Second,
+				MaxBackoff:     30 * time.Second,
+				MaxRetries:     10,
+			}).
+			WithShouldRetryFn(func(*install.RunResultDetails) bool { return true }),
+		`sudo radosgw-admin user list`,
+	); err != nil {
+		m.t.Error("failed to connect to Ceph Object Gateway", err)
+	}
 }

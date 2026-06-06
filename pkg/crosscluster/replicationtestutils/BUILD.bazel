@@ -1,4 +1,4 @@
-load("@io_bazel_rules_go//go:def.bzl", "go_library")
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "replicationtestutils",
@@ -8,6 +8,7 @@ go_library(
         "logical.go",
         "replication_helpers.go",
         "span_config_helpers.go",
+        "stream_test_helpers.go",
         "testutils.go",
         "uri_util.go",
     ],
@@ -30,6 +31,7 @@ go_library(
         "//pkg/repstream/streampb",
         "//pkg/roachpb",
         "//pkg/security/username",
+        "//pkg/server",
         "//pkg/settings/cluster",
         "//pkg/spanconfig",
         "//pkg/spanconfig/spanconfigkvaccessor",
@@ -58,6 +60,7 @@ go_library(
         "//pkg/util/metamorphic",
         "//pkg/util/protoutil",
         "//pkg/util/randutil",
+        "//pkg/util/rangescanstats/rangescanstatspb",
         "//pkg/util/retry",
         "//pkg/util/timeutil",
         "//pkg/util/uuid",
@@ -65,5 +68,22 @@ go_library(
         "@com_github_cockroachdb_errors//:errors",
         "@com_github_lib_pq//:pq",
         "@com_github_stretchr_testify//require",
+    ],
+)
+
+go_test(
+    name = "replicationtestutils_test",
+    srcs = ["main_test.go"],
+    data = ["//c-deps:libgeos"],
+    embed = [":replicationtestutils"],
+    deps = [
+        "//pkg/base",
+        "//pkg/ccl",
+        "//pkg/security/securityassets",
+        "//pkg/security/securitytest",
+        "//pkg/server",
+        "//pkg/testutils/serverutils",
+        "//pkg/testutils/testcluster",
+        "//pkg/util/randutil",
     ],
 )

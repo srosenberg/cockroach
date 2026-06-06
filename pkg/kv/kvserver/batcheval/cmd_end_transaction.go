@@ -19,11 +19,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/gc"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/lockspanset"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/rditer"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/readsummary"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/spanset"
-	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/stateloader"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/storage"
@@ -168,12 +168,18 @@ func declareKeysEndTxn(
 					EndKey: rightRangeIDUnreplicatedPrefix.PrefixEnd(),
 				})
 
-				latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{
-					Key: keys.RangeLastReplicaGCTimestampKey(st.LeftDesc.RangeID),
-				})
-				latchSpans.AddNonMVCC(spanset.SpanReadWrite, roachpb.Span{
-					Key: keys.RangeLastReplicaGCTimestampKey(st.RightDesc.RangeID),
-				})
+				// TODO(sep-raft-log): drop this branch when the version gate is
+				// removed. We could be checking the version gate here, but the plumbing
+				// wasn't worth it. Instead, just keep conservatively taking a latch for
+				// a bit longer, it's not contended or important.
+				if _ = clusterversion.V26_2_NoLastReplicaGCTimestampKeyOnEval; true {
+					// NB: the RHS LastReplicaGCTimestampKey, to which the LHS timestamp
+					// is copied, is covered above by the SpanReadWrite for the entire RHS
+					// unreplicated RangeID-local span.
+					latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{
+						Key: keys.RangeLastReplicaGCTimestampKey(st.LeftDesc.RangeID),
+					})
+				}
 
 				latchSpans.AddNonMVCC(spanset.SpanReadOnly, roachpb.Span{
 					Key:    abortspan.MinKey(rs.GetRangeID()),
@@ -272,6 +278,9 @@ func EndTxn(
 
 	// Fetch existing transaction.
 	var existingTxn roachpb.Transaction
+	log.VEventf(
+		ctx, 2, "checking to see if transaction record already exists for txn: %s", h.Txn,
+	)
 	recordAlreadyExisted, err := storage.MVCCGetProto(
 		ctx, readWriter, key, hlc.Timestamp{}, &existingTxn, storage.MVCCGetOptions{
 			ReadCategory: fs.BatchEvalReadCategory,
@@ -280,6 +289,7 @@ func EndTxn(
 	if err != nil {
 		return result.Result{}, err
 	} else if !recordAlreadyExisted {
+		log.VEvent(ctx, 2, "no existing txn record found")
 		// No existing transaction record was found - create one by writing it
 		// below in updateFinalizedTxn.
 		reply.Txn = h.Txn.Clone()
@@ -289,16 +299,18 @@ func EndTxn(
 		// an aborted txn record.
 		if args.Commit {
 			if err := CanCreateTxnRecord(ctx, cArgs.EvalCtx, reply.Txn); err != nil {
+				log.VEventf(ctx, 2, "cannot create transaction record: %v", err)
 				return result.Result{}, err
 			}
 		}
 	} else {
+		log.VEventf(ctx, 2, "existing transaction record found: %s", existingTxn)
 		// We're using existingTxn on the reply, although it can be stale
 		// compared to the Transaction in the request (e.g. the Sequence,
 		// and various timestamps). We must be careful to update it with the
 		// supplied ba.Txn if we return it with an error which might be
 		// retried, as for example to avoid client-side serializable restart.
-		reply.Txn = &existingTxn
+		reply.Txn = existingTxn.Clone()
 
 		// Verify that we can either commit it or abort it (according
 		// to args.Commit), and also that the Timestamp and Epoch have
@@ -316,8 +328,11 @@ func EndTxn(
 				"already committed")
 
 		case roachpb.ABORTED:
+			// The transaction has already been aborted by someone else.
+			log.VEventf(
+				ctx, 2, "transaction %s found to have be already aborted (by someone else)", reply.Txn,
+			)
 			if !args.Commit {
-				// The transaction has already been aborted by other.
 				// Do not return TransactionAbortedError since the client anyway
 				// wanted to abort the transaction.
 				resolvedLocks, _, externalLocks, err := resolveLocalLocks(ctx, readWriter, cArgs.EvalCtx, ms, args, reply.Txn)
@@ -378,6 +393,7 @@ func EndTxn(
 				// not consider the transaction to be performing a parallel commit and
 				// potentially already implicitly committed because we know that the
 				// transaction restarted since entering the STAGING state.
+				log.VEventf(ctx, 2, "request with newer epoch %d than STAGING txn record; parallel commit must have failed", h.Txn.Epoch)
 				reply.Txn.Status = roachpb.PENDING
 			default:
 				panic("unreachable")
@@ -487,7 +503,19 @@ func EndTxn(
 		// committed. Doing so is only possible if we can guarantee that under no
 		// circumstances can an implicitly committed transaction be rolled back.
 		if reply.Txn.Status == roachpb.STAGING {
-			err := kvpb.NewIndeterminateCommitError(*reply.Txn)
+			// Note that reply.Txn has been updated with the Txn from the request
+			// header. But, the transaction might have been pushed since it was
+			// written. In fact, the transaction from the request header might
+			// actually be in a state that _would have_ been implicitly committed IF
+			// it had been able to write a transaction record with this new state. We
+			// use the transaction record from disk to avoid erroneously attempting to
+			// commit this transaction during recovery. Attempting to commit the
+			// transaction based on the pushed timestamp would result in an assertion
+			// failure.
+			if !recordAlreadyExisted {
+				return result.Result{}, errors.AssertionFailedf("programming error: transaction in STAGING without transaction record")
+			}
+			err := kvpb.NewIndeterminateCommitError(existingTxn)
 			log.VEventf(ctx, 1, "%v", err)
 			return result.Result{}, err
 		}
@@ -542,19 +570,30 @@ func EndTxn(
 	txnResult.Local.ResolvedLocks = resolvedLocks
 
 	if reply.Txn.Status == roachpb.COMMITTED {
-		// Return whether replicated {shared, exclusive} locks were released by
-		// the committing transaction. If such locks were released, we still
-		// need to make sure other transactions can't write underneath the
-		// transaction's commit timestamp to the key spans previously protected
-		// by the locks. We return the spans on the response and update the
-		// timestamp cache a few layers above to ensure this.
-		reply.ReplicatedLocksReleasedOnCommit = releasedReplLocks
+		if len(releasedReplLocks) != 0 {
+			// Return that local replicated {shared, exclusive} locks were released by
+			// the committing transaction. If such locks were released, we still need
+			// to make sure other transactions can't write underneath the
+			// transaction's commit timestamp to the key spans previously protected by
+			// the locks. We return the spans on the response and update the timestamp
+			// cache a few layers above to ensure this.
+			reply.ReplicatedLocalLocksReleasedOnCommit = releasedReplLocks
+			log.VEventf(
+				ctx, 2, "committed transaction released local replicated shared/exclusive locks",
+			)
+		}
 
 		// Run the commit triggers if successfully committed.
 		triggerResult, err := RunCommitTrigger(
 			ctx, cArgs.EvalCtx, readWriter.(storage.Batch), ms, args, reply.Txn,
 		)
 		if err != nil {
+			// Commit triggers might fail in a way the doesn't mean that the replica
+			// is corrupted. In this case, we need to reset the reply to avoid
+			// returning to the client that the txn is committed. If that happened,
+			// the client throws an error due to a sanity check regarding a failed txn
+			// shouldn't be committed.
+			reply.Reset()
 			return result.Result{}, err
 		}
 		if err := txnResult.MergeAndDestroy(triggerResult); err != nil {
@@ -578,11 +617,6 @@ func IsEndTxnExceedingDeadline(commitTS hlc.Timestamp, deadline hlc.Timestamp) b
 func IsEndTxnTriggeringRetryError(
 	txn *roachpb.Transaction, deadline hlc.Timestamp,
 ) (retry bool, reason kvpb.TransactionRetryReason, extraMsg redact.RedactableString) {
-	if txn.WriteTooOld {
-		// If we saw any WriteTooOldErrors, we must restart to avoid lost
-		// update anomalies.
-		return true, kvpb.RETRY_WRITE_TOO_OLD, ""
-	}
 	if !txn.IsoLevel.ToleratesWriteSkew() && txn.WriteTimestamp != txn.ReadTimestamp {
 		// Return a transaction retry error if the commit timestamp isn't equal to
 		// the txn timestamp.
@@ -690,7 +724,7 @@ func resolveLocalLocksWithPagination(
 				// If requested, replace point tombstones with range tombstones.
 				if ok && evalCtx.EvalKnobs().UseRangeTombstonesForPointDeletes {
 					if err := storage.ReplacePointTombstonesWithRangeTombstones(
-						ctx, spanset.DisableReadWriterAssertions(readWriter),
+						ctx, spanset.DisableUndeclaredSpanAssertions(readWriter),
 						ms, update.Key, update.EndKey); err != nil {
 						return 0, 0, 0, errors.Wrapf(err,
 							"replacing point tombstones with range tombstones for write intent at %s on end transaction [%s]",
@@ -728,7 +762,7 @@ func resolveLocalLocksWithPagination(
 			// If requested, replace point tombstones with range tombstones.
 			if evalCtx.EvalKnobs().UseRangeTombstonesForPointDeletes {
 				if err := storage.ReplacePointTombstonesWithRangeTombstones(
-					ctx, spanset.DisableReadWriterAssertions(readWriter),
+					ctx, spanset.DisableUndeclaredSpanAssertions(readWriter),
 					ms, update.Key, update.EndKey); err != nil {
 					return 0, 0, 0, errors.Wrapf(err,
 						"replacing point tombstones with range tombstones for write intent range at %s on end transaction [%s]",
@@ -816,7 +850,7 @@ func updateFinalizedTxn(
 	opts := storage.MVCCWriteOptions{Stats: ms, Category: fs.BatchEvalReadCategory}
 	if !evalCtx.EvalKnobs().DisableTxnAutoGC && len(externalLocks) == 0 {
 		if log.V(2) {
-			log.Infof(ctx, "auto-gc'ed %s (%d locks)", txn.Short(), len(args.LockSpans))
+			log.KvExec.Infof(ctx, "auto-gc'ed %s (%d locks)", txn.Short(), len(args.LockSpans))
 		}
 		if !recordAlreadyExisted {
 			// Nothing to delete, so there's no use writing a deletion tombstone. This
@@ -842,6 +876,11 @@ func RunCommitTrigger(
 	args *kvpb.EndTxnRequest,
 	txn *roachpb.Transaction,
 ) (result.Result, error) {
+	if fn := rec.EvalKnobs().CommitTriggerError; fn != nil {
+		if err := fn(); err != nil {
+			return result.Result{}, err
+		}
+	}
 	ct := args.InternalCommitTrigger
 	if ct == nil {
 		return result.Result{}, nil
@@ -863,12 +902,40 @@ func RunCommitTrigger(
 	// Stage the commit trigger's side-effects so that they will go into effect on
 	// each Replica when the corresponding Raft log entry is applied. Only one
 	// commit trigger can be set.
+	//
+	// Errors from trigger evaluation are returned as regular evaluation errors.
+	// Since evaluation is pre-Raft (no state has been committed), failing here
+	// simply prevents the proposal; the split/merge queue will retry.
 	if ct.GetSplitTrigger() != nil {
+		sl := MakeStateLoader(rec)
+		lhsLease, err := sl.LoadLease(ctx, batch)
+		if err != nil {
+			return result.Result{}, errors.Wrap(err, "unable to load lease")
+		}
+		gcThreshold, err := sl.LoadGCThreshold(ctx, batch)
+		if err != nil {
+			return result.Result{}, errors.Wrap(err, "unable to load GCThreshold")
+		}
+		gcHint, err := sl.LoadGCHint(ctx, batch)
+		if err != nil {
+			return result.Result{}, errors.Wrap(err, "unable to load GCHint")
+		}
+		replicaVersion, err := sl.LoadVersion(ctx, batch)
+		if err != nil {
+			return result.Result{}, errors.Wrap(err, "unable to load replica version")
+		}
+		in := SplitTriggerHelperInput{
+			LeftLease:      lhsLease,
+			GCThreshold:    gcThreshold,
+			GCHint:         gcHint,
+			ReplicaVersion: replicaVersion,
+		}
+
 		newMS, res, err := splitTrigger(
-			ctx, rec, batch, *ms, ct.SplitTrigger, txn.WriteTimestamp,
+			ctx, rec, batch, *ms, ct.SplitTrigger, in, txn.WriteTimestamp,
 		)
 		if err != nil {
-			return result.Result{}, kvpb.MaybeWrapReplicaCorruptionError(ctx, err)
+			return result.Result{}, err
 		}
 		*ms = newMS
 		return res, nil
@@ -876,7 +943,7 @@ func RunCommitTrigger(
 	if mt := ct.GetMergeTrigger(); mt != nil {
 		res, err := mergeTrigger(ctx, rec, batch, ms, mt, txn.WriteTimestamp)
 		if err != nil {
-			return result.Result{}, kvpb.MaybeWrapReplicaCorruptionError(ctx, err)
+			return result.Result{}, err
 		}
 		return res, nil
 	}
@@ -912,7 +979,7 @@ func RunCommitTrigger(
 		return res, nil
 	}
 
-	log.Fatalf(ctx, "unknown commit trigger: %+v", ct)
+	log.KvExec.Fatalf(ctx, "unknown commit trigger: %+v", ct)
 	return result.Result{}, nil
 }
 
@@ -1091,6 +1158,7 @@ func splitTrigger(
 	batch storage.Batch,
 	bothDeltaMS enginepb.MVCCStats,
 	split *roachpb.SplitTrigger,
+	in SplitTriggerHelperInput,
 	ts hlc.Timestamp,
 ) (enginepb.MVCCStats, result.Result, error) {
 	desc := rec.Desc()
@@ -1166,7 +1234,34 @@ func splitTrigger(
 		MaxBytesDiff:             MaxMVCCStatBytesDiff.Get(&rec.ClusterSettings().SV),
 		UseEstimatesBecauseExternalBytesArePresent: split.UseEstimatesBecauseExternalBytesArePresent,
 	}
-	return splitTriggerHelper(ctx, rec, batch, h, split, ts)
+	return splitTriggerHelper(ctx, rec, batch, in, h, split, ts)
+}
+
+// TestingMergeTrigger is a wrapper around mergeTrigger that is exported for
+// testing purposes.
+func TestingMergeTrigger(
+	ctx context.Context,
+	rec EvalContext,
+	batch storage.Batch,
+	ms *enginepb.MVCCStats,
+	merge *roachpb.MergeTrigger,
+	ts hlc.Timestamp,
+) (result.Result, error) {
+	return mergeTrigger(ctx, rec, batch, ms, merge, ts)
+}
+
+// TestingSplitTrigger is a wrapper around splitTrigger that is exported for
+// testing purposes.
+func TestingSplitTrigger(
+	ctx context.Context,
+	rec EvalContext,
+	batch storage.Batch,
+	bothDeltaMS enginepb.MVCCStats,
+	split *roachpb.SplitTrigger,
+	in SplitTriggerHelperInput,
+	ts hlc.Timestamp,
+) (enginepb.MVCCStats, result.Result, error) {
+	return splitTrigger(ctx, rec, batch, bothDeltaMS, split, in, ts)
 }
 
 // splitScansRightForStatsFirst controls whether the left hand side or the right
@@ -1176,6 +1271,22 @@ func splitTrigger(
 // LHS ranges. However, to improve test coverage, we use a metamorphic value.
 var splitScansRightForStatsFirst = metamorphic.ConstantWithTestBool(
 	"split-scans-right-for-stats-first", false)
+
+// DisableMetamorphicSplitScansRightForStatsFirst disables the
+// splitScansRightForStatsFirst metamorphic bool for the duration of a test,
+// resetting it at the end.
+func DisableMetamorphicSplitScansRightForStatsFirst(t interface {
+	Helper()
+	Cleanup(func())
+}) {
+	t.Helper()
+	if splitScansRightForStatsFirst {
+		splitScansRightForStatsFirst = false
+		t.Cleanup(func() {
+			splitScansRightForStatsFirst = true
+		})
+	}
+}
 
 // makeScanStatsFn constructs a splitStatsScanFn for the provided post-split
 // range descriptor which computes the range's statistics.
@@ -1192,7 +1303,7 @@ func makeScanStatsFn(
 		computeStatsFn = rditer.ComputeStatsForRangeExcludingUser
 	}
 	return func() (enginepb.MVCCStats, error) {
-		sideMS, err := computeStatsFn(ctx, sideDesc, reader, ts.WallTime)
+		sideMS, err := computeStatsFn(ctx, sideDesc, reader, fs.BatchEvalReadCategory, ts.WallTime)
 		if err != nil {
 			return enginepb.MVCCStats{}, errors.Wrapf(err,
 				"unable to compute stats for %s range after split", sideName)
@@ -1202,13 +1313,26 @@ func makeScanStatsFn(
 	}
 }
 
+// SplitTriggerHelperInput contains metadata needed by the RHS when running the
+// splitTriggerHelper.
+type SplitTriggerHelperInput struct {
+	LeftLease      roachpb.Lease
+	GCThreshold    *hlc.Timestamp
+	GCHint         *roachpb.GCHint
+	ReplicaVersion roachpb.Version
+}
+
 // splitTriggerHelper continues the work begun by splitTrigger, but has a
 // reduced scope that has all stats-related concerns bundled into a
 // splitStatsHelper.
+//
+// TODO(arul): consider having this function write keys to the batch in sorted
+// order, much like how destroyReplicaImpl does.
 func splitTriggerHelper(
 	ctx context.Context,
 	rec EvalContext,
 	batch storage.Batch,
+	in SplitTriggerHelperInput,
 	statsInput splitStatsHelperInput,
 	split *roachpb.SplitTrigger,
 	ts hlc.Timestamp,
@@ -1220,17 +1344,26 @@ func splitTriggerHelper(
 	// NB: the replicated post-split left hand keyspace is frozen at this point.
 	// Only the RHS can be mutated (and we do so to seed its state).
 
-	// Copy the last replica GC timestamp. This value is unreplicated,
-	// which is why the MVCC stats are set to nil on calls to
-	// MVCCPutProto.
-	replicaGCTS, err := rec.GetLastReplicaGCTimestamp(ctx)
-	if err != nil {
-		return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to fetch last replica GC timestamp")
-	}
-	if err := storage.MVCCPutProto(
-		ctx, batch, keys.RangeLastReplicaGCTimestampKey(split.RightDesc.RangeID), hlc.Timestamp{},
-		&replicaGCTS, storage.MVCCWriteOptions{Category: fs.BatchEvalReadCategory}); err != nil {
-		return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to copy last replica GC timestamp")
+	// Copy the last replica GC timestamp. This value is unreplicated, which is
+	// why the MVCC stats are set to nil on calls to MVCCBlindPutProto.
+	//
+	// TODO(sep-raft-log): remove when the version gate is removed. This key is
+	// unreplicated and should not be in the evaluated batch. It is now written
+	// locally at apply time.
+	if !rec.ClusterSettings().Version.IsActive(
+		ctx, clusterversion.V26_2_NoLastReplicaGCTimestampKeyOnEval,
+	) {
+		replicaGCTS, err := rec.GetLastReplicaGCTimestamp(ctx)
+		if err != nil {
+			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to fetch last replica GC timestamp")
+		}
+		if err := storage.MVCCBlindPutProto(
+			ctx, spanset.DisableForbiddenSpanAssertions(batch),
+			keys.RangeLastReplicaGCTimestampKey(split.RightDesc.RangeID), hlc.Timestamp{},
+			&replicaGCTS, storage.MVCCWriteOptions{Category: fs.BatchEvalReadCategory},
+		); err != nil {
+			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to copy last replica GC timestamp")
+		}
 	}
 
 	// Compute the absolute stats for the (post-split) ranges. No more
@@ -1273,6 +1406,7 @@ func splitTriggerHelper(
 
 	computeAccurateStats := (noPreComputedStats || manualSplit || emptyLeftOrRight || preComputedStatsDiff)
 	computeAccurateStats = computeAccurateStats && !shouldUseCrudeEstimates
+	var err error
 	if computeAccurateStats {
 		var reason redact.RedactableString
 		if noPreComputedStats {
@@ -1305,6 +1439,28 @@ func splitTriggerHelper(
 		return enginepb.MVCCStats{}, result.Result{}, err
 	}
 
+	// Copy the last consistency checker run timestamp from the LHS to the RHS.
+	// This avoids running the consistency checker on the RHS immediately after
+	// the split.
+	lastTS := hlc.Timestamp{}
+	// TODO(arul): instead of fetching the consistency checker timestamp here
+	// like this, we should instead pass it using the SplitTriggerHelperInput to
+	// make it easier to test.
+	if _, err := storage.MVCCGetProto(ctx, batch,
+		keys.QueueLastProcessedKey(split.LeftDesc.StartKey, "consistencyChecker"),
+		hlc.Timestamp{}, &lastTS, storage.MVCCGetOptions{}); err != nil {
+		return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err,
+			"unable to fetch the last consistency checker run for LHS")
+	}
+
+	if err := storage.MVCCPutProto(ctx, batch,
+		keys.QueueLastProcessedKey(split.RightDesc.StartKey, "consistencyChecker"),
+		hlc.Timestamp{}, &lastTS,
+		storage.MVCCWriteOptions{Stats: h.AbsPostSplitRight(), Category: fs.BatchEvalReadCategory}); err != nil {
+		return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err,
+			"unable to copy the last consistency checker run to RHS")
+	}
+
 	// Note: we don't copy the queue last processed times. This means
 	// we'll process the RHS range in consistency and time series
 	// maintenance queues again possibly sooner than if we copied. The
@@ -1331,27 +1487,22 @@ func splitTriggerHelper(
 		// - node two becomes the lease holder for [c,e). Its timestamp cache does
 		//   not know about the read at 'd' which happened at the beginning.
 		// - node two can illegally propose a write to 'd' at a lower timestamp.
-		sl := MakeStateLoader(rec)
-		leftLease, err := sl.LoadLease(ctx, batch)
-		if err != nil {
-			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to load lease")
-		}
-		if leftLease.Empty() {
-			log.Fatalf(ctx, "LHS of split has no lease")
+		if in.LeftLease.Empty() {
+			log.KvExec.Fatalf(ctx, "LHS of split has no lease")
 		}
 
 		// Copy the lease from the left-hand side of the split over to the
 		// right-hand side so that it can immediately start serving requests.
 		// When doing so, we need to make a few modifications.
-		rightLease := leftLease
+		rightLease := in.LeftLease
 		// Rebind the lease to the existing leaseholder store's replica from the
 		// right-hand side's descriptor.
 		var ok bool
-		rightLease.Replica, ok = split.RightDesc.GetReplicaDescriptor(leftLease.Replica.StoreID)
+		rightLease.Replica, ok = split.RightDesc.GetReplicaDescriptor(in.LeftLease.Replica.StoreID)
 		if !ok {
 			return enginepb.MVCCStats{}, result.Result{}, errors.Errorf(
 				"pre-split lease holder %+v not found in post-split descriptor %+v",
-				leftLease.Replica, split.RightDesc,
+				in.LeftLease.Replica, split.RightDesc,
 			)
 		}
 		// Convert leader leases into expiration-based leases. A leader lease is
@@ -1366,17 +1517,8 @@ func splitTriggerHelper(
 			rightLease.Term = 0
 			rightLease.MinExpiration = hlc.Timestamp{}
 		}
-
-		gcThreshold, err := sl.LoadGCThreshold(ctx, batch)
-		if err != nil {
-			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to load GCThreshold")
-		}
-		if gcThreshold.IsEmpty() {
+		if in.GCThreshold.IsEmpty() {
 			log.VEventf(ctx, 1, "LHS's GCThreshold of split is not set")
-		}
-		gcHint, err := sl.LoadGCHint(ctx, batch)
-		if err != nil {
-			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to load GCHint")
 		}
 
 		// Writing the initial state is subtle since this also seeds the Raft
@@ -1408,15 +1550,10 @@ func splitTriggerHelper(
 		// HardState via a call to synthesizeRaftState. Here, we only call
 		// writeInitialReplicaState which essentially writes a ReplicaState
 		// only.
-		replicaVersion, err := sl.LoadVersion(ctx, batch)
-		if err != nil {
-			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to load replica version")
-		}
-		*h.AbsPostSplitRight(), err = stateloader.WriteInitialReplicaState(
+		if *h.AbsPostSplitRight(), err = kvstorage.WriteInitialReplicaState(
 			ctx, batch, *h.AbsPostSplitRight(), split.RightDesc, rightLease,
-			*gcThreshold, *gcHint, replicaVersion,
-		)
-		if err != nil {
+			*in.GCThreshold, *in.GCHint, in.ReplicaVersion,
+		); err != nil {
 			return enginepb.MVCCStats{}, result.Result{}, errors.Wrap(err, "unable to write initial Replica state")
 		}
 	}
@@ -1433,9 +1570,7 @@ func splitTriggerHelper(
 	// replicas that already have the unsplit range, *and* these snapshots are
 	// rejected (which is very wasteful). See the long comment in
 	// split_delay_helper.go for more details.
-	if rec.ClusterSettings().Version.IsActive(ctx, clusterversion.V25_1_AddRangeForceFlushKey) {
-		pd.Replicated.DoTimelyApplicationToAllReplicas = true
-	}
+	pd.Replicated.DoTimelyApplicationToAllReplicas = true
 
 	pd.Local.Metrics = &result.Metrics{
 		SplitsWithEstimatedStats:     h.splitsWithEstimates,
@@ -1538,9 +1673,7 @@ func mergeTrigger(
 	// the merge distributed txn, when sending a kvpb.SubsumeRequest. But since
 	// we have force-flushed once during the merge txn anyway, we choose to
 	// complete the merge story and finish the merge on all replicas.
-	if rec.ClusterSettings().Version.IsActive(ctx, clusterversion.V25_1_AddRangeForceFlushKey) {
-		pd.Replicated.DoTimelyApplicationToAllReplicas = true
-	}
+	pd.Replicated.DoTimelyApplicationToAllReplicas = true
 
 	{
 		// If we have GC hints populated that means we are trying to perform
@@ -1551,7 +1684,7 @@ func mergeTrigger(
 		if err != nil {
 			return result.Result{}, err
 		}
-		rhsLoader := stateloader.Make(merge.RightDesc.RangeID)
+		rhsLoader := kvstorage.MakeStateLoader(merge.RightDesc.RangeID)
 		rhsHint, err := rhsLoader.LoadGCHint(ctx, batch)
 		if err != nil {
 			return result.Result{}, err

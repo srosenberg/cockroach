@@ -258,19 +258,48 @@ var retiredSettings = map[InternalKey]struct{}{
 	"sql.metrics.statement_details.plan_collection.period":       {},
 
 	// removed as of 25.2
-	"kv.snapshot_receiver.excise.enabled":                {},
-	"sql.catalog.experimental_use_session_based_leasing": {},
-	"bulkio.backup.merge_file_buffer_size":               {},
-	"changefeed.new_webhook_sink_enabled":                {},
-	"changefeed.new_webhook_sink.enabled":                {},
-	"changefeed.new_pubsub_sink_enabled":                 {},
-	"changefeed.new_pubsub_sink.enabled":                 {},
+	"kv.snapshot_receiver.excise.enabled":                    {},
+	"kv.mvcc_gc.queue_kv_admission_control.enabled":          {},
+	"sql.catalog.experimental_use_session_based_leasing":     {},
+	"bulkio.backup.merge_file_buffer_size":                   {},
+	"changefeed.new_webhook_sink_enabled":                    {},
+	"changefeed.new_webhook_sink.enabled":                    {},
+	"changefeed.new_pubsub_sink_enabled":                     {},
+	"changefeed.new_pubsub_sink.enabled":                     {},
+	"logical_replication.consumer.use_implicit_txns.enabled": {},
+
+	// removed as of 25.3
+	"sql.metrics.max_stmt_fingerprints_per_explicit_txn": {},
+	"sql.jobs.legacy_per_job_access_via_details.enabled": {},
+
+	// removed as of 25.4
+	"storage.columnar_blocks.enabled": {},
+
+	// removed as of 26.1
+	"rocksdb.ingest_backpressure.l0_file_count_threshold": {},
+	"rocksdb.ingest_backpressure.max_delay":               {},
+	"pebble.pre_ingest_delay.enabled":                     {},
+
+	// removed as of 26.2
+	"bulkio.import.write_import_epoch.enabled":                 {},
+	"physical_replication.consumer.stream_compression.enabled": {},
+	"kvadmission.export_request_elastic_control.enabled":       {},
+	"changefeed.shutdown_checkpoint.enabled":                   {},
+	"changefeed.aggregator.heartbeat":                          {},
+
+	// removed as of 26.3
+	"log.channel_compatibility_mode.enabled": {},
 }
 
 // grandfatheredDefaultSettings is the list of "grandfathered" existing sql.defaults
 // cluster settings. In 22.2 and later, new session settings do not need an
-// associated sql.defaults cluster setting. Instead they can have their default
-// changed with ALTER ROLE ... SET.
+// associated sql.defaults cluster setting (see the `vector_search_beam_size`
+// setting in vars.go for an example). A session setting can have its default
+// changed with ALTER ROLE ... SET, similar to this (the example assumes that
+// all roles should use the new default):
+//
+//	ALTER ROLE ALL SET vector_search_beam_size=128;
+//
 // Caveat: in some cases, we may still add new sql.defaults cluster settings,
 // but the new ones *must* be marked as non-public. Undocumented settings are
 // excluded from the check that prevents new sql.defaults settings. The
@@ -480,7 +509,7 @@ func LookupForReportingByKey(key InternalKey, forSystemTenant bool) (Setting, bo
 	if !forSystemTenant && s.Class() == SystemOnly {
 		return nil, false
 	}
-	if !s.isReportable() {
+	if !s.IsReportable() {
 		return &MaskedSetting{setting: s}, true
 	}
 	return s, true
@@ -517,7 +546,7 @@ func LookupForDisplayByKey(
 	if !forSystemTenant && s.Class() == SystemOnly {
 		return nil, false
 	}
-	if s.isSensitive() && !canViewSensitive {
+	if s.IsSensitive() && !canViewSensitive {
 		return &MaskedSetting{setting: s}, true
 	}
 	return s, true
@@ -551,7 +580,7 @@ var ReadableTypes = map[string]string{
 //   - "<unknown>" if there is no setting with this name.
 func RedactedValue(key InternalKey, values *Values, forSystemTenant bool) string {
 	if k, ok := registry[key]; ok {
-		if k.Typ() == "s" || k.isSensitive() || !k.isReportable() {
+		if k.Typ() == "s" || k.IsSensitive() || !k.IsReportable() {
 			return "<redacted>"
 		}
 	}

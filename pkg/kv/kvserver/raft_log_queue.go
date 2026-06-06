@@ -14,19 +14,21 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
+	"github.com/cockroachdb/cockroach/pkg/obs/workloadid"
 	"github.com/cockroachdb/cockroach/pkg/raft"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/raft/tracker"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
-	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/spanconfig"
 	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/envutil"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/humanizeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/metamorphic"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
+	"github.com/cockroachdb/crlib/crtime"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 )
@@ -115,8 +117,9 @@ import (
 var looselyCoupledTruncationEnabled = settings.RegisterBoolSetting(
 	settings.SystemOnly,
 	"kv.raft_log.loosely_coupled_truncation.enabled",
-	"set to true to loosely couple the raft log truncation",
-	false,
+	"set to true to loosely couple the raft log truncation. Loosely coupled truncations are "+
+		"automatically enabled if engines are separated",
+	metamorphic.ConstantWithTestBool("kv.raft_log.loosely_coupled_truncation.enabled", false),
 	settings.WithVisibility(settings.Reserved),
 )
 
@@ -148,7 +151,7 @@ type raftLogQueue struct {
 	*baseQueue
 	db *kv.DB
 
-	logSnapshots util.EveryN
+	logSnapshots util.EveryN[crtime.Mono]
 }
 
 var _ queueImpl = &raftLogQueue{}
@@ -163,7 +166,7 @@ var _ queueImpl = &raftLogQueue{}
 func newRaftLogQueue(store *Store, db *kv.DB) *raftLogQueue {
 	rlq := &raftLogQueue{
 		db:           db,
-		logSnapshots: util.Every(10 * time.Second),
+		logSnapshots: util.EveryMono(10 * time.Second),
 	}
 	rlq.baseQueue = newBaseQueue(
 		"raftlog", rlq, store,
@@ -243,7 +246,8 @@ func newTruncateDecision(ctx context.Context, r *Replica) (truncateDecision, err
 	now := timeutil.Now()
 
 	r.mu.RLock()
-	raftLogSize := r.pendingLogTruncations.computePostTruncLogSize(r.shMu.raftLogSize)
+	ls := r.asLogStorage()
+	raftLogSize := r.pendingLogTruncations.computePostTruncLogSize(ls.shMu.size)
 	// A "cooperative" truncation (i.e. one that does not cut off followers from
 	// the log) takes place whenever there are more than
 	// RaftLogQueueStaleThreshold entries or the log's estimated size is above
@@ -264,23 +268,24 @@ func newTruncateDecision(ctx context.Context, r *Replica) (truncateDecision, err
 
 	const anyRecipientStore roachpb.StoreID = 0
 	_, pendingSnapshotIndex := r.getSnapshotLogTruncationConstraintsRLocked(anyRecipientStore, false /* initialOnly */)
-	lastIndex := r.shMu.lastIndexNotDurable
+	lastIndex := ls.shMu.last.Index
 	// NB: raftLogSize above adjusts for pending truncations that have already
-	// been successfully replicated via raft, but logSizeTrusted does not see if
+	// been successfully replicated via raft, but sizeTrusted does not see if
 	// those pending truncations would cause a transition from trusted =>
 	// !trusted. This is done since we don't want to trigger a recomputation of
 	// the raft log size while we still have pending truncations. Note that as
-	// soon as those pending truncations are enacted r.mu.raftLogSizeTrusted
-	// will become false and we will recompute the size -- so this cannot cause
-	// an indefinite delay in recomputation.
-	logSizeTrusted := r.shMu.raftLogSizeTrusted
+	// soon as those pending truncations are enacted, sizeTrusted will become
+	// false, and we will recompute the size -- so this cannot cause an indefinite
+	// delay in recomputation.
+	logSizeTrusted := ls.shMu.sizeTrusted
 	compIndex := r.raftCompactedIndexRLocked()
 	r.mu.RUnlock()
 	compIndex = r.pendingLogTruncations.nextCompactedIndex(compIndex)
 
 	if raftStatus == nil {
 		if log.V(6) {
-			log.Infof(ctx, "the raft group doesn't exist for r%d", rangeID)
+			log.KvExec.Infof(ctx, "the raft group doesn't exist for r%d", rangeID)
+			log.KvDistribution.Infof(ctx, "the raft group doesn't exist for r%d", rangeID)
 		}
 		return truncateDecision{}, nil
 	}
@@ -620,7 +625,8 @@ func (rlq *raftLogQueue) shouldQueue(
 ) (shouldQueue bool, priority float64) {
 	decision, err := newTruncateDecision(ctx, r)
 	if err != nil {
-		log.Warningf(ctx, "%v", err)
+		log.KvExec.Warningf(ctx, "%v", err)
+		log.KvDistribution.Warningf(ctx, "%v", err)
 		return false, 0
 	}
 
@@ -659,7 +665,7 @@ func (rlq *raftLogQueue) shouldQueueImpl(
 // leader and if the total number of the range's raft log's stale entries
 // exceeds RaftLogQueueStaleThreshold.
 func (rlq *raftLogQueue) process(
-	ctx context.Context, r *Replica, _ spanconfig.StoreReader,
+	ctx context.Context, r *Replica, _ spanconfig.StoreReader, _ float64,
 ) (processed bool, err error) {
 	decision, err := newTruncateDecision(ctx, r)
 	if err != nil {
@@ -687,12 +693,15 @@ func (rlq *raftLogQueue) process(
 		return false, nil
 	}
 
-	if n := decision.NumNewRaftSnapshots(); log.V(1) || n > 0 && rlq.logSnapshots.ShouldProcess(timeutil.Now()) {
-		log.Infof(ctx, "%v", redact.Safe(decision.String()))
+	if n := decision.NumNewRaftSnapshots(); log.V(1) || n > 0 && rlq.logSnapshots.ShouldProcess(crtime.NowMono()) {
+		log.KvExec.Infof(ctx, "%v", redact.Safe(decision.String()))
+		log.KvDistribution.Infof(ctx, "%v", redact.Safe(decision.String()))
 	} else {
 		log.VEventf(ctx, 1, "%v", redact.Safe(decision.String()))
 	}
 	b := &kv.Batch{}
+	b.Header.WorkloadID = uint64(workloadid.WORKLOAD_ID_RAFT_LOG_TRUNCATION)
+	b.Header.WorkloadType = workloadid.WorkloadTypeSystem.ToUint32()
 	truncRequest := &kvpb.TruncateLogRequest{
 		RequestHeader:      kvpb.RequestHeader{Key: r.Desc().StartKey.AsRawKey()},
 		Index:              decision.NewCompIndex + 1,
@@ -724,10 +733,4 @@ func (*raftLogQueue) purgatoryChan() <-chan time.Time {
 
 func (*raftLogQueue) updateChan() <-chan time.Time {
 	return nil
-}
-
-func isLooselyCoupledRaftLogTruncationEnabled(
-	ctx context.Context, settings *cluster.Settings,
-) bool {
-	return looselyCoupledTruncationEnabled.Get(&settings.SV)
 }

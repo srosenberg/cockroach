@@ -71,8 +71,12 @@ func TestPlanToTreeAndPlanToString(t *testing.T) {
 			ih.codec = execCfg.Codec
 			ih.collectBundle = true
 
-			p.stmt = makeStatement(stmt, clusterunique.ID{},
-				tree.FmtFlags(queryFormattingForFingerprintsMask.Get(&execCfg.Settings.SV)))
+			p.stmt = makeStatement(
+				ctx, stmt, clusterunique.ID{},
+				tree.FmtFlags(tree.QueryFormattingForFingerprintsMask.Get(&execCfg.Settings.SV)),
+				nil, /* statementHintsCache */
+				"",  /* currentDB */
+			)
 			if err := p.makeOptimizerPlan(ctx); err != nil {
 				t.Fatal(err)
 			}

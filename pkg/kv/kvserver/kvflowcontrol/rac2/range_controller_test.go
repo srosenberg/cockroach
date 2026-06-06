@@ -24,12 +24,14 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverbase"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/raftlog"
+	"github.com/cockroachdb/cockroach/pkg/obs/ash"
 	"github.com/cockroachdb/cockroach/pkg/raft"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/raft/tracker"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/testutils/datapathutils"
+	"github.com/cockroachdb/cockroach/pkg/testutils/dd"
 	"github.com/cockroachdb/cockroach/pkg/util/admission/admissionpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/humanizeutil"
@@ -524,7 +526,7 @@ func (r *testingRCRange) startWaitForEval(name string, pri admissionpb.WorkPrior
 	}
 
 	go func() {
-		waited, err := r.rc.WaitForEval(ctx, pri)
+		waited, err := r.rc.WaitForEval(ctx, pri, ash.WorkloadInfo{})
 
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -1029,7 +1031,6 @@ func (t *testingProbeToCloseTimerScheduler) ScheduleSendStreamCloseRaftMuLocked(
 			return
 		case <-timer.Ch():
 		}
-		timer.MarkRead()
 		func() {
 			r := t.state.ranges[rangeID]
 			event := r.makeRaftEventWithReplicasState()
@@ -1123,42 +1124,32 @@ func TestRangeController(t *testing.T) {
 		datadriven.RunTest(t, path, func(t *testing.T, d *datadriven.TestData) string {
 			switch d.Cmd {
 			case "init":
-				var (
-					regularInitString, elasticInitString   string
-					regularLimitString, elasticLimitString string
-				)
-				d.MaybeScanArgs(t, "regular_init", &regularInitString)
-				d.MaybeScanArgs(t, "elastic_init", &elasticInitString)
-				d.MaybeScanArgs(t, "regular_limit", &regularLimitString)
-				d.MaybeScanArgs(t, "elastic_limit", &elasticLimitString)
 				// If the test specifies different token limits or initial token counts
 				// (default is the limit), then we override the default limit and also
 				// store the initial token count. tokenCounters are created
 				// dynamically, so we update them on the fly as well.
-				if regularLimitString != "" {
-					regularLimit, err := humanizeutil.ParseBytes(regularLimitString)
-					require.NoError(t, err)
-					kvflowcontrol.RegularTokensPerStream.Override(ctx, &state.settings.SV, regularLimit)
-				}
-				if elasticLimitString != "" {
-					elasticLimit, err := humanizeutil.ParseBytes(elasticLimitString)
-					require.NoError(t, err)
-					kvflowcontrol.ElasticTokensPerStream.Override(ctx, &state.settings.SV, elasticLimit)
-				}
-				if regularInitString != "" {
-					regularInit, err := humanizeutil.ParseBytes(regularInitString)
+				if str, ok := dd.ScanArgOpt[string](t, d, "regular_init"); ok {
+					regularInit, err := humanizeutil.ParseBytes(str)
 					require.NoError(t, err)
 					state.initialRegularTokens = kvflowcontrol.Tokens(regularInit)
 				}
-				if elasticInitString != "" {
-					elasticInit, err := humanizeutil.ParseBytes(elasticInitString)
+				if str, ok := dd.ScanArgOpt[string](t, d, "elastic_init"); ok {
+					elasticInit, err := humanizeutil.ParseBytes(str)
 					require.NoError(t, err)
 					state.initialElasticTokens = kvflowcontrol.Tokens(elasticInit)
 				}
-				var maxInflightBytesString string
-				d.MaybeScanArgs(t, "max_inflight_bytes", &maxInflightBytesString)
-				if maxInflightBytesString != "" {
-					maxInflightBytes, err := humanizeutil.ParseBytes(maxInflightBytesString)
+				if str, ok := dd.ScanArgOpt[string](t, d, "regular_limit"); ok {
+					regularLimit, err := humanizeutil.ParseBytes(str)
+					require.NoError(t, err)
+					kvflowcontrol.RegularTokensPerStream.Override(ctx, &state.settings.SV, regularLimit)
+				}
+				if str, ok := dd.ScanArgOpt[string](t, d, "elastic_limit"); ok {
+					elasticLimit, err := humanizeutil.ParseBytes(str)
+					require.NoError(t, err)
+					kvflowcontrol.ElasticTokensPerStream.Override(ctx, &state.settings.SV, elasticLimit)
+				}
+				if str, ok := dd.ScanArgOpt[string](t, d, "max_inflight_bytes"); ok {
+					maxInflightBytes, err := humanizeutil.ParseBytes(str)
 					require.NoError(t, err)
 					state.maxInflightBytes = uint64(maxInflightBytes)
 				}
@@ -1169,10 +1160,7 @@ func TestRangeController(t *testing.T) {
 				return state.rangeStateString() + state.tokenCountsString()
 
 			case "tick":
-				var durationStr string
-				d.ScanArgs(t, "duration", &durationStr)
-				duration, err := time.ParseDuration(durationStr)
-				require.NoError(t, err)
+				duration := dd.ScanArg[time.Duration](t, d, "duration")
 				state.ts.Advance(duration)
 				// Sleep for a bit to allow any timers to fire.
 				time.Sleep(20 * time.Millisecond)
@@ -1180,23 +1168,18 @@ func TestRangeController(t *testing.T) {
 					state.ts.Now().Sub(timeutil.UnixEpoch)))
 
 			case "wait_for_eval":
-				var rangeID int
-				var name, priString string
-				d.ScanArgs(t, "range_id", &rangeID)
-				d.ScanArgs(t, "name", &name)
-				d.ScanArgs(t, "pri", &priString)
-				testRC := state.ranges[roachpb.RangeID(rangeID)]
-				testRC.startWaitForEval(name, parsePriority(t, priString))
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
+				name := dd.ScanArg[string](t, d, "name")
+				pri := parsePriority(t, dd.ScanArg[string](t, d, "pri"))
+
+				state.ranges[rangeID].startWaitForEval(name, pri)
 				return state.evalStateString()
 
 			case "check_state":
 				return state.evalStateString()
 
 			case "adjust_tokens":
-				eval := true
-				if d.HasArg("send") {
-					eval = false
-				}
+				eval := !d.HasArg("send")
 				for _, line := range strings.Split(d.Input, "\n") {
 					parts := strings.Fields(line)
 					parts[0] = strings.TrimSpace(parts[0])
@@ -1238,11 +1221,9 @@ func TestRangeController(t *testing.T) {
 				return state.tokenCountsString()
 
 			case "cancel_context":
-				var rangeID int
-				var name string
-				d.ScanArgs(t, "range_id", &rangeID)
-				d.ScanArgs(t, "name", &name)
-				testRC := state.ranges[roachpb.RangeID(rangeID)]
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
+				name := dd.ScanArg[string](t, d, "name")
+				testRC := state.ranges[rangeID]
 				func() {
 					testRC.mu.Lock()
 					defer testRC.mu.Unlock()
@@ -1279,27 +1260,25 @@ func TestRangeController(t *testing.T) {
 				return state.rangeStateString()
 
 			case "set_leaseholder":
-				var rangeID, replicaID int
-				d.ScanArgs(t, "range_id", &rangeID)
-				d.ScanArgs(t, "replica_id", &replicaID)
-				testRC := state.ranges[roachpb.RangeID(rangeID)]
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
+				replicaID := dd.ScanArg[roachpb.ReplicaID](t, d, "replica_id")
+				testRC := state.ranges[rangeID]
 				func() {
 					testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Lock()
 					defer testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Unlock()
-					testRC.rc.SetLeaseholderRaftMuLocked(ctx, roachpb.ReplicaID(replicaID))
+					testRC.rc.SetLeaseholderRaftMuLocked(ctx, replicaID)
 				}()
 				return state.rangeStateString()
 
 			case "set_force_flush_index":
-				var rangeID int
-				d.ScanArgs(t, "range_id", &rangeID)
-				var index int
-				d.ScanArgs(t, "index", &index)
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
+				index := dd.ScanArg[int](t, d, "index")
 				mode := MsgAppPull
 				if d.HasArg("push-mode") {
 					mode = MsgAppPush
 				}
-				testRC := state.ranges[roachpb.RangeID(rangeID)]
+
+				testRC := state.ranges[rangeID]
 				func() {
 					testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Lock()
 					defer testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Unlock()
@@ -1317,7 +1296,7 @@ func TestRangeController(t *testing.T) {
 				}()
 				// Sleep for a bit to allow any timers to fire.
 				time.Sleep(20 * time.Millisecond)
-				return state.sendStreamString(roachpb.RangeID(rangeID))
+				return state.sendStreamString(rangeID)
 
 			case "close_rcs":
 				for _, r := range state.ranges {
@@ -1475,25 +1454,23 @@ func TestRangeController(t *testing.T) {
 			case "internal_schedule_replica":
 				// scheduleReplica is called internally by replicaSendStream. Calling
 				// this here is artificial.
-				var rangeID, replicaID int
-				d.ScanArgs(t, "range_id", &rangeID)
-				d.ScanArgs(t, "replica_id", &replicaID)
-				testRC := state.ranges[roachpb.RangeID(rangeID)]
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
+				replicaID := dd.ScanArg[roachpb.ReplicaID](t, d, "replica_id")
+				testRC := state.ranges[rangeID]
 				func() {
 					testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Lock()
 					defer testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Unlock()
-					testRC.rc.scheduleReplica(roachpb.ReplicaID(replicaID))
+					testRC.rc.scheduleReplica(replicaID)
 				}()
-				return state.sendStreamString(roachpb.RangeID(rangeID))
+				return state.sendStreamString(rangeID)
 
 			case "handle_scheduler_event":
-				var rangeID int
-				d.ScanArgs(t, "range_id", &rangeID)
-				testRC := state.ranges[roachpb.RangeID(rangeID)]
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
 				mode := MsgAppPull
 				if d.HasArg("push-mode") {
 					mode = MsgAppPush
 				}
+				testRC := state.ranges[rangeID]
 				func() {
 					testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Lock()
 					defer testRC.rc.opts.ReplicaMutexAsserter.RaftMu.Unlock()
@@ -1501,18 +1478,16 @@ func TestRangeController(t *testing.T) {
 				}()
 				// Sleep for a bit to allow any timers to fire.
 				time.Sleep(20 * time.Millisecond)
-				return state.sendStreamString(roachpb.RangeID(rangeID))
+				return state.sendStreamString(rangeID)
 
 			case "stream_state":
-				var rangeID int
-				d.ScanArgs(t, "range_id", &rangeID)
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
 				// Sleep for a bit to allow any timers to fire.
 				time.Sleep(20 * time.Millisecond)
-				return state.sendStreamString(roachpb.RangeID(rangeID))
+				return state.sendStreamString(rangeID)
 
 			case "metrics":
-				typ := "eval"
-				d.MaybeScanArgs(t, "type", &typ)
+				typ := dd.ScanArgOr(t, d, "type", "eval")
 				var buf strings.Builder
 
 				switch typ {
@@ -1522,20 +1497,20 @@ func TestRangeController(t *testing.T) {
 						admissionpb.RegularWorkClass,
 						admissionpb.ElasticWorkClass,
 					} {
-						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Waiting[wc].GetName(), evalMetrics.Waiting[wc].Value())
-						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Admitted[wc].GetName(), evalMetrics.Admitted[wc].Count())
-						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Errored[wc].GetName(), evalMetrics.Errored[wc].Count())
-						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Bypassed[wc].GetName(), evalMetrics.Bypassed[wc].Count())
+						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Waiting[wc].GetName(false /* useStaticLabels */), evalMetrics.Waiting[wc].Value())
+						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Admitted[wc].GetName(false /* useStaticLabels */), evalMetrics.Admitted[wc].Count())
+						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Errored[wc].GetName(false /* useStaticLabels */), evalMetrics.Errored[wc].Count())
+						fmt.Fprintf(&buf, "%-50v: %v\n", evalMetrics.Bypassed[wc].GetName(false /* useStaticLabels */), evalMetrics.Bypassed[wc].Count())
 						// We only print the number of recorded durations, instead of any
 						// percentiles or cumulative wait times as these are
 						// non-deterministic in the test.
 						fmt.Fprintf(&buf, "%-50v: %v\n",
-							fmt.Sprintf("%v.count", evalMetrics.Duration[wc].GetName()),
+							fmt.Sprintf("%v.count", evalMetrics.Duration[wc].GetName(false /* useStaticLabels */)),
 							testingFirst(evalMetrics.Duration[wc].CumulativeSnapshot().Total()))
 					}
 				case "range_controller":
 					rcMetrics := state.rcMetrics
-					fmt.Fprintf(&buf, "%v: %v\n", rcMetrics.Count.GetName(), rcMetrics.Count.Value())
+					fmt.Fprintf(&buf, "%v: %v\n", rcMetrics.Count.GetName(false /* useStaticLabels */), rcMetrics.Count.Value())
 				case "send_queue":
 					sendQueueMetrics := state.rcMetrics.SendQueue
 					sendQueueTokenMetrics := state.ssTokenCounter.tokenMetrics.CounterMetrics[SendToken].SendQueue[0]
@@ -1556,17 +1531,17 @@ func TestRangeController(t *testing.T) {
 					}
 					sendQueueMetrics.SizeBytes.Update(sizeBytes)
 					sendQueueMetrics.SizeCount.Update(sizeCount)
-					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.SizeCount.GetName(), sendQueueMetrics.SizeCount.Value())
-					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.SizeBytes.GetName(), sendQueueMetrics.SizeBytes.Value())
-					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.ForceFlushedScheduledCount.GetName(), sendQueueMetrics.ForceFlushedScheduledCount.Value())
-					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.DeductedForSchedulerBytes.GetName(), sendQueueMetrics.DeductedForSchedulerBytes.Value())
-					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.PreventionCount.GetName(), sendQueueMetrics.PreventionCount.Count())
-					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueTokenMetrics.ForceFlushDeducted.GetName(), sendQueueTokenMetrics.ForceFlushDeducted.Count())
+					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.SizeCount.GetName(false /* useStaticLabels */), sendQueueMetrics.SizeCount.Value())
+					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.SizeBytes.GetName(false /* useStaticLabels */), sendQueueMetrics.SizeBytes.Value())
+					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.ForceFlushedScheduledCount.GetName(false /* useStaticLabels */), sendQueueMetrics.ForceFlushedScheduledCount.Value())
+					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.DeductedForSchedulerBytes.GetName(false /* useStaticLabels */), sendQueueMetrics.DeductedForSchedulerBytes.Value())
+					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueMetrics.PreventionCount.GetName(false /* useStaticLabels */), sendQueueMetrics.PreventionCount.Count())
+					fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueTokenMetrics.ForceFlushDeducted.GetName(false /* useStaticLabels */), sendQueueTokenMetrics.ForceFlushDeducted.Count())
 					for _, wc := range []admissionpb.WorkClass{
 						admissionpb.RegularWorkClass,
 						admissionpb.ElasticWorkClass,
 					} {
-						fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueTokenMetrics.PreventionDeducted[wc].GetName(), sendQueueTokenMetrics.PreventionDeducted[wc].Count())
+						fmt.Fprintf(&buf, "%-66v: %v\n", sendQueueTokenMetrics.PreventionDeducted[wc].GetName(false /* useStaticLabels */), sendQueueTokenMetrics.PreventionDeducted[wc].Count())
 					}
 
 				default:
@@ -1575,11 +1550,10 @@ func TestRangeController(t *testing.T) {
 				return buf.String()
 
 			case "inspect":
-				var rangeID int
-				d.ScanArgs(t, "range_id", &rangeID)
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
 				var handle kvflowinspectpb.Handle
 				func() {
-					rc := state.ranges[roachpb.RangeID(rangeID)].rc
+					rc := state.ranges[rangeID].rc
 					rc.opts.ReplicaMutexAsserter.RaftMu.Lock()
 					defer rc.opts.ReplicaMutexAsserter.RaftMu.Unlock()
 					handle = rc.InspectRaftMuLocked(ctx)
@@ -1589,14 +1563,10 @@ func TestRangeController(t *testing.T) {
 				return fmt.Sprintf("%v", marshaled)
 
 			case "send_stream_stats":
-				var (
-					rangeID int
-					refresh = true
-				)
-				d.ScanArgs(t, "range_id", &rangeID)
-				d.MaybeScanArgs(t, "refresh", &refresh)
+				rangeID := dd.ScanArg[roachpb.RangeID](t, d, "range_id")
+				refresh := dd.ScanArgOr(t, d, "refresh", false)
 
-				r := state.ranges[roachpb.RangeID(rangeID)]
+				r := state.ranges[rangeID]
 				if refresh {
 					func() {
 						r.rc.opts.ReplicaMutexAsserter.RaftMu.Lock()
@@ -1606,13 +1576,14 @@ func TestRangeController(t *testing.T) {
 				}
 				stats := RangeSendStreamStats{}
 				r.rc.SendStreamStats(&stats)
-				log.Infof(ctx, "stats: %v", stats)
+				log.KvDistribution.Infof(ctx, "stats: %v", stats)
 				var buf strings.Builder
 				for _, repl := range sortReplicas(r) {
 					replStats, ok := stats.ReplicaSendStreamStats(repl.ReplicaID)
 					require.True(t, ok)
-					buf.WriteString(fmt.Sprintf("%v: is_state_replicate=%-5v has_send_queue=%-5v send_queue_size=%v / %v entries\n",
+					buf.WriteString(fmt.Sprintf("%v: stream=%v is_state_replicate=%-5v has_send_queue=%-5v send_queue_size=%v / %v entries\n",
 						repl,
+						replStats.Stream,
 						replStats.IsStateReplicate,
 						replStats.HasSendQueue,
 						// Cast for formatting.
@@ -1623,14 +1594,10 @@ func TestRangeController(t *testing.T) {
 				return buf.String()
 
 			case "set_flow_control_config":
-				if d.HasArg("enabled") {
-					var enabled bool
-					d.ScanArgs(t, "enabled", &enabled)
+				if enabled, ok := dd.ScanArgOpt[bool](t, d, "enabled"); ok {
 					kvflowcontrol.Enabled.Override(ctx, &state.settings.SV, enabled)
 				}
-				if d.HasArg("mode") {
-					var mode string
-					d.ScanArgs(t, "mode", &mode)
+				if mode, ok := dd.ScanArgOpt[string](t, d, "mode"); ok {
 					var m kvflowcontrol.ModeT
 					switch mode {
 					case "apply_to_all":
@@ -1766,14 +1733,11 @@ func testingFirst(args ...interface{}) interface{} {
 func TestRaftEventFromMsgStorageAppendAndMsgAppsBasic(t *testing.T) {
 	// raftpb.Entry and raftpb.Message are only partially populated below, which
 	// could be improved in the future.
-	appendMsg := raftpb.Message{
-		Type:     raftpb.MsgStorageAppend,
-		LogTerm:  10,
+	appendMsg := raft.StorageAppend{
+		LeadTerm: 10,
 		Snapshot: &raftpb.Snapshot{},
 		Entries: []raftpb.Entry{
-			{
-				Term: 9,
-			},
+			{Term: 9},
 		},
 	}
 	outboundMsgs := []raftpb.Message{
@@ -1822,7 +1786,7 @@ func TestRaftEventFromMsgStorageAppendAndMsgAppsBasic(t *testing.T) {
 	checkSnapAndMap(event)
 	// Only LogSnapshot and ReplicasStateInfo set.
 	event = RaftEventFromMsgStorageAppendAndMsgApps(
-		MsgAppPush, 20, raftpb.Message{}, nil, logSnap, msgAppScratch, infoMap)
+		MsgAppPush, 20, raft.StorageAppend{}, nil, logSnap, msgAppScratch, infoMap)
 	checkSnapAndMap(event)
 	event.LogSnapshot = raft.LogSnapshot{}
 	event.ReplicasStateInfo = nil
@@ -2514,6 +2478,10 @@ func TestRangeSendStreamStatsString(t *testing.T) {
 	stats := RangeSendStreamStats{
 		internal: []ReplicaSendStreamStats{
 			{
+				Stream: kvflowcontrol.Stream{
+					TenantID: roachpb.MustMakeTenantID(1),
+					StoreID:  roachpb.StoreID(1),
+				},
 				IsStateReplicate: false,
 				HasSendQueue:     true,
 				ReplicaSendQueueStats: ReplicaSendQueueStats{
@@ -2523,6 +2491,10 @@ func TestRangeSendStreamStatsString(t *testing.T) {
 				},
 			},
 			{
+				Stream: kvflowcontrol.Stream{
+					TenantID: roachpb.MustMakeTenantID(2),
+					StoreID:  roachpb.StoreID(2),
+				},
 				IsStateReplicate: true,
 				HasSendQueue:     false,
 				ReplicaSendQueueStats: ReplicaSendQueueStats{

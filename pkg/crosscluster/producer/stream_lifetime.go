@@ -9,12 +9,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/ccl/kvccl/kvfollowerreadsccl"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobsprotectedts"
-	"github.com/cockroachdb/cockroach/pkg/keys"
+	"github.com/cockroachdb/cockroach/pkg/kv/followerreads"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptpb"
@@ -28,6 +27,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
+	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
@@ -124,16 +124,15 @@ func StartReplicationProducerJob(
 	}
 
 	ptp := execConfig.ProtectedTimestampProvider.WithTxn(txn)
-	deprecatedSpansToProtect := roachpb.Spans{keys.MakeTenantSpan(tenantID)}
 	targetToProtect := ptpb.MakeTenantsTarget([]roachpb.TenantID{tenantID})
 	pts := jobsprotectedts.MakeRecord(ptsID, int64(jr.JobID), replicationStartTime,
-		deprecatedSpansToProtect, jobsprotectedts.Jobs, targetToProtect)
+		jobsprotectedts.Jobs, targetToProtect)
 
 	if err := ptp.Protect(ctx, pts); err != nil {
 		return streampb.ReplicationProducerSpec{}, err
 	}
 	if req.TenantID.Equal(roachpb.TenantID{}) && req.ClusterID.Equal(uuid.UUID{}) {
-		log.Infof(ctx, "started post cutover producer job %d", jr.JobID)
+		log.Dev.Infof(ctx, "started post cutover producer job %d", jr.JobID)
 	}
 
 	return streampb.ReplicationProducerSpec{
@@ -184,8 +183,9 @@ func updateReplicationStreamProgress(
 			return status, notAReplicationJobError(jobspb.JobID(streamID))
 		}
 		expiration := updateBegin.Add(details.ExpirationWindow)
-		if err := j.WithTxn(txn).Update(ctx, func(
-			txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater,
+		//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+		if err := j.DeprecatedWithTxn(txn).Update(ctx, func(
+			txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater,
 		) error {
 			status = streampb.StreamReplicationStatus{}
 			pts := ptsProvider.WithTxn(txn)
@@ -288,19 +288,18 @@ func (r *replicationStreamManagerImpl) buildReplicationStreamSpec(
 
 	// Partition the spans with SQLPlanner
 	dsp := jobExecCtx.DistSQLPlanner()
-	noLoc := roachpb.Locality{}
-	var streaks kvfollowerreadsccl.StreakConfig
+	var streaks followerreads.StreakConfig
 	if useStreaks {
-		streaks = kvfollowerreadsccl.StreakConfig{
+		streaks = followerreads.StreakConfig{
 			Min: 10, SmallPlanMin: 3, SmallPlanThreshold: 3, MaxSkew: 0.95,
 		}
 	}
-	oracle := kvfollowerreadsccl.NewBulkOracle(
-		dsp.ReplicaOracleConfig(evalCtx.Locality), noLoc, streaks,
+	oracle := followerreads.NewStreakBulkOracle(
+		dsp.ReplicaOracleConfig(evalCtx.Locality), streaks,
 	)
 
 	planCtx := dsp.NewPlanningCtxWithOracle(
-		ctx, jobExecCtx.ExtendedEvalContext(), nil /* planner */, nil /* txn */, sql.FullDistribution, oracle, noLoc,
+		ctx, jobExecCtx.ExtendedEvalContext(), nil /* planner */, nil /* txn */, sql.FullDistribution, oracle, []roachpb.Locality{}, sql.NoStrictLocalityFiltering,
 	)
 
 	spanPartitions, err := dsp.PartitionSpans(ctx, planCtx, targetSpans, sql.PartitionSpansBoundDefault)
@@ -321,17 +320,17 @@ func (r *replicationStreamManagerImpl) buildReplicationStreamSpec(
 	}
 
 	for _, sp := range spanPartitions {
-		nodeInfo, err := dsp.GetSQLInstanceInfo(sp.SQLInstanceID)
+		instanceInfo, err := dsp.GetSQLInstanceInfo(ctx, sp.SQLInstanceID)
 		if err != nil {
 			return nil, err
 		}
 		if r.knobs != nil && r.knobs.OnGetSQLInstanceInfo != nil {
-			nodeInfo = r.knobs.OnGetSQLInstanceInfo(nodeInfo)
+			instanceInfo = r.knobs.OnGetSQLInstanceInfo(instanceInfo)
 		}
 		res.Partitions = append(res.Partitions, streampb.ReplicationStreamSpec_Partition{
 			NodeID:     roachpb.NodeID(sp.SQLInstanceID),
-			SQLAddress: nodeInfo.SQLAddress,
-			Locality:   nodeInfo.Locality,
+			SQLAddress: util.MakeUnresolvedAddr("tcp", instanceInfo.InstanceSQLAddr),
+			Locality:   instanceInfo.Locality,
 			SourcePartition: &streampb.SourcePartition{
 				Spans: sp.Spans,
 			},
@@ -356,8 +355,9 @@ func completeReplicationStream(
 	if _, ok := j.Details().(jobspb.StreamReplicationDetails); !ok {
 		return notAReplicationJobError(jobspb.JobID(streamID))
 	}
-	return j.WithTxn(txn).Update(ctx, func(
-		txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater,
+	//lint:ignore SA1019 TODO: migrate to job_info_storage.go API
+	return j.DeprecatedWithTxn(txn).Update(ctx, func(
+		txn isql.Txn, md jobs.DeprecatedJobMetadata, ju *jobs.DeprecatedJobUpdater,
 	) error {
 		// Updates the stream ingestion status, make the job resumer exit running
 		// when picking up the new status.

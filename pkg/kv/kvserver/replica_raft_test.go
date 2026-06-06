@@ -8,6 +8,7 @@ package kvserver
 import (
 	"context"
 	"fmt"
+	math "math"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -103,19 +104,21 @@ func Test_handleRaftReadyStats_SafeFormat(t *testing.T) {
 				numAddSST:                3,
 				numAddSSTCopies:          1,
 			},
-			stateAssertions:      4,
+			assertionsRequested:  4,
 			numConfChangeEntries: 6,
 		},
 		append: logstore.AppendStats{
-			Begin:             ts(2),
-			End:               ts(3),
-			RegularEntries:    7,
-			RegularBytes:      1024,
-			SideloadedEntries: 3,
-			SideloadedBytes:   5 * (1 << 20),
-			PebbleBegin:       ts(3),
-			PebbleEnd:         ts(4),
-			PebbleBytes:       1024 * 5,
+			Begin: ts(2),
+			End:   ts(3),
+			EntryStats: logstore.EntryStats{
+				RegularEntries:    7,
+				RegularBytes:      1024,
+				SideloadedEntries: 3,
+				SideloadedBytes:   5 * (1 << 20),
+			},
+			PebbleBegin: ts(3),
+			PebbleEnd:   ts(4),
+			PebbleBytes: 1024 * 5,
 			PebbleCommitStats: storage.BatchCommitStats{
 				BatchCommitStats: pebble.BatchCommitStats{
 					TotalDuration:               100 * time.Millisecond,
@@ -463,38 +466,47 @@ func TestMaybeMarkReplicaUnavailableInLeaderlessWatcher(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		ctx := context.Background()
-		stopper := stop.NewStopper()
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			stopper := stop.NewStopper()
+			defer stopper.Stop(ctx)
 
-		tContext := testContext{}
-		cfg := TestStoreConfig(nil)
+			tContext := testContext{}
+			cfg := TestStoreConfig(nil)
+			// We set the RaftTickInternal to MaxInt32 to ensure that the replica
+			// doesn't tick and reset the leaderless state that we set up below.
+			cfg.RaftTickInterval = math.MaxInt32
 
-		if tc.disableWatcher {
-			ReplicaLeaderlessUnavailableThreshold.Override(ctx, &cfg.Settings.SV, time.Duration(0))
-		} else {
-			ReplicaLeaderlessUnavailableThreshold.Override(ctx, &cfg.Settings.SV, leaderlessThreshold)
-		}
-		tContext.StartWithStoreConfig(ctx, t, stopper, cfg)
+			if tc.disableWatcher {
+				ReplicaLeaderlessUnavailableThreshold.Override(ctx, &cfg.Settings.SV, time.Duration(0))
+			} else {
+				ReplicaLeaderlessUnavailableThreshold.Override(ctx, &cfg.Settings.SV, leaderlessThreshold)
+			}
+			tContext.StartWithStoreConfig(ctx, t, stopper, cfg)
 
-		repl := tContext.repl
-		repl.LeaderlessWatcher.mu.unavailable = tc.initReplicaUnavailable
-		repl.LeaderlessWatcher.mu.leaderlessTimestamp = tc.initLeaderlessTimestamp
-		repl.maybeMarkReplicaUnavailableInLeaderlessWatcher(ctx, tc.leader, now)
-		require.Equal(t, tc.expectedUnavailable, repl.LeaderlessWatcher.IsUnavailable())
-		require.Equal(t, tc.expectedLeaderlessTime, repl.LeaderlessWatcher.mu.leaderlessTimestamp)
+			repl := tContext.repl
+			repl.LeaderlessWatcher.mu.Lock()
+			repl.LeaderlessWatcher.mu.unavailable = tc.initReplicaUnavailable
+			repl.LeaderlessWatcher.mu.leaderlessTimestamp = tc.initLeaderlessTimestamp
+			repl.LeaderlessWatcher.mu.Unlock()
 
-		// Attempt to write to the replica to ensure that if it's considered
-		// unavailable, we should get an error.
-		key := roachpb.Key("a")
-		write := putArgs(key, []byte("foo"))
-		_, pErr := tContext.SendWrapped(&write)
+			repl.TestingRefreshLeaderlessWatcherUnavailableState(ctx, tc.leader, now, cfg.Settings)
+			require.Equal(t, tc.expectedUnavailable, repl.LeaderlessWatcher.IsUnavailable())
+			require.Equal(t, tc.expectedLeaderlessTime, repl.LeaderlessWatcher.LeaderlessSince())
 
-		if tc.expectedUnavailable {
-			require.Regexp(t, "replica has been leaderless for 1m0s", pErr)
-		} else {
-			require.NoError(t, pErr.GoError())
-		}
+			// Attempt to write to the replica to ensure that if it's considered
+			// unavailable, we should get an error.
+			key := roachpb.Key("a")
+			write := putArgs(key, []byte("foo"))
+			_, pErr := tContext.SendWrapped(&write)
 
-		stopper.Stop(ctx)
+			if tc.expectedUnavailable {
+				require.Regexp(t, "replica has been leaderless for 1m0s", pErr)
+			} else {
+				require.NoError(t, pErr.GoError())
+			}
+
+			stopper.Stop(ctx)
+		})
 	}
 }

@@ -46,6 +46,7 @@ type DatumAlloc struct {
 	duuidAlloc        []DUuid
 	dipnetAlloc       []DIPAddr
 	djsonAlloc        []DJSON
+	djsonpathAlloc    []DJsonpath
 	dtupleAlloc       []DTuple
 	doidAlloc         []DOid
 	dvoidAlloc        []DVoid
@@ -250,6 +251,14 @@ func (a *DatumAlloc) NewDCollatedString(contents string, locale string) (*DColla
 	return NewDCollatedString(contents, locale, &a.env)
 }
 
+// NewDCIText allocates a DCIText.
+func (a *DatumAlloc) NewDCIText(contents string) (Datum, error) {
+	if a == nil {
+		return NewDCIText(contents, &CollationEnvironment{})
+	}
+	return NewDCIText(contents, &a.env)
+}
+
 // NewDName allocates a DName.
 func (a *DatumAlloc) NewDName(v DString) Datum {
 	return NewDNameFromDString(a.NewDString(v))
@@ -258,6 +267,11 @@ func (a *DatumAlloc) NewDName(v DString) Datum {
 // NewDRefCursor allocates a DRefCursor.
 func (a *DatumAlloc) NewDRefCursor(v DString) Datum {
 	return NewDRefCursorFromDString(a.NewDString(v))
+}
+
+// NewDACLItem allocates a DACLItem.
+func (a *DatumAlloc) NewDACLItem(v DString) (Datum, error) {
+	return NewDACLItemFromDString(a.NewDString(v))
 }
 
 // NewDBytes allocates a DBytes.
@@ -692,8 +706,17 @@ func (a *DatumAlloc) NewDJsonpath(v DJsonpath) *DJsonpath {
 		*r = v
 		return r
 	}
-	r := (*DJsonpath)(a.newString())
+	buf := &a.djsonpathAlloc
+	if len(*buf) == 0 {
+		allocSize := defaultDatumAllocSize
+		if a.DefaultAllocSize != 0 {
+			allocSize = a.DefaultAllocSize
+		}
+		*buf = make([]DJsonpath, allocSize)
+	}
+	r := &(*buf)[0]
 	*r = v
+	*buf = (*buf)[1:]
 	return r
 }
 

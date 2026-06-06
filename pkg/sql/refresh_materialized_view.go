@@ -13,8 +13,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgnotice"
+	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqltelemetry"
+	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 )
 
 type refreshMaterializedViewNode struct {
@@ -33,17 +35,8 @@ func (p *planner) RefreshMaterializedView(
 		return nil, pgerror.Newf(pgcode.WrongObjectType, "%q is not a materialized view", desc.Name)
 	}
 
-	hasOwnership, err := p.HasOwnership(ctx, desc)
-	if err != nil {
+	if err := p.CheckPrivilege(ctx, desc, privilege.MAINTAIN); err != nil {
 		return nil, err
-	}
-
-	if !hasOwnership {
-		return nil, pgerror.Newf(
-			pgcode.InsufficientPrivilege,
-			"must be owner of materialized view %s",
-			desc.Name,
-		)
 	}
 
 	return &refreshMaterializedViewNode{n: n}, nil
@@ -119,6 +112,15 @@ func (n *refreshMaterializedViewNode) startExec(params runParams) error {
 		refreshProto.AsOf = params.p.Txn().ReadTimestamp()
 	}
 	desc.AddMaterializedViewRefreshMutation(refreshProto)
+
+	// Log the refresh materialized view event.
+	if err := params.p.logEvent(params.ctx,
+		desc.ID,
+		&eventpb.RefreshMaterializedView{
+			ViewName: params.p.ResolvedName(n.n.Name).FQString(),
+		}); err != nil {
+		return err
+	}
 
 	return params.p.writeSchemaChange(
 		params.ctx,

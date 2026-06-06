@@ -12,6 +12,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
+	"github.com/cockroachdb/cockroach/pkg/obs/workloadid"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
@@ -218,13 +219,29 @@ func (s *CrossRangeTxnWrapperSender) Send(
 	ctx context.Context, ba *kvpb.BatchRequest,
 ) (*kvpb.BatchResponse, *kvpb.Error) {
 	if ba.Txn != nil {
-		log.Fatalf(ctx, "CrossRangeTxnWrapperSender can't handle transactional requests")
+		log.KvExec.Fatalf(ctx, "CrossRangeTxnWrapperSender can't handle transactional requests")
+	}
+
+	if ba.Header.WorkloadID == 0 {
+		if wid, wtype := WorkloadInfoFromContext(ctx); wid != 0 {
+			ba.Header.WorkloadID = wid
+			ba.Header.WorkloadType = wtype.ToUint32()
+		}
 	}
 
 	br, pErr := s.wrapped.Send(ctx, ba)
 	if _, ok := pErr.GetDetail().(*kvpb.OpRequiresTxnError); !ok {
 		return br, pErr
 	}
+
+	// Before retrying the batch in a transaction, strip the header's timestamp.
+	// It may have been set to try a follower read, but it's not allowed in a txn
+	// (see comment near Header.Timestamp). Currently, this non-transactional API
+	// is used for follower reads only by KVNemesis.
+	//
+	// We can end up here if the batch contains transactional requests and spans
+	// multiple ranges.
+	ba.Header.Timestamp = hlc.Timestamp{}
 
 	err := s.db.Txn(ctx, func(ctx context.Context, txn *Txn) error {
 		txn.SetDebugName("auto-wrap")
@@ -269,6 +286,40 @@ type DB struct {
 	// Especially SettingsValue.
 	SQLKVResponseAdmissionQ *admission.WorkQueue
 	AdmissionPacerFactory   admission.PacerFactory
+
+	SQLCPUProvider admission.SQLCPUProvider
+}
+
+// workloadInfoCtxKey is the context key for workload info propagation.
+type workloadInfoCtxKey struct{}
+
+// workloadInfo bundles the workload ID and type for context
+// propagation.
+type workloadInfo struct {
+	id           uint64
+	workloadType workloadid.WorkloadType
+}
+
+// ContextWithWorkloadInfo returns a new context that carries the given
+// workload ID and type. Transaction creation methods (NewTxn, Txn,
+// TxnWithAdmissionControl, TxnWithSteppingEnabled) automatically
+// extract these values and call SetWorkloadInfo on the new
+// transaction, enabling ASH workload attribution.
+func ContextWithWorkloadInfo(
+	ctx context.Context, id uint64, wType workloadid.WorkloadType,
+) context.Context {
+	return context.WithValue(ctx, workloadInfoCtxKey{}, workloadInfo{
+		id:           id,
+		workloadType: wType,
+	})
+}
+
+// WorkloadInfoFromContext extracts the workload ID and type
+// previously set by ContextWithWorkloadInfo. Returns (0, 0) if no
+// workload info is present.
+func WorkloadInfoFromContext(ctx context.Context) (uint64, workloadid.WorkloadType) {
+	v, _ := ctx.Value(workloadInfoCtxKey{}).(workloadInfo)
+	return v.id, v.workloadType
 }
 
 // NonTransactionalSender returns a Sender that can be used for sending
@@ -499,6 +550,7 @@ func (db *DB) scan(
 	if maxRows > 0 {
 		b.Header.MaxSpanRequestKeys = maxRows
 	}
+	b.Header.IsReverse = isReverse
 	b.scan(begin, end, isReverse, str, dur)
 	r, err := getOneResult(db.Run(ctx, b), b)
 	return r.Rows, err
@@ -667,8 +719,14 @@ func (db *DB) AdminSplit(
 func (db *DB) AdminScatter(
 	ctx context.Context, key roachpb.Key, maxSize int64,
 ) (*kvpb.AdminScatterResponse, error) {
+	return db.sendAdminScatterRequest(ctx, roachpb.Span{Key: key, EndKey: key.Next()}, maxSize)
+}
+
+func (db *DB) sendAdminScatterRequest(
+	ctx context.Context, span roachpb.Span, maxSize int64,
+) (*kvpb.AdminScatterResponse, error) {
 	scatterReq := &kvpb.AdminScatterRequest{
-		RequestHeader:   kvpb.RequestHeaderFromSpan(roachpb.Span{Key: key, EndKey: key.Next()}),
+		RequestHeader:   kvpb.RequestHeaderFromSpan(span),
 		RandomizeLeases: true,
 		MaxSize:         maxSize,
 	}
@@ -681,6 +739,13 @@ func (db *DB) AdminScatter(
 		return nil, errors.Errorf("unexpected response of type %T for AdminScatter", raw)
 	}
 	return resp, nil
+}
+
+// AdminScatterSpan scatters the ranges that overlap the specified span.
+func (db *DB) AdminScatterSpan(
+	ctx context.Context, span roachpb.Span,
+) (*kvpb.AdminScatterResponse, error) {
+	return db.sendAdminScatterRequest(ctx, span, 0 /* maxSize */)
 }
 
 // AdminUnsplit removes the sticky bit of the range specified by splitKey.
@@ -899,6 +964,23 @@ func (db *DB) Barrier(ctx context.Context, begin, end interface{}) (hlc.Timestam
 	return resp.Timestamp, nil
 }
 
+func (db *DB) FlushLockTable(ctx context.Context, begin, end interface{}) error {
+	b := &Batch{}
+	b.flushLockTable(begin, end)
+	if err := getOneErr(db.Run(ctx, b), b); err != nil {
+		return err
+	}
+	if l := len(b.response.Responses); l != 1 {
+		return errors.Errorf("got %d responses for FlushLockTable", l)
+	}
+	resp := b.response.Responses[0].GetFlushLockTable()
+	if resp == nil {
+		return errors.Errorf("unexpected response %T for FlushLockTable",
+			b.response.Responses[0].GetInner())
+	}
+	return nil
+}
+
 // BarrierWithLAI is like Barrier, but also returns the lease applied index and
 // range descriptor at which the barrier was applied. In this case, the barrier
 // can't span multiple ranges, otherwise a RangeKeyMismatchError is returned.
@@ -977,6 +1059,9 @@ func (db *DB) NewTxn(ctx context.Context, debugName string) *Txn {
 	nodeID, _ := db.ctx.NodeID.OptionalNodeID() // zero if not available
 	txn := NewTxn(ctx, db, nodeID)
 	txn.SetDebugName(debugName)
+	if wid, wtype := WorkloadInfoFromContext(ctx); wid != 0 {
+		txn.SetWorkloadInfo(wid, 0 /* appNameID */, wtype)
+	}
 	return txn
 }
 
@@ -1034,6 +1119,9 @@ func (db *DB) TxnWithAdmissionControl(
 	txn := NewTxnWithAdmissionControl(ctx, db, nodeID, source, priority)
 	txn.SetDebugName("unnamed")
 	txn.ConfigureStepping(ctx, steppingMode)
+	if wid, wtype := WorkloadInfoFromContext(ctx); wid != 0 {
+		txn.SetWorkloadInfo(wid, 0 /* appNameID */, wtype)
+	}
 	return runTxn(ctx, txn, retryable)
 }
 
@@ -1053,6 +1141,9 @@ func (db *DB) TxnWithSteppingEnabled(
 	nodeID, _ := db.ctx.NodeID.OptionalNodeID() // zero if not available
 	txn := NewTxnWithSteppingEnabled(ctx, db, nodeID, qualityOfService)
 	txn.SetDebugName("unnamed")
+	if wid, wtype := WorkloadInfoFromContext(ctx); wid != 0 {
+		txn.SetWorkloadInfo(wid, 0 /* appNameID */, wtype)
+	}
 	return runTxn(ctx, txn, retryable)
 }
 
@@ -1129,6 +1220,12 @@ func (db *DB) endPrepared(ctx context.Context, txn *roachpb.Transaction, commit 
 // send runs the specified calls synchronously in a single batch and returns
 // any errors. Returns (nil, nil) for an empty batch.
 func (db *DB) send(ctx context.Context, ba *kvpb.BatchRequest) (*kvpb.BatchResponse, *kvpb.Error) {
+	if ba.Header.WorkloadID == 0 {
+		if wid, wtype := WorkloadInfoFromContext(ctx); wid != 0 {
+			ba.Header.WorkloadID = wid
+			ba.Header.WorkloadType = wtype.ToUint32()
+		}
+	}
 	return db.sendUsingSender(ctx, ba, db.NonTransactionalSender())
 }
 
@@ -1149,7 +1246,7 @@ func (db *DB) sendUsingSender(
 	br, pErr := sender.Send(ctx, ba)
 	if pErr != nil {
 		if log.V(1) {
-			log.Infof(ctx, "failed batch: %s", pErr)
+			log.KvExec.Infof(ctx, "failed batch: %s", pErr)
 		}
 		return nil, pErr
 	}

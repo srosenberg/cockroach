@@ -7,10 +7,13 @@ package cspann
 
 import (
 	"cmp"
+	"math"
 	"math/rand"
 	"slices"
 
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann/utils"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann/workspace"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
 	"github.com/cockroachdb/cockroach/pkg/util/num32"
 	"github.com/cockroachdb/cockroach/pkg/util/vector"
 	"github.com/cockroachdb/errors"
@@ -37,6 +40,21 @@ const allowImbalance = 33
 // "Fast Partitioning with Flexible Balance Constraints" by Hongfu Liu, Ziming
 // Huang, et. al.
 // URL: https://ieeexplore.ieee.org/document/8621917
+//
+// We should also look at the FAISS library's implementation of K-means, which
+// has provisions for dealing with empty clusters.
+//
+// For L2Squared distance, vectors are grouped by their distance from mean
+// centroids (simple averaging of each dimension). For InnerProduct and Cosine
+// distance metrics, vectors are grouped by their distance from spherical
+// centroids (mean centroid normalized to unit length). This prevents
+// high-magnitude centroids from disproportionately attracting vectors and
+// continually growing in magnitude as centroids of centroids are computed.
+// FAISS normalizes centroids when using InnerProduct distance for this reason.
+//
+// NOTE: ComputeCentroids always returns mean centroids, even for InnerProduct
+// and Cosine metrics. Spherical centroids can be derived from mean centroids
+// by normalization, but the reverse is not possible.
 type BalancedKmeans struct {
 	// MaxIterations specifies the maximum number of retries that the K-means
 	// algorithm will attempt as part of finding locally optimal partitions.
@@ -47,194 +65,299 @@ type BalancedKmeans struct {
 	// random number generator is used instead. Setting this to non-nil is useful
 	// for generating deterministic random numbers during testing.
 	Rand *rand.Rand
-
-	// vectors is the set of input vectors.
-	vectors *vector.Set
-	// offsets stores offsets into the set of input vectors, and is repeatedly
-	// updated as the algorithm converges to a local optimum.
-	offsets []uint64
-	// leftCentroid is the mean value of vectors in the left partition, and is
-	// repeatedly updated as the algorithm converges to a local optimum.
-	leftCentroid vector.T
-	// rightCentroid is the mean value of vectors in the right partition, and is
-	// repeatedly updated as the algorithm converges to a local optimum.
-	rightCentroid vector.T
+	// DistanceMetric specifies which distance function to use when clustering
+	// vectors. Lower distances indicate greater similarity.
+	DistanceMetric vecpb.DistanceMetric
 }
 
-// Compute separates the given set of input vectors into a left and right
-// partition. It returns two offset slices that identify which vectors go into
-// which partition, by their offset in the input set. Both offset slices are in
-// sorted order.
+// ComputeCentroids separates the given set of input vectors into a left and
+// right partition using the K-means algorithm. It sets the leftCentroid and
+// rightCentroid inputs to the centroids of those partitions, respectively. If
+// pinLeftCentroid is true, then keep the input value of leftCentroid and only
+// compute the value of rightCentroid.
 //
-// The caller is responsible for allocating "offsets" with length equal to the
-// size of the input vector set. Compute returns sub-slices of the allocated
-// "offsets" slice.
-func (km *BalancedKmeans) Compute(
-	vectors *vector.Set, offsets []uint64,
-) (leftOffsets, rightOffsets []uint64) {
-	if vectors.Count < 2 {
-		panic(errors.AssertionFailedf("k-means requires at least 2 vectors"))
-	}
+// NOTE: The caller is responsible for allocating the input centroids with
+// dimensions equal to the dimensions of the input vector set.
+//
+// NOTE: For InnerProduct and Cosine distance metrics, clustering uses spherical
+// centroids (normalized to unit length), but ComputeCentroids still always
+// returns mean centroids. See BalancedKmeans comment for details.
+func (km *BalancedKmeans) ComputeCentroids(
+	vectors vector.Set, leftCentroid, rightCentroid vector.T, pinLeftCentroid bool,
+) {
+	km.validateVectors(vectors)
 
-	km.vectors = vectors
-	km.offsets = offsets
+	tempAssignments := km.Workspace.AllocUint64s(vectors.Count)
+	defer km.Workspace.FreeUint64s(tempAssignments)
 
-	tolerance := km.calculateTolerance()
+	tolerance := km.calculateTolerance(vectors)
 
 	// Pick 2 centroids to start, using the K-means++ algorithm.
-	tempVectorSet := km.Workspace.AllocVectorSet(4, vectors.Dims)
-	defer km.Workspace.FreeVectorSet(tempVectorSet)
-	km.leftCentroid = tempVectorSet.At(0)
-	km.rightCentroid = tempVectorSet.At(1)
-	newLeftCentroid := tempVectorSet.At(2)
-	newRightCentroid := tempVectorSet.At(3)
-	km.selectInitialCentroids()
+	// TOOD(andyk): We should consider adding an outer loop here to generate new
+	// random centroids in the case where more than 2/3 the vectors are assigned
+	// to one of the partitions. If we're that unbalanced, it might just be
+	// because we picked bad starting centroids and retrying could correct that.
+	tempLeftCentroid := km.Workspace.AllocVector(vectors.Dims)
+	defer km.Workspace.FreeVector(tempLeftCentroid)
+	newLeftCentroid := tempLeftCentroid
 
-	// calcPartitionCentroid finds the mean of the vectors referenced by the
-	// provided offsets.
-	calcPartitionCentroid := func(centroid vector.T, offsets []uint64) {
-		copy(centroid, km.vectors.At(int(offsets[0])))
-		for _, offset := range offsets[1:] {
-			num32.Add(centroid, km.vectors.At(int(offset)))
-		}
-		num32.Scale(1/float32(len(offsets)), centroid)
+	tempRightCentroid := km.Workspace.AllocVector(vectors.Dims)
+	defer km.Workspace.FreeVector(tempRightCentroid)
+	newRightCentroid := tempRightCentroid
+
+	if !pinLeftCentroid {
+		km.selectInitialLeftCentroid(vectors, leftCentroid)
+	} else {
+		newLeftCentroid = leftCentroid
 	}
+	km.selectInitialRightCentroid(vectors, leftCentroid, rightCentroid)
 
 	maxIterations := km.MaxIterations
 	if maxIterations == 0 {
 		maxIterations = 16
 	}
 
-	for i := 0; i < maxIterations; i++ {
+	for range maxIterations {
 		// Assign vectors to one of the partitions.
-		leftOffsets, rightOffsets = km.assignPartitions()
+		km.AssignPartitions(vectors, leftCentroid, rightCentroid, tempAssignments)
 
-		// Calculate new centroids of the left and right partitions.
-		calcPartitionCentroid(newLeftCentroid, leftOffsets)
-		calcPartitionCentroid(newRightCentroid, rightOffsets)
+		// Calculate new centroids.
+		if !pinLeftCentroid {
+			calcPartitionCentroid(vectors, tempAssignments, 0, newLeftCentroid)
+		}
+		calcPartitionCentroid(vectors, tempAssignments, 1, newRightCentroid)
 
-		// Check if algorithm has converged.
-		leftCentroidShift := num32.L2SquaredDistance(newLeftCentroid, km.leftCentroid)
-		rightCentroidShift := num32.L2SquaredDistance(newRightCentroid, km.rightCentroid)
-		if leftCentroidShift <= tolerance && rightCentroidShift <= tolerance {
+		// Check for convergence using the scikit-learn algorithm.
+		leftCentroidShift := num32.L2SquaredDistance(leftCentroid, newLeftCentroid)
+		rightCentroidShift := num32.L2SquaredDistance(rightCentroid, newRightCentroid)
+		if leftCentroidShift+rightCentroidShift <= tolerance {
 			break
 		}
 
 		// Swap old and new centroids.
-		km.leftCentroid, newLeftCentroid = newLeftCentroid, km.leftCentroid
-		km.rightCentroid, newRightCentroid = newRightCentroid, km.rightCentroid
+		newLeftCentroid, leftCentroid = leftCentroid, newLeftCentroid
+		newRightCentroid, rightCentroid = rightCentroid, newRightCentroid
+	}
+}
+
+// AssignPartitions assigns the input vectors into either the left or right
+// partition, based on which partition's centroid they're closer to. It also
+// enforces a constraint that one partition will never be more than 2x as large
+// as the other. Each assignment will be set to 0 if the vector gets assigned
+// to the left partition, or 1 if assigned to the right partition. It returns
+// the number of vectors assigned to the left partition.
+//
+// NOTE: For InnerProduct and Cosine distance metrics, AssignPartitions groups
+// vectors by their distance from spherical centroids (i.e. unit centroids). See
+// BalancedKmeans comment.
+func (km *BalancedKmeans) AssignPartitions(
+	vectors vector.Set, leftCentroid, rightCentroid vector.T, assignments []uint64,
+) int {
+	count := vectors.Count
+	if len(assignments) != count {
+		panic(errors.AssertionFailedf(
+			"assignments slice must have length %d, got %d", count, len(assignments)))
 	}
 
-	// Sort left and right offsets.
-	slices.Sort(leftOffsets)
-	slices.Sort(rightOffsets)
+	tempDistances := km.Workspace.AllocFloats(count)
+	defer km.Workspace.FreeFloats(tempDistances)
 
-	return leftOffsets, rightOffsets
+	// For Cosine and InnerProduct distances, compute the norms (magnitudes) of
+	// the left and right centroids. Invert the magnitude to avoid division in
+	// the loop, as well as to take care of the division-by-zero case up front.
+	spherical := km.DistanceMetric == vecpb.CosineDistance || km.DistanceMetric == vecpb.InnerProductDistance
+	var invLeftNorm, invRightNorm float32
+	if spherical {
+		invLeftNorm = num32.Norm(leftCentroid)
+		if invLeftNorm != 0 {
+			invLeftNorm = 1 / invLeftNorm
+		}
+		invRightNorm = num32.Norm(rightCentroid)
+		if invRightNorm != 0 {
+			invRightNorm = 1 / invRightNorm
+		}
+	}
+
+	// Calculate difference between distance of each vector to the left and right
+	// centroids.
+	var leftCount int
+	for i := range count {
+		var leftDistance, rightDistance float32
+		if spherical {
+			// Compute the distance between the input vector and the spherical
+			// centroids. Because input vectors are expected to be normalized, Cosine
+			// distance reduces to be InnerProduct distance. InnerProduct distance
+			// is calculated like this:
+			//
+			//   sphericalCentroid = centroid / ||centroid||
+			//   -(inputVector · sphericalCentroid)
+			//
+			// That is, we convert each mean centroid to a spherical centroid by
+			// normalizing it (dividing by its norm). Then we compute the negative
+			// dot product of the spherical centroid with the input vector. However,
+			// we can use algebraic equivalencies to change the order of operations
+			// to be more efficient:
+			//
+			//   -(inputVector · centroid) / ||centroid||
+			leftDistance = -num32.Dot(vectors.At(i), leftCentroid) * invLeftNorm
+			rightDistance = -num32.Dot(vectors.At(i), rightCentroid) * invRightNorm
+		} else {
+			// For L2Squared, compute Euclidean distance to the mean centroids.
+			leftDistance = num32.L2SquaredDistance(vectors.At(i), leftCentroid)
+			rightDistance = num32.L2SquaredDistance(vectors.At(i), rightCentroid)
+		}
+		tempDistances[i] = leftDistance - rightDistance
+		if tempDistances[i] < 0 {
+			leftCount++
+		}
+	}
+
+	// Check imbalance limit, so that at least (allowImbalance / 100)% of the
+	// vectors go to each side.
+	minCount := (count*allowImbalance + 99) / 100
+	if leftCount >= minCount && (count-leftCount) >= minCount {
+		// Set assignments slice.
+		for i := range count {
+			if tempDistances[i] < 0 {
+				assignments[i] = 0
+			} else {
+				assignments[i] = 1
+			}
+		}
+		return leftCount
+	}
+
+	// Not enough vectors on left or right side, so rebalance them.
+	tempOffsets := km.Workspace.AllocUint64s(count)
+	defer km.Workspace.FreeUint64s(tempOffsets)
+
+	// Arg sort by the distance differences in order of increasing distance to
+	// the left centroid, relative to the right centroid. Use a stable sort to
+	// ensure that tests are deterministic.
+	for i := range count {
+		tempOffsets[i] = uint64(i)
+	}
+	slices.SortStableFunc(tempOffsets, func(i, j uint64) int {
+		return cmp.Compare(tempDistances[i], tempDistances[j])
+	})
+
+	if leftCount < minCount {
+		leftCount = minCount
+	} else if (count - leftCount) < minCount {
+		leftCount = count - minCount
+	}
+
+	// Set assignments slice.
+	for i := range count {
+		if i < leftCount {
+			assignments[tempOffsets[i]] = 0
+		} else {
+			assignments[tempOffsets[i]] = 1
+		}
+	}
+
+	return leftCount
 }
 
 // calculateTolerance computes a threshold distance value. Once new centroids
 // are less than this distance from the old centroids, the K-means algorithm
 // terminates.
-func (km *BalancedKmeans) calculateTolerance() float32 {
-	tempVectorSet := km.Workspace.AllocVectorSet(4, km.vectors.Dims)
+func (km *BalancedKmeans) calculateTolerance(vectors vector.Set) float32 {
+	tempVectorSet := km.Workspace.AllocVectorSet(4, vectors.Dims)
 	defer km.Workspace.FreeVectorSet(tempVectorSet)
 
 	// Use tolerance algorithm from scikit-learn:
 	//   tolerance = mean(variances(vectors, axis=0)) * 1e-4
-	return km.calculateMeanOfVariances() * 1e-4
+	return km.calculateMeanOfVariances(vectors) * 1e-4
 }
 
-// selectInitialCentroids uses the K-means++ algorithm to select the initial
-// partition centroids, from this paper:
+// selectInitialLeftCentroid selects the left centroid randomly from the input
+// vector set. This is according to the K-means++ algorithm, from this paper:
 //
 // "k-means++: The Advantages of Careful Seeding", by David Arthur and Sergei
 // Vassilvitskii
 // URL: http://ilpubs.stanford.edu:8090/778/1/2006-13.pdf
 //
-// This works by selecting the first centroid randomly from the input vector
-// set. The next centroid is randomly selected from the remaining vectors, but
-// with probability that is proportional to their distances from the first
-// centroid.
-func (km *BalancedKmeans) selectInitialCentroids() {
-	count := km.vectors.Count
-	tempDistances := km.Workspace.AllocFloats(count)
-	defer km.Workspace.FreeFloats(tempDistances)
-
+// The chosen vector is copied into "leftCentroid".
+func (km *BalancedKmeans) selectInitialLeftCentroid(vectors vector.Set, leftCentroid vector.T) {
 	// Randomly select the left centroid from the vector set.
 	var leftOffset int
 	if km.Rand != nil {
-		leftOffset = km.Rand.Intn(count)
+		leftOffset = km.Rand.Intn(vectors.Count)
 	} else {
-		leftOffset = rand.Intn(count)
+		leftOffset = rand.Intn(vectors.Count)
 	}
-	copy(km.leftCentroid, km.vectors.At(leftOffset))
+	copy(leftCentroid, vectors.At(leftOffset))
+}
 
-	// Calculate distance of each vector in the set from the left centroid.
+// selectInitialRightCentroid continues the K-means++ algorithm begun in
+// selectInitialLeftCentroid by randomly selecting from the remaining vectors,
+// but with probability that is proportional to their distances from the left
+// centroid. The chosen vector is copied into "rightCentroid".
+func (km *BalancedKmeans) selectInitialRightCentroid(
+	vectors vector.Set, leftCentroid, rightCentroid vector.T,
+) {
+	count := vectors.Count
+	tempDistances := km.Workspace.AllocFloats(count)
+	defer km.Workspace.FreeFloats(tempDistances)
+
+	// Calculate distance of each vector in the set from the left centroid. Keep
+	// track of min distance and sum of distances for calculating probabilities.
 	var distanceSum float32
-	for i := 0; i < count; i++ {
-		tempDistances[i] = num32.L2SquaredDistance(km.vectors.At(i), km.leftCentroid)
-		distanceSum += tempDistances[i]
+	distanceMin := float32(math.MaxFloat32)
+	for i := range count {
+		distance := vecpb.MeasureDistance(km.DistanceMetric, vectors.At(i), leftCentroid)
+		if km.DistanceMetric == vecpb.InnerProductDistance {
+			// For inner product, rank vectors by their angular distance from the
+			// left centroid, ignoring their magnitudes.
+			// NOTE: Vectors have norm of one (i.e. they are unit vectors) when using
+			// Cosine distance, so no need to perform this calculation.
+			// NOTE: We don't need to normalize the left centroid because scaling
+			// its magnitude just scales distances by the same proportion -
+			// probabilities won't change.
+			norm := num32.Norm(vectors.At(i))
+			if norm != 0 {
+				distance /= norm
+			}
+		}
+		tempDistances[i] = distance
+		distanceSum += distance
+		if distance < distanceMin {
+			distanceMin = distance
+		}
+	}
+	// Adjust the sum of distances to handle the case where the min distance is
+	// not zero. For example, if the min distance is -10, then all distances need
+	// to be adjusted by +10 so that the min distance becomes 0.
+	distanceSum += float32(count) * -distanceMin
+	if distanceMin != 0 {
+		num32.AddConst(-distanceMin, tempDistances)
 	}
 
 	// Calculate probability of each vector becoming the right centroid, equal
 	// to its distance from the left centroid. Further vectors have a higher
-	// probability. Note that the left centroid has zero distance from itself,
-	// and so will never be selected.
-	num32.Scale(1/distanceSum, tempDistances)
+	// probability. For Euclidean or Cosine distance, the left centroid has zero
+	// distance from itself, and so will never be selected (unless there are
+	// duplicates). However, InnerProduct can select the left centroid in rare
+	// cases.
+	if distanceSum != 0 {
+		num32.Scale(1/distanceSum, tempDistances)
+	}
 	var cum, rnd float32
 	if km.Rand != nil {
 		rnd = km.Rand.Float32()
 	} else {
 		rnd = rand.Float32()
 	}
-	rightOffset := (leftOffset + 1) % count
-	for i := 0; i < len(tempDistances); i++ {
+	rightOffset := 0
+	for i := range len(tempDistances) {
 		cum += tempDistances[i]
 		if rnd < cum {
 			rightOffset = i
 			break
 		}
 	}
-	copy(km.rightCentroid, km.vectors.At(rightOffset))
-}
-
-// assignPartitions assigns the input vectors into either the left or right
-// partition, based on which partition's centroid they're closer to. It also
-// enforces a constraint that one partition will never be more than 2x as large
-// as the other.
-func (km *BalancedKmeans) assignPartitions() (leftOffsets, rightOffsets []uint64) {
-	count := km.vectors.Count
-	tempDistances := km.Workspace.AllocFloats(count)
-	defer km.Workspace.FreeFloats(tempDistances)
-
-	// Calculate difference between squared distance of each vector to the left
-	// and right centroids.
-	for i := 0; i < count; i++ {
-		tempDistances[i] = num32.L2SquaredDistance(km.vectors.At(i), km.leftCentroid) -
-			num32.L2SquaredDistance(km.vectors.At(i), km.rightCentroid)
-		km.offsets[i] = uint64(i)
-	}
-
-	// Arg sort by the distance differences in order of increasing distance to
-	// the left centroid, relative to the right centroid. Use a stable sort to
-	// ensure that tests are deterministic.
-	slices.SortStableFunc(km.offsets, func(i, j uint64) int {
-		return cmp.Compare(tempDistances[i], tempDistances[j])
-	})
-
-	// Find split between distances, with negative distances going to the left
-	// centroid and others going to the right. Enforce imbalance limit, such that
-	// at least (allowImbalance / 100)% of the vectors go to each side.
-	start := (count*allowImbalance + 99) / 100
-	split := start
-	for split < count-start {
-		if tempDistances[km.offsets[split]] >= 0 {
-			break
-		}
-		split++
-	}
-
-	return km.offsets[:split], km.offsets[split:]
+	copy(rightCentroid, vectors.At(rightOffset))
 }
 
 // calculateMeanOfVariances calculates the variance in each dimension of the
@@ -257,13 +380,13 @@ func (km *BalancedKmeans) assignPartitions() (leftOffsets, rightOffsets []uint64
 // The first term is the two-pass algorithm from figure 1.1a. The second term
 // is for error correction of the first term that can result from floating-point
 // precision loss during intermediate calculations.
-func (km *BalancedKmeans) calculateMeanOfVariances() float32 {
-	tempVectorSet := km.Workspace.AllocVectorSet(4, km.vectors.Dims)
+func (km *BalancedKmeans) calculateMeanOfVariances(vectors vector.Set) float32 {
+	tempVectorSet := km.Workspace.AllocVectorSet(4, vectors.Dims)
 	defer km.Workspace.FreeVectorSet(tempVectorSet)
 
 	// Start with the mean of the vectors.
 	tempMean := tempVectorSet.At(0)
-	km.vectors.Centroid(tempMean)
+	vectors.Centroid(tempMean)
 
 	// Prepare temp vector storage.
 	tempVariance := tempVectorSet.At(1)
@@ -274,9 +397,9 @@ func (km *BalancedKmeans) calculateMeanOfVariances() float32 {
 	num32.Zero(tempCompensation)
 
 	// Compute the first term and part of second term.
-	for i := 0; i < km.vectors.Count; i++ {
+	for i := range vectors.Count {
 		// First: x[i]
-		vector := km.vectors.At(i)
+		vector := vectors.At(i)
 		// First: x[i] - mean(x)
 		num32.SubTo(tempDiff, vector, tempMean)
 		// Second: sum[i=1..N](x[i] - mean(x))
@@ -291,13 +414,55 @@ func (km *BalancedKmeans) calculateMeanOfVariances() float32 {
 	// Second: (sum[i=1..N](x[i] - mean(x)))**2
 	num32.Mul(tempCompensation, tempCompensation)
 	// Second: 1/N * (sum[i=1..N](x[i] - mean(x)))**2
-	num32.Scale(1/float32(km.vectors.Count), tempCompensation)
+	num32.Scale(1/float32(vectors.Count), tempCompensation)
 	// S = First - Second
 	num32.Sub(tempVariance, tempCompensation)
 
 	// Variance = S / (N-1)
-	num32.Scale(1/float32(km.vectors.Count-1), tempVariance)
+	num32.Scale(1/float32(vectors.Count-1), tempVariance)
 
 	// Calculate the mean of the variance elements.
-	return num32.Sum(tempVariance) / float32(km.vectors.Dims)
+	return num32.Sum(tempVariance) / float32(vectors.Dims)
+}
+
+// validateVectors ensures that if the Cosine distance metric is being used,
+// that the vectors are unit vectors.
+func (km *BalancedKmeans) validateVectors(vectors vector.Set) {
+	if vectors.Count < 2 {
+		panic(errors.AssertionFailedf("k-means requires at least 2 vectors"))
+	}
+
+	switch km.DistanceMetric {
+	case vecpb.L2SquaredDistance, vecpb.InnerProductDistance:
+
+	case vecpb.CosineDistance:
+		utils.ValidateUnitVectors(vectors)
+
+	default:
+		panic(errors.AssertionFailedf("%s distance metric is not supported", km.DistanceMetric))
+	}
+}
+
+// calcPartitionCentroid calculates the mean centroid of a subset of the given
+// vectors, which represents the "average" of those vectors. The subset consists
+// of vectors with a corresponding assignment value equal to "assignVal". For
+// example, if "assignments" is [0, 1, 0, 0, 1] and "assignVal" is 0, then
+// vectors at positions 0, 2, and 3 are in the subset. The result is written to
+// the provided centroid vector, which the caller is expected to allocate.
+func calcPartitionCentroid(
+	vectors vector.Set, assignments []uint64, assignVal uint64, centroid vector.T,
+) {
+	var n int
+	num32.Zero(centroid)
+	for i, val := range assignments {
+		if val != assignVal {
+			continue
+		}
+		num32.Add(centroid, vectors.At(i))
+		n++
+	}
+
+	// Compute the mean vector by scaling the centroid by the inverse of N,
+	// where N is the number of input vectors.
+	num32.Scale(1/float32(n), centroid)
 }

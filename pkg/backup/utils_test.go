@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -39,6 +41,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/testcluster"
+	"github.com/cockroachdb/cockroach/pkg/util/besteffort"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
@@ -65,6 +68,7 @@ const (
 // tc.WaitForFullReplication before calling this method,
 // so up-replication has usually already taken place.
 var InitManualReplication = backuptestutils.InitManualReplication
+var NoInitManipulation = func(tc *testcluster.TestCluster) {}
 
 func backupRestoreTestSetupWithParams(
 	t testing.TB,
@@ -229,7 +233,7 @@ func makeThresholdBlocker(threshold int) thresholdBlocker {
 // getSpansFromManifest returns the spans that describe the data included in a
 // given backup.
 func getSpansFromManifest(ctx context.Context, t *testing.T, backupPath string) roachpb.Spans {
-	backupManifestBytes, err := os.ReadFile(backupPath + "/" + backupbase.BackupManifestName)
+	backupManifestBytes, err := os.ReadFile(backupPath + "/" + backupbase.DeprecatedBackupManifestName)
 	require.NoError(t, err)
 	var backupManifest backuppb.BackupManifest
 	decompressedBytes, err := backupinfo.DecompressData(ctx, mon.NewStandaloneUnlimitedAccount(), backupManifestBytes)
@@ -239,7 +243,7 @@ func getSpansFromManifest(ctx context.Context, t *testing.T, backupPath string) 
 	for _, file := range backupManifest.Files {
 		spans = append(spans, file.Span)
 	}
-	mergedSpans, _ := roachpb.MergeSpans(&spans)
+	mergedSpans, _ := roachpb.MergeSpans(spans)
 	return mergedSpans
 }
 
@@ -386,7 +390,7 @@ func waitForReplicaFieldToBeSet(
 
 func thresholdFromTrace(t *testing.T, traceString string) hlc.Timestamp {
 	t.Helper()
-	thresholdRE := regexp.MustCompile(`(?s).*Threshold:(?P<threshold>[^\s]*)`)
+	thresholdRE := regexp.MustCompile(`(?s).*Threshold=(?P<threshold>[^\s]*)`)
 	threshStr := string(thresholdRE.ExpandString(nil, "$threshold",
 		traceString, thresholdRE.FindStringSubmatchIndex(traceString)))
 	thresh, err := hlc.ParseTimestamp(threshStr)
@@ -578,15 +582,34 @@ func requireRecoveryEvent(
 	})
 }
 
-// getFullBackupPaths finds all full backups in the given URI and returns their paths using SHOW BACKUPS IN
+// getFullBackupPaths finds all full backups in the given URI and returns their
+// paths in sorted order (earliest full first).
 func getFullBackupPaths(t *testing.T, sqlDB *sqlutils.SQLRunner, uri string) []string {
 	t.Helper()
-	var fullBackupPaths []string
-	rows := sqlDB.Query(t, `SELECT path FROM [SHOW BACKUPS IN $1]`, uri)
+	defer setUseBackupsWithIDs(t, sqlDB, true)()
+
+	fullPaths := make(map[string]struct{})
+	rows := sqlDB.Query(
+		t, fmt.Sprintf(`SELECT id FROM [SHOW BACKUPS IN '%s']`, uri),
+	)
+	defer rows.Close()
 	for rows.Next() {
-		var path string
-		require.NoError(t, rows.Scan(&path))
-		fullBackupPaths = append(fullBackupPaths, path)
+		var id string
+		require.NoError(t, rows.Scan(&id))
+		fullEnd, _, err := backupinfo.DecodeBackupID(id)
+		require.NoError(t, err)
+		fullPath := fullEnd.Format(backupbase.DateBasedIntoFolderName)
+		fullPaths[fullPath] = struct{}{}
 	}
-	return fullBackupPaths
+	return slices.Sorted(maps.Keys(fullPaths))
+}
+
+// AllowORDownloadBestEffortFailures marks the best-effort operations in the
+// online restore download retry loop as allowed to fail in test builds. Tests
+// that do not wait for the download phase to complete before tearing down the
+// cluster may encounter context cancellation in these operations, which would
+// otherwise panic in test builds.
+func AllowORDownloadBestEffortFailures(t *testing.T) {
+	t.Helper()
+	t.Cleanup(besteffort.TestAllowFailure("or-download-failed-log"))
 }

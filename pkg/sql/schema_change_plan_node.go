@@ -75,6 +75,18 @@ func (p *planner) SchemaChange(ctx context.Context, stmt tree.Statement) (planNo
 		}
 	}
 
+	// Some statements reach this point because tree.CanModifySchema reports
+	// them as schema-modifying (e.g. DISCARD ALL drops temporary tables),
+	// but they do work beyond schema changes (resetting session state,
+	// plan cache, cached sequence values, etc.) that the declarative schema
+	// changer has no vocabulary for. Route them straight to the legacy path:
+	// scbuild.Build would otherwise panic with a NotImplementedError on
+	// every invocation, producing high-volume INFO log spam on busy clusters.
+	switch stmt.(type) {
+	case *tree.Discard:
+		return nil, nil
+	}
+
 	scs := p.extendedEvalCtx.SchemaChangerState
 	scs.stmts = append(scs.stmts, p.stmt.SQL)
 	deps := p.newSchemaChangeBuilderDependencies(scs.stmts)
@@ -95,7 +107,9 @@ func (p *planner) SchemaChange(ctx context.Context, stmt tree.Statement) (planNo
 	// If we successfully planned a schema change here, then update telemetry
 	// to indicate that we used the new schema changer.
 	telemetry.Inc(sqltelemetry.DeclarativeSchemaChangerCounter)
-	p.curPlan.instrumentation.schemaChangerMode = schemaChangerModeDeclarative
+	// The curPlan may not be initialized yet, but will pick up the instrumentation
+	// from the planner.
+	p.instrumentation.schemaChangerMode = schemaChangerModeDeclarative
 
 	return &schemaChangePlanNode{
 		stmt:               stmt,
@@ -177,7 +191,7 @@ func (p *planner) waitForDescriptorSchemaChanges(
 			blockingJobIDs = desc.ConcurrentSchemaChangeJobIDs()
 			return nil
 		}); err != nil {
-			log.Infof(ctx, "done schema change wait on concurrent jobs due"+
+			log.Dev.Infof(ctx, "done schema change wait on concurrent jobs due"+
 				" to error on descriptor (%d): %s", descID, err)
 			return err
 		}
@@ -185,7 +199,7 @@ func (p *planner) waitForDescriptorSchemaChanges(
 			break
 		}
 		if logEvery.ShouldLog() {
-			log.Infof(ctx,
+			log.Dev.Infof(ctx,
 				"schema change waiting for %v concurrent schema change job(s) %v on descriptor %d,"+
 					" waited %v so far", len(blockingJobIDs), blockingJobIDs, descID, timeutil.Since(start),
 			)
@@ -195,7 +209,7 @@ func (p *planner) waitForDescriptorSchemaChanges(
 		}
 	}
 
-	log.Infof(
+	log.Dev.Infof(
 		ctx,
 		"done waiting for concurrent schema changes on descriptor %d after %v",
 		descID, timeutil.Since(start),
@@ -294,6 +308,9 @@ func newSchemaChangerTxnRunDependencies(
 		descriptors,
 		&execCfg.Settings.SV,
 		sessionData,
+		execCfg.Settings,
+		execCfg.JobsKnobs(),
+		execCfg.NodeInfo.LogicalClusterID(),
 	)
 	return scdeps.NewExecutorDependencies(
 		execCfg.Settings,
@@ -316,6 +333,7 @@ func newSchemaChangerTxnRunDependencies(
 		metaDataUpdater,
 		evalContext.Planner,
 		execCfg.StatsRefresher,
+		execCfg.TableStatsCache,
 		execCfg.DeclarativeSchemaChangerTestingKnobs,
 		kvTrace,
 		schemaChangerJobID,

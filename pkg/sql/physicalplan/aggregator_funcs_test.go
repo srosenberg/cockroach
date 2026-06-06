@@ -62,7 +62,7 @@ func runTestFlow(
 ) (rowenc.EncDatumRows, error) {
 	distSQLSrv := ts.DistSQLServer().(*distsql.ServerImpl)
 
-	leafInputState, err := txn.GetLeafTxnInputState(context.Background())
+	leafInputState, err := txn.GetLeafTxnInputState(context.Background(), nil /* readsTree */)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func runTestFlow(
 			if meta.Err != nil {
 				return nil, meta.Err
 			}
-			if meta.LeafTxnFinalState != nil || meta.Metrics != nil || meta.TraceData != nil {
+			if meta.LeafTxnFinalState != nil || meta.Metrics != nil || meta.TraceData != nil || meta.RowNum != nil {
 				continue
 			}
 			t.Fatalf("unexpected metadata: %v", meta)

@@ -28,6 +28,9 @@ type TransportMetrics struct {
 	MessagesReceived       *metric.Counter
 	MessagesSendDropped    *metric.Counter
 	MessagesReceiveDropped *metric.Counter
+
+	BatchesSent     *metric.Counter
+	BatchesReceived *metric.Counter
 }
 
 func newTransportMetrics() *TransportMetrics {
@@ -39,6 +42,8 @@ func newTransportMetrics() *TransportMetrics {
 		MessagesReceived:       metric.NewCounter(metaMessagesReceived),
 		MessagesSendDropped:    metric.NewCounter(metaMessagesSendDropped),
 		MessagesReceiveDropped: metric.NewCounter(metaMessagesReceiveDropped),
+		BatchesSent:            metric.NewCounter(metaBatchesSent),
+		BatchesReceived:        metric.NewCounter(metaBatchesReceived),
 	}
 }
 
@@ -56,6 +61,10 @@ type SupportManagerMetrics struct {
 
 	ReceiveQueueSize  *metric.Gauge
 	ReceiveQueueBytes *metric.Gauge
+
+	HeartbeatPersistDuration       metric.IHistogram
+	MessageHandlePersistDuration   metric.IHistogram
+	SupportWithdrawPersistDuration metric.IHistogram
 }
 
 func newSupportManagerMetrics() *SupportManagerMetrics {
@@ -78,6 +87,30 @@ func newSupportManagerMetrics() *SupportManagerMetrics {
 		SupportForStores:  metric.NewGauge(metaSupportForStores),
 		ReceiveQueueSize:  metric.NewGauge(metaReceiveQueueSize),
 		ReceiveQueueBytes: metric.NewGauge(metaReceiveQueueBytes),
+		HeartbeatPersistDuration: metric.NewHistogram(
+			metric.HistogramOptions{
+				Mode:         metric.HistogramModePreferHdrLatency,
+				Metadata:     metaHeartbeatPersistDuration,
+				Duration:     base.DefaultHistogramWindowInterval(),
+				BucketConfig: metric.IOLatencyBuckets,
+			},
+		),
+		MessageHandlePersistDuration: metric.NewHistogram(
+			metric.HistogramOptions{
+				Mode:         metric.HistogramModePreferHdrLatency,
+				Metadata:     metaMessageHandlePersistDuration,
+				Duration:     base.DefaultHistogramWindowInterval(),
+				BucketConfig: metric.IOLatencyBuckets,
+			},
+		),
+		SupportWithdrawPersistDuration: metric.NewHistogram(
+			metric.HistogramOptions{
+				Mode:         metric.HistogramModePreferHdrLatency,
+				Metadata:     metaSupportWithdrawPersistDuration,
+				Duration:     base.DefaultHistogramWindowInterval(),
+				BucketConfig: metric.IOLatencyBuckets,
+			},
+		),
 	}
 }
 
@@ -144,6 +177,7 @@ var (
 			"Store Liveness Support Manager",
 		Measurement: "Heartbeats",
 		Unit:        metric.Unit_COUNT,
+		Visibility:  metric.Metadata_SUPPORT,
 	}
 	metaMessageHandleSuccesses = metric.Metadata{
 		Name: "storeliveness.message_handle.successes",
@@ -201,10 +235,39 @@ var (
 		Measurement: "Bytes",
 		Unit:        metric.Unit_BYTES,
 	}
-
 	metaCallbacksProcessingDuration = metric.Metadata{
 		Name:        "storeliveness.callbacks.processing_duration",
 		Help:        "Duration of support withdrawal callback processing",
+		Measurement: "Duration",
+		Unit:        metric.Unit_NANOSECONDS,
+	}
+	metaBatchesSent = metric.Metadata{
+		Name:        "storeliveness.transport.batches-sent",
+		Help:        "Number of message batches sent by the Store Liveness Transport",
+		Measurement: "Batches",
+		Unit:        metric.Unit_COUNT,
+	}
+	metaBatchesReceived = metric.Metadata{
+		Name:        "storeliveness.transport.batches-received",
+		Help:        "Number of message batches received by the Store Liveness Transport",
+		Measurement: "Batches",
+		Unit:        metric.Unit_COUNT,
+	}
+	metaHeartbeatPersistDuration = metric.Metadata{
+		Name:        "storeliveness.heartbeat.persist_duration",
+		Help:        "Latency of persisting Store Liveness requester meta before sending heartbeats",
+		Measurement: "Duration",
+		Unit:        metric.Unit_NANOSECONDS,
+	}
+	metaMessageHandlePersistDuration = metric.Metadata{
+		Name:        "storeliveness.message_handle.persist_duration",
+		Help:        "Latency of persisting Store Liveness state when handling incoming messages",
+		Measurement: "Duration",
+		Unit:        metric.Unit_NANOSECONDS,
+	}
+	metaSupportWithdrawPersistDuration = metric.Metadata{
+		Name:        "storeliveness.support_withdraw.persist_duration",
+		Help:        "Latency of persisting Store Liveness state when withdrawing support",
 		Measurement: "Duration",
 		Unit:        metric.Unit_NANOSECONDS,
 	}

@@ -6,6 +6,8 @@
 package tracing
 
 import (
+	"time"
+
 	"github.com/cockroachdb/cockroach/pkg/util/tracing/tracingpb"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/logtags"
@@ -82,6 +84,11 @@ type spanOptions struct {
 	// a more "verbose" recording type, than that type is used by
 	// recordingType().
 	minRecordingTypeOpt tracingpb.RecordingType
+
+	// StartTime, if set (non-zero), overrides the default start time (now) for
+	// the span. This is useful for creating spans that represent work that
+	// already happened.
+	StartTime time.Time // see WithStartTime
 }
 
 func (opts *spanOptions) parentTraceID() tracingpb.TraceID {
@@ -264,27 +271,6 @@ func WithRemoteParentFromSpanMeta(parent SpanMeta) SpanOption {
 func (p remoteParent) apply(opts spanOptions) spanOptions {
 	opts.RemoteParent = (SpanMeta)(p)
 	return opts
-}
-
-type remoteParentFromLocalSpanOption spanRef
-
-func (r remoteParentFromLocalSpanOption) apply(opts spanOptions) spanOptions {
-	opts.RemoteParent = r.Meta()
-	sr := spanRef(r)
-	sr.release()
-	return opts
-}
-
-// WithRemoteParentFromLocalSpan is equivalent to
-// WithRemoteParentFromSpanMeta(sp.Meta()), but doesn't allocate. The span will
-// be created with parent info, but without being linked into the parent. This
-// is useful when the child needs to be created with a different Tracer than the
-// parent - e.g. when a tenant is calling into the local KV server.
-func WithRemoteParentFromLocalSpan(sp *Span) SpanOption {
-	ref, _ /* ok */ := tryMakeSpanRef(sp)
-	// Note that ref will be Empty if tryMakeSpanRef() failed. In that case, the
-	// resulting span will not have a parent.
-	return remoteParentFromLocalSpanOption(ref)
 }
 
 type remoteParentFromTraceInfoOpt tracingpb.TraceInfo
@@ -493,4 +479,19 @@ func (ev eventListenersOption) apply(opts spanOptions) spanOptions {
 // WithEventListeners.
 func WithEventListeners(eventListeners ...EventListener) SpanOption {
 	return (eventListenersOption)(eventListeners)
+}
+
+type startTimeOption time.Time
+
+// WithStartTime specifies a custom start time for the span, instead of using
+// the current time. This is useful for creating spans that represent work that
+// already happened, such as when injecting completed spans for delays that
+// occurred in library/runtime code.
+func WithStartTime(t time.Time) SpanOption {
+	return startTimeOption(t)
+}
+
+func (o startTimeOption) apply(opts spanOptions) spanOptions {
+	opts.StartTime = time.Time(o)
+	return opts
 }

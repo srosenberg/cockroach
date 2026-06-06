@@ -9,6 +9,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/config/zonepb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
@@ -23,6 +24,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/typedesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
+	"github.com/cockroachdb/cockroach/pkg/sql/partitioning"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	plpgsql "github.com/cockroachdb/cockroach/pkg/sql/plpgsql/parser"
@@ -39,8 +41,8 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlerrors"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
-	"github.com/cockroachdb/cockroach/pkg/util/errorutil/unimplemented"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logpb"
+	"github.com/cockroachdb/cockroach/pkg/util/walkutil"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
 	"github.com/lib/pq/oid"
@@ -62,7 +64,7 @@ func (b *builderState) QueryByID(id catid.DescID) scbuildstmt.ElementResultSet {
 func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scpb.TargetMetadata) {
 	dst := b.getExistingElementState(e)
 	switch target {
-	case scpb.ToAbsent, scpb.ToPublic, scpb.Transient:
+	case scpb.ToAbsent, scpb.ToPublic, scpb.TransientAbsent, scpb.TransientPublic:
 		// Sanity check.
 	default:
 		panic(errors.AssertionFailedf("unsupported target %s", target.Status()))
@@ -108,7 +110,7 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 	// of it and investigate it further if needed.
 	if dst.current == scpb.Status_ABSENT &&
 		dst.target == scpb.ToAbsent &&
-		(target == scpb.ToPublic || target == scpb.Transient) &&
+		(target == scpb.ToPublic || target == scpb.TransientAbsent) &&
 		dst.metadata.IsLinkedToSchemaChange() {
 		panic(scerrors.NotImplementedErrorf(
 			nil,
@@ -156,7 +158,7 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 		// the transient path so it can be done but we must take care to migrate
 		// the current status to its transient equivalent if need be in order to
 		// avoid the possibility of a future transition to PUBLIC.
-		if target == scpb.Transient {
+		if target == scpb.TransientAbsent {
 			var ok bool
 			dst.current, ok = scpb.GetTransientEquivalent(dst.current)
 			if !ok {
@@ -167,7 +169,7 @@ func (b *builderState) Ensure(e scpb.Element, target scpb.TargetStatus, meta scp
 			}
 		}
 		return
-	case scpb.Transient:
+	case scpb.TransientAbsent:
 		// Here the new target is either to-absent, which effectively undoes the
 		// incumbent target, or it's to-public. In both cases if the current
 		// status is TRANSIENT_ we need to migrate it to its non-transient
@@ -215,10 +217,67 @@ func (b *builderState) checkForConcurrentSchemaChanges(
 // This provides us with all of the ID -> name mappings required to
 // comprehensively decorate any EXPLAIN (DDL) output.
 func (b *builderState) ensureDescriptors(e scpb.Element) {
-	_ = screl.WalkDescIDs(e, func(id *catid.DescID) error {
+	_ = walkutil.Walk(e, func(id *catid.DescID) error {
 		b.ensureDescriptor(*id)
 		return nil
 	})
+}
+
+// replaceElement replaces an existing PUBLIC element's content with new
+// content while preserving its key. It sets initial=ABSENT, current=ABSENT,
+// target=ToPublic so the planner emits "add" operations that update the
+// already-existing descriptor. This is used for CREATE OR REPLACE FUNCTION.
+//
+// This method uses key-attribute matching rather than ElementString lookup
+// because the replacement element may have different non-key schema attributes
+// (e.g., ReferencedTypeIDs on TriggerDeps) that change the ElementString.
+func (b *builderState) replaceElement(e scpb.Element, meta scpb.TargetMetadata) {
+	b.ensureDescriptors(e)
+	id := screl.GetDescID(e)
+	c := b.descCache[id]
+
+	// Find the existing element by key attributes (DescID, TriggerID, etc.).
+	var existing *elementState
+	for _, idx := range c.outputIndexes {
+		es := &b.output[idx]
+		if screl.EqualElementKeys(es.element, e) {
+			existing = es
+			break
+		}
+	}
+	if existing == nil {
+		panic(errors.AssertionFailedf(
+			"Replace called on non-existent element %s", screl.ElementString(e),
+		))
+	}
+
+	// Update elementIndexMap if the ElementString changed (due to non-key
+	// schema attributes like ReferencedTypeIDs).
+	oldKey := screl.ElementString(existing.element)
+	newKey := screl.ElementString(e)
+	if oldKey != newKey {
+		idx := c.elementIndexMap[oldKey]
+		delete(c.elementIndexMap, oldKey)
+		c.elementIndexMap[newKey] = idx
+	}
+
+	c.cachedCollection = nil
+	newState := elementState{
+		element:  e,
+		initial:  scpb.Status_ABSENT,
+		current:  scpb.Status_ABSENT,
+		target:   scpb.ToPublic,
+		metadata: meta,
+	}
+	if err := b.localMemAcc.Grow(b.ctx, newState.byteSize()-existing.byteSize()); err != nil {
+		panic(err)
+	}
+	// Overwrite the element in place via the pointer into b.output. We do this
+	// directly rather than calling upsertElementState because upsertElementState
+	// uses getExistingElementState internally, which would fail if the
+	// ElementString changed. The pointer is safe because we are modifying an
+	// existing slice element, not appending (same pattern as upsertElementState).
+	*existing = newState
 }
 
 func (b *builderState) upsertElementState(es elementState) {
@@ -333,35 +392,49 @@ func (b *builderState) mustOwn(id catid.DescID) {
 }
 
 // CheckPrivilege implements the scbuildstmt.PrivilegeChecker interface.
-func (b *builderState) CheckPrivilege(e scpb.Element, privilege privilege.Kind) error {
-	return b.checkPrivilege(screl.GetDescID(e), privilege)
+func (b *builderState) CheckPrivilege(e scpb.Element, privileges ...privilege.Kind) error {
+	return b.checkPrivilege(screl.GetDescID(e), privileges...)
 }
 
-// checkPrivilege checks if current user has privilege `priv` on descriptor with `id`.
-func (b *builderState) checkPrivilege(id catid.DescID, priv privilege.Kind) error {
+// checkPrivilege checks if current user has any of the given privileges on
+// descriptor with `id`. If multiple privileges are given, the user needs at
+// least one of them (OR semantics).
+func (b *builderState) checkPrivilege(id catid.DescID, privs ...privilege.Kind) error {
 	b.ensureDescriptor(id)
 	c := b.descCache[id]
 	if c.hasOwnership {
 		return nil
 	}
-	err, found := c.privileges[priv]
-	if !found {
-		// Validate if this descriptor can be resolved under the current schema.
-		if c.desc.DescriptorType() != catalog.Schema &&
-			c.desc.DescriptorType() != catalog.Database {
-			scpb.ForEachSchemaParent(
-				b.QueryByID(id),
-				func(current scpb.Status, _ scpb.TargetStatus, e *scpb.SchemaParent) {
-					if current == scpb.Status_PUBLIC {
-						b.requirePrivilege(e.SchemaID, privilege.USAGE)
-					}
-				},
-			)
-		}
-		err = b.auth.CheckPrivilege(b.ctx, c.desc, priv)
-		c.privileges[priv] = err
+	// Validate if this descriptor can be resolved under the current schema.
+	if c.desc.DescriptorType() != catalog.Schema &&
+		c.desc.DescriptorType() != catalog.Database {
+		scpb.ForEachSchemaParent(
+			b.QueryByID(id),
+			func(current scpb.Status, _ scpb.TargetStatus, e *scpb.SchemaParent) {
+				if current == scpb.Status_PUBLIC {
+					b.requirePrivilege(e.SchemaID, privilege.USAGE)
+				}
+			},
+		)
 	}
-	return err
+	for _, priv := range privs {
+		has, found := c.privileges[priv]
+		if !found {
+			var err error
+			has, err = b.auth.HasPrivilege(b.ctx, c.desc, priv, b.CurrentUser())
+			if err != nil {
+				return err
+			}
+			c.privileges[priv] = has
+		}
+		if has {
+			return nil
+		}
+	}
+	return sqlerrors.NewInsufficientPrivilegeOnDescriptorError(
+		b.CurrentUser(), privs,
+		string(c.desc.DescriptorType()), c.desc.GetName(),
+	)
 }
 
 // requirePrivilege is a must version of checkPrivilege where it panics if non-nil error.
@@ -369,6 +442,26 @@ func (b *builderState) requirePrivilege(id catid.DescID, priv privilege.Kind) {
 	if err := b.checkPrivilege(id, priv); err != nil {
 		panic(err)
 	}
+}
+
+// CheckPrivilegeForUser implements the scbuildstmt.PrivilegeChecker interface.
+func (b *builderState) CheckPrivilegeForUser(
+	e scpb.Element, priv privilege.Kind, user username.SQLUsername,
+) error {
+	id := screl.GetDescID(e)
+	b.ensureDescriptor(id)
+	c := b.descCache[id]
+	isPrivileged, err := b.auth.HasPrivilege(b.ctx, c.desc, priv, user)
+	if err != nil {
+		return err
+	}
+	if isPrivileged {
+		return nil
+	}
+	return sqlerrors.NewInsufficientPrivilegeOnDescriptorError(
+		user, []privilege.Kind{priv},
+		string(c.desc.DescriptorType()), c.desc.GetName(),
+	)
 }
 
 // CheckGlobalPrivilege implements the scbuildstmt.PrivilegeChecker interface.
@@ -388,19 +481,23 @@ func (b *builderState) CurrentUserHasAdminOrIsMemberOf(role username.SQLUsername
 	if b.hasAdmin {
 		return true
 	}
-	if b.evalCtx.SessionData().User() == role {
+	user := b.CurrentUser()
+	if user == role {
 		return true
 	}
-	memberships, err := b.auth.MemberOfWithAdminOption(b.ctx, role)
+	memberships, err := b.auth.MemberOfWithAdminOption(b.ctx, user)
 	if err != nil {
 		panic(err)
 	}
-	_, ok := memberships[b.evalCtx.SessionData().User()]
+	_, ok := memberships[role]
 	return ok
 }
 
 func (b *builderState) CurrentUser() username.SQLUsername {
-	return b.evalCtx.SessionData().User()
+	// EffectiveUser yields the SECURITY DEFINER routine owner when DDL runs
+	// inside a stored procedure body (e.g. CREATE SCHEMA), and the session
+	// user otherwise. This matches PostgreSQL ownership semantics.
+	return b.evalCtx.EffectiveUser()
 }
 
 // CheckRoleExists implements the scbuild.AuthorizationAccessor interface.
@@ -499,6 +596,62 @@ func (b *builderState) NextTableConstraintID(tableID catid.DescID) (ret catid.Co
 		}
 	})
 	return ret
+}
+
+// NextDomainConstraintID implements the scbuildstmt.TypeHelpers interface.
+//
+// The returned ID is the greater of the descriptor's persisted NextConstraintID
+// counter and one past the max ConstraintID across all in-flight elements for
+// the domain.
+func (b *builderState) NextDomainConstraintID(typeID catid.DescID) (ret catid.ConstraintID) {
+	domain := b.mustGetDomainTypeDescriptor(typeID)
+	ret = domain.GetNextConstraintID()
+	if ret == 0 {
+		ret = 1
+	}
+	b.QueryByID(typeID).ForEach(func(
+		_ scpb.Status, _ scpb.TargetStatus, e scpb.Element,
+	) {
+		v, _ := screl.Schema.GetAttribute(screl.ConstraintID, e)
+		if id, ok := v.(catid.ConstraintID); ok && id >= ret {
+			ret = id + 1
+		}
+	})
+	return ret
+}
+
+// DomainConstraintNames implements the scbuildstmt.TypeHelpers interface.
+func (b *builderState) DomainConstraintNames(typeID catid.DescID) []string {
+	domain := b.mustGetDomainTypeDescriptor(typeID)
+	names := make([]string, 0, 1+domain.NumCheckConstraints())
+	if domain.IsNotNull() {
+		names = append(names, domain.GetNotNullConstraintName())
+	}
+	for i := 0; i < domain.NumCheckConstraints(); i++ {
+		names = append(names, domain.GetCheckConstraintName(i))
+	}
+	return names
+}
+
+// mustGetDomainTypeDescriptor fetches the descriptor for typeID and panics if
+// it isn't a domain type.
+func (b *builderState) mustGetDomainTypeDescriptor(
+	typeID catid.DescID,
+) catalog.DomainTypeDescriptor {
+	b.ensureDescriptor(typeID)
+	desc := b.descCache[typeID].desc
+	typ, ok := desc.(catalog.TypeDescriptor)
+	if !ok {
+		panic(errors.AssertionFailedf("expected type descriptor for ID %d, instead got %s",
+			desc.GetID(), desc.DescriptorType()))
+	}
+	domain := typ.AsDomainTypeDescriptor()
+	if domain == nil {
+		panic(errors.AssertionFailedf(
+			"expected domain type descriptor for ID %d, instead got %s",
+			desc.GetID(), typ.GetKind()))
+	}
+	return domain
 }
 
 // NextTableTriggerID implements the scbuildstmt.TableHelpers interface.
@@ -605,6 +758,42 @@ func (b *builderState) IsTableEmpty(table *scpb.Table) bool {
 	return b.tr.IsTableEmpty(b.ctx, table.TableID, index.IndexID)
 }
 
+// TTLExpirationExpression returns a validated TTL expiration expression for
+// a table's row-level TTL configuration. It verifies that the expression:
+// - type-checks as a TIMESTAMPTZ
+// - is not volatile
+// - references valid columns in the table
+func (b *builderState) TTLExpirationExpression(
+	tableID catid.DescID,
+	ttl *catpb.RowLevelTTL,
+	getAllNonDropColumnsFn func() colinfo.ResultColumns,
+	columnLookupByNameFn schemaexpr.ColumnLookupFn,
+) tree.Expr {
+	if ttl == nil || !ttl.HasExpirationExpr() {
+		return nil
+	}
+	b.ensureDescriptor(tableID)
+	ns := b.QueryByID(tableID).FilterNamespace().MustGetOneElement()
+	tableName := tree.MakeTableNameFromPrefix(b.NamePrefix(ns), tree.Name(ns.Name))
+	serializedExpr, err := schemaexpr.ValidateTTLExpirationExpression(
+		b.ctx,
+		b.semaCtx,
+		&tableName,
+		ttl,
+		b.clusterSettings.Version.ActiveVersion(b.ctx),
+		getAllNonDropColumnsFn,
+		columnLookupByNameFn,
+	)
+	if err != nil {
+		panic(err)
+	}
+	parsedExpr, err := parser.ParseExpr(serializedExpr)
+	if err != nil {
+		panic(err)
+	}
+	return parsedExpr
+}
+
 func (b *builderState) nextIndexID(id catid.DescID) (ret catid.IndexID) {
 	{
 		b.ensureDescriptor(id)
@@ -687,7 +876,7 @@ func (b *builderState) IndexPartitioningDescriptor(
 	)
 	allowImplicitPartitioning := b.evalCtx.SessionData().ImplicitColumnPartitioningEnabled ||
 		tbl.IsLocalityRegionalByRow()
-	_, ret, err := b.createPartCCL(
+	_, ret, err := partitioning.CreatePartitioning(
 		b.ctx,
 		b.clusterSettings,
 		b.evalCtx,
@@ -838,39 +1027,76 @@ func (b *builderState) WrapExpression(tableID catid.DescID, expr tree.Expr) *scp
 }
 
 // ComputedColumnExpression implements the scbuildstmt.TableHelpers interface.
-func (b *builderState) ComputedColumnExpression(tbl *scpb.Table, d *tree.ColumnTableDef) tree.Expr {
+func (b *builderState) ComputedColumnExpression(
+	tbl *scpb.Table,
+	d *tree.ColumnTableDef,
+	exprContext tree.SchemaExprContext,
+	getAllNonDropColumnsFn func() colinfo.ResultColumns,
+	columnLookupByNameFn schemaexpr.ColumnLookupFn,
+) (tree.Expr, *types.T) {
 	_, _, ns := scpb.FindNamespace(b.QueryByID(tbl.TableID))
 	tn := tree.MakeTableNameFromPrefix(b.NamePrefix(tbl), tree.Name(ns.Name))
 	b.ensureDescriptor(tbl.TableID)
-	// TODO(postamar): this doesn't work when referencing newly added columns.
-	expr, _, err := schemaexpr.ValidateComputedColumnExpression(
+
+	// In versions before 26.1, computed columns referencing newly added columns
+	// are not supported in the declarative schema changer. Fall back to the
+	// legacy schema changer for those cases.
+	if !b.clusterSettings.Version.IsActive(b.ctx, clusterversion.V26_1) {
+		// Use the old validation logic that doesn't support newly added columns.
+		expr, typ, err := schemaexpr.ValidateComputedColumnExpression(
+			b.ctx,
+			b.descCache[tbl.TableID].desc.(catalog.TableDescriptor),
+			d,
+			&tn,
+			exprContext,
+			b.semaCtx,
+			b.clusterSettings.Version.ActiveVersion(b.ctx),
+		)
+		if err != nil {
+			// This may be referencing newly added columns, so return a
+			// NotImplementedError to force fallback to the legacy schema changer.
+			if pgerror.GetPGCode(err) == pgcode.UndefinedColumn {
+				panic(errors.Wrapf(errors.WithSecondaryError(scerrors.NotImplementedError(d), err),
+					"computed column validation error"))
+			}
+			panic(err)
+		}
+		parsedExpr, err := parser.ParseExpr(expr)
+		if err != nil {
+			panic(err)
+		}
+		return parsedExpr, typ
+	}
+
+	// In 26.1+, we can validate computed columns that reference newly added
+	// columns by using the lookup functions to query the builder state.
+	expr, typ, err := schemaexpr.ValidateComputedColumnExpressionWithLookup(
 		b.ctx,
 		b.descCache[tbl.TableID].desc.(catalog.TableDescriptor),
 		d,
 		&tn,
-		tree.ComputedColumnExprContext(d.IsVirtual()),
+		exprContext,
 		b.semaCtx,
 		b.clusterSettings.Version.ActiveVersion(b.ctx),
+		getAllNonDropColumnsFn,
+		columnLookupByNameFn,
 	)
 	if err != nil {
-		// This may be referencing newly added columns, so cheat and return
-		// a not implemented error.
-		panic(errors.Wrapf(errors.WithSecondaryError(scerrors.NotImplementedError(d), err),
-			"computed column validation error"))
+		panic(err)
 	}
 	parsedExpr, err := parser.ParseExpr(expr)
 	if err != nil {
 		panic(err)
 	}
-	return parsedExpr
+	return parsedExpr, typ
 }
 
 // PartialIndexPredicateExpression implements the scbuildstmt.TableHelpers interface.
 func (b *builderState) PartialIndexPredicateExpression(
 	tableID catid.DescID, expr tree.Expr,
 ) tree.Expr {
-	// Ensure that an namespace entry exists for the table.
-	_, _, ns := scpb.FindNamespace(b.QueryByID(tableID))
+	// Ensure that a namespace entry exists for the table.
+	ns := b.QueryByID(tableID).FilterNamespace().MustGetOneElement()
 	if ns == nil {
 		panic(errors.AssertionFailedf("unable to find namespace for %d.", tableID))
 	}
@@ -1017,9 +1243,6 @@ func (b *builderState) ResolveTargetObject(
 	if sc.SchemaKind() == catalog.SchemaVirtual {
 		panic(sqlerrors.NewCannotModifyVirtualSchemaError(sc.GetName()))
 	}
-	if sc.SchemaKind() == catalog.SchemaTemporary {
-		panic(unimplemented.NewWithIssue(104687, "cannot create UDFs under a temporary schema"))
-	}
 	b.ensureDescriptor(sc.GetID())
 	b.checkOwnershipOrPrivilegesOnSchemaDesc(objName.ObjectNamePrefix, sc, scbuildstmt.ResolveParams{RequiredPrivilege: requiredSchemaPriv})
 	return b.QueryByID(db.GetID()), b.QueryByID(sc.GetID())
@@ -1062,14 +1285,21 @@ func (b *builderState) checkOwnershipOrPrivilegesOnSchemaDesc(
 }
 
 // ResolveUserDefinedTypeType implements the scbuildstmt.NameResolver interface.
+// The type must be owned to be resolved.
 func (b *builderState) ResolveUserDefinedTypeType(
 	name *tree.UnresolvedObjectName, p scbuildstmt.ResolveParams,
 ) scbuildstmt.ElementResultSet {
 	p.ResolveTypes = true
-	prefix, typ := b.cr.MayResolveType(b.ctx, *name)
+	_, typ := b.cr.MayResolveType(b.ctx, *name)
 	if typ == nil {
 		if p.IsExistenceOptional {
 			return nil
+		}
+		// Check if the name refers to a built-in type that couldn't be resolved
+		// because the qualifying schema/database doesn't exist (see #64663).
+		if _, ok := types.PublicSchemaAliases[name.Object()]; ok {
+			panic(pgerror.Newf(pgcode.WrongObjectType,
+				"type %q is a built-in type", name.Object()))
 		}
 		panic(sqlerrors.NewUndefinedTypeError(name))
 	}
@@ -1079,17 +1309,13 @@ func (b *builderState) ResolveUserDefinedTypeType(
 		panic(pgerror.Newf(pgcode.DependentObjectsStillExist,
 			"%q is an implicit array type and cannot be modified", typ.GetName()))
 	case descpb.TypeDescriptor_MULTIREGION_ENUM:
-		typeName := tree.MakeTypeNameWithPrefix(prefix.NamePrefix(), typ.GetName())
-		// Multi-region enums are not directly modifiable.
-		panic(errors.WithHintf(pgerror.Newf(pgcode.DependentObjectsStillExist,
-			"%q is a multi-region enum and cannot be modified directly", typeName.FQString()),
-			"try ALTER DATABASE %s DROP REGION %s", prefix.Database.GetName(), typ.GetName()))
+		b.ensureDescriptor(typ.GetID())
 	case descpb.TypeDescriptor_ENUM:
 		b.ensureDescriptor(typ.GetID())
-		b.mustOwn(typ.GetID())
 	case descpb.TypeDescriptor_COMPOSITE:
 		b.ensureDescriptor(typ.GetID())
-		b.mustOwn(typ.GetID())
+	case descpb.TypeDescriptor_DOMAIN:
+		b.ensureDescriptor(typ.GetID())
 	case descpb.TypeDescriptor_TABLE_IMPLICIT_RECORD_TYPE:
 		// Implicit record types are not directly modifiable.
 		panic(pgerror.Newf(pgcode.DependentObjectsStillExist,
@@ -1097,9 +1323,10 @@ func (b *builderState) ResolveUserDefinedTypeType(
 	default:
 		panic(errors.AssertionFailedf("unknown type kind %s", typ.GetKind()))
 	}
-	if p.RequireOwnership {
-		b.mustOwn(typ.GetID())
-	}
+	// Check schema USAGE privilege before ownership for consistency with the
+	// legacy schema changer.
+	b.requirePrivilege(typ.GetParentSchemaID(), privilege.USAGE)
+	b.mustOwn(typ.GetID())
 	return b.QueryByID(typ.GetID())
 }
 
@@ -1122,7 +1349,7 @@ func (b *builderState) resolveRelation(
 ) *cachedDesc {
 	var prefix catalog.ResolvedObjectPrefix
 	var rel catalog.Descriptor
-	prefix, rel = b.cr.MayResolveTable(b.ctx, *name)
+	prefix, rel = b.cr.MayResolveTable(b.ctx, *name, p.WithOffline)
 	if rel == nil {
 		if p.ResolveTypes {
 			prefix, rel = b.cr.MayResolveType(b.ctx, *name)
@@ -1165,18 +1392,25 @@ func (b *builderState) resolveRelation(
 		return c
 	}
 
-	err, found := c.privileges[p.RequiredPrivilege]
+	has, found := c.privileges[p.RequiredPrivilege]
 	if !found {
 		// Validate if this descriptor can be resolved under the current schema.
 		b.requirePrivilege(rel.GetParentSchemaID(), privilege.USAGE)
-		err = b.auth.CheckPrivilege(b.ctx, rel, p.RequiredPrivilege)
-		c.privileges[p.RequiredPrivilege] = err
+		var err error
+		has, err = b.auth.HasPrivilege(b.ctx, rel, p.RequiredPrivilege, b.CurrentUser())
+		if err != nil {
+			panic(err)
+		}
+		c.privileges[p.RequiredPrivilege] = has
 	}
-	if err == nil {
+	if has {
 		return c
 	}
 	if p.RequiredPrivilege != privilege.CREATE {
-		panic(err)
+		panic(sqlerrors.NewInsufficientPrivilegeOnDescriptorError(
+			b.CurrentUser(), []privilege.Kind{p.RequiredPrivilege},
+			string(rel.DescriptorType()), rel.GetName(),
+		))
 	}
 	relationType := "relation"
 	if t, isTable := rel.(catalog.TableDescriptor); isTable {
@@ -1368,6 +1602,8 @@ func (b *builderState) ResolveConstraint(
 	rel := b.descCache[relationID].desc.(catalog.TableDescriptor)
 	elts := b.QueryByID(rel.GetID())
 	var constraintID catid.ConstraintID
+	var indexID catid.IndexID
+
 	scpb.ForEachConstraintWithoutIndexName(elts,
 		func(status scpb.Status, _ scpb.TargetStatus, e *scpb.ConstraintWithoutIndexName) {
 			if tree.Name(e.Name) == constraintName {
@@ -1377,7 +1613,6 @@ func (b *builderState) ResolveConstraint(
 	)
 
 	if constraintID == 0 {
-		var indexID catid.IndexID
 		scpb.ForEachIndexName(elts, func(_ scpb.Status, _ scpb.TargetStatus, e *scpb.IndexName) {
 			if tree.Name(e.Name) == constraintName {
 				indexID = e.IndexID
@@ -1409,8 +1644,14 @@ func (b *builderState) ResolveConstraint(
 	}
 
 	return elts.Filter(func(_ scpb.Status, _ scpb.TargetStatus, e scpb.Element) bool {
-		idI, _ := screl.Schema.GetAttribute(screl.ConstraintID, e)
-		return idI != nil && idI.(catid.ConstraintID) == constraintID
+		constraintIDAttr, _ := screl.Schema.GetAttribute(screl.ConstraintID, e)
+		constraintIDMatches := constraintIDAttr != nil && constraintIDAttr.(catid.ConstraintID) == constraintID
+
+		// For index-backed constraints, we also want to include the elements that
+		// pertain to that index.
+		indexIDAttr, _ := screl.Schema.GetAttribute(screl.IndexID, e)
+		indexIDMatches := indexIDAttr != nil && indexID != 0 && indexIDAttr.(catid.IndexID) == indexID
+		return constraintIDMatches || indexIDMatches
 	})
 }
 
@@ -1517,7 +1758,7 @@ func (b *builderState) ResolvePolicy(
 func (b *builderState) newCachedDesc(id descpb.ID) *cachedDesc {
 	return &cachedDesc{
 		desc:            b.readDescriptor(id),
-		privileges:      make(map[privilege.Kind]error),
+		privileges:      make(map[privilege.Kind]bool),
 		hasOwnership:    b.hasAdmin,
 		elementIndexMap: map[string]int{},
 	}
@@ -1525,7 +1766,7 @@ func (b *builderState) newCachedDesc(id descpb.ID) *cachedDesc {
 
 func (b *builderState) newCachedDescForNewDesc() *cachedDesc {
 	return &cachedDesc{
-		privileges:      make(map[privilege.Kind]error),
+		privileges:      make(map[privilege.Kind]bool),
 		hasOwnership:    true,
 		elementIndexMap: map[string]int{},
 	}
@@ -1765,17 +2006,12 @@ func (b *builderState) WrapFunctionBody(
 	fnID descpb.ID,
 	bodyStr string,
 	lang catpb.Function_Language,
-	returnType tree.ResolvableTypeReference,
+	lazilyEvalSQL bool,
 	refProvider scbuildstmt.ReferenceProvider,
 ) *scpb.FunctionBody {
-	// Trigger functions do not analyze SQL statements beyond parsing, so type and
-	// sequence names should not be replaced during trigger-function creation.
-	var lazilyEvalSQL bool
-	if returnType != nil {
-		if typ, ok := returnType.(*types.T); ok && typ.Identical(types.Trigger) {
-			lazilyEvalSQL = true
-		}
-	}
+	// When the body is evaluated lazily (trigger functions and late-bound
+	// procedures), SQL inside it is not analyzed at creation time, so type
+	// and sequence names must not be rewritten.
 	if !lazilyEvalSQL {
 		bodyStr = b.replaceSeqNamesWithIDs(bodyStr, lang)
 		bodyStr = b.serializeUserDefinedTypes(bodyStr, lang)

@@ -11,7 +11,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/cockroach/pkg/ccl/storageccl/engineccl"
+	"github.com/cockroachdb/cockroach/pkg/storage/enginepb"
+	"github.com/cockroachdb/cockroach/pkg/storage/fs"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/pebble/vfs"
@@ -41,11 +42,33 @@ func TestGenEncryptionKey(t *testing.T) {
 					assert.EqualValues(t, 32+(keySize/8), info.Size())
 				}
 
-				key, err := engineccl.LoadKeyFromFile(vfs.Default, keyPath)
+				key, err := fs.LoadKeyFromFile(vfs.Default, keyPath)
 				require.NoError(t, err)
 				assert.EqualValues(t, keySize/8, len(key.Key))
 				// Key ID is hex encoded on load so it's 64 bytes here but 32 in the file size.
 				assert.EqualValues(t, 64, len(key.Info.KeyId))
+
+				// Verify the EncryptionType matches the requested key size.
+				// This catches the bug fixed in #160004.
+				var wantType enginepb.EncryptionType
+				switch {
+				case keyVersion == 1 && keySize == 128:
+					wantType = enginepb.EncryptionType_AES128_CTR
+				case keyVersion == 1 && keySize == 192:
+					wantType = enginepb.EncryptionType_AES192_CTR
+				case keyVersion == 1 && keySize == 256:
+					wantType = enginepb.EncryptionType_AES256_CTR
+				case keyVersion == 2 && keySize == 128:
+					wantType = enginepb.EncryptionType_AES_128_CTR_V2
+				case keyVersion == 2 && keySize == 192:
+					wantType = enginepb.EncryptionType_AES_192_CTR_V2
+				case keyVersion == 2 && keySize == 256:
+					wantType = enginepb.EncryptionType_AES_256_CTR_V2
+				default:
+					t.Fatalf("unexpected version=%d size=%d combination", keyVersion, keySize)
+				}
+				assert.Equal(t, wantType, key.Info.EncryptionType,
+					"loaded key EncryptionType should match requested size")
 
 				err = genEncryptionKey(keyPath, keySize, false, keyVersion)
 				require.ErrorContains(t, err, fmt.Sprintf("%s: file exists", keyName))

@@ -98,7 +98,7 @@ func registerClusterSettings(r registry.Registry) {
 		{
 			Name: "storage.wal_failover.unhealthy_op_threshold",
 			Generator: timeBasedRandomValue(timeutil.Now, 20*time.Minute, func(rng *rand.Rand) string {
-				return fmt.Sprintf("%d", rng.Intn(246)+5)
+				return fmt.Sprintf("%dms", rng.Intn(151)+100)
 			}),
 			Owner: registry.OwnerStorage,
 		},
@@ -107,6 +107,12 @@ func registerClusterSettings(r registry.Registry) {
 			Name:      "obs.tablemetadata.automatic_updates.enabled",
 			Generator: timeBasedValues(timeutil.Now, []string{"true", "false"}, 12*time.Hour),
 			Owner:     registry.OwnerObservability,
+		},
+		{
+			// Periodically switch between two transaction protocol variants.
+			Name:      "kv.transaction.write_buffering.enabled",
+			Generator: timeBasedValues(timeutil.Now, []string{"true", "false"}, 6*time.Hour),
+			Owner:     registry.OwnerKV,
 		},
 	}
 	sanitizeOpName := func(name string) string {

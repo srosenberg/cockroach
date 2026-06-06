@@ -15,7 +15,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/gossip"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
+	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
+	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/kvcoord"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/kvstreamer"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/rangecache"
@@ -112,12 +114,19 @@ type ServerConfig struct {
 	// used during restore.
 	RestoreMonitor *mon.BytesMonitor
 
+	// BulkMonitor is the parent bulk memory monitor. It is used to monitor memory
+	// for bulk operations that don't have a dedicated child monitor.
+	BulkMonitor *mon.BytesMonitor
+
 	// ChangefeedMonitor is the parent monitor for all CDC DistSQL flows.
 	ChangefeedMonitor *mon.BytesMonitor
 
 	// BulkSenderLimiter is the concurrency limiter that is shared across all of
 	// the processes in a given sql server when sending bulk ingest (AddSST) reqs.
 	BulkSenderLimiter limit.ConcurrentRequestLimiter
+
+	// BulkMergeMetrics tracks distributed merge operation metrics.
+	BulkMergeMetrics *BulkMergeMetrics
 
 	// ParentDiskMonitor is normally the root disk monitor. It should only be used
 	// when setting up a server, a child monitor (usually belonging to a sql
@@ -156,8 +165,7 @@ type ServerConfig struct {
 	ExternalStorageFromURI cloud.ExternalStorageFromURIFactory
 
 	// ProtectedTimestampProvider maintains the state of the protected timestamp
-	// subsystem. It is queried during the GC process and in the handling of
-	// AdminVerifyProtectedTimestampRequest.
+	// subsystem. It is queried during the GC process.
 	ProtectedTimestampProvider protectedts.Provider
 
 	DistSender *kvcoord.DistSender
@@ -201,6 +209,8 @@ type ServerConfig struct {
 	// with elastic CPU control.
 	AdmissionPacerFactory admission.PacerFactory
 
+	SQLCPUProvider admission.SQLCPUProvider
+
 	// Allow mutation operations to trigger stats refresh.
 	StatsRefresher *stats.Refresher
 
@@ -242,6 +252,20 @@ type TestingKnobs struct {
 	// function returns an error, or if the table has already been dropped.
 	RunAfterBackfillChunk func()
 
+	// RunBeforeIndexBackfillProgressUpdate is called before updating the
+	// progress for a single index backfill.
+	RunBeforeIndexBackfillProgressUpdate func(ctx context.Context, completed []roachpb.Span)
+
+	// AfterDistributedMergeMapPhase is called after the map phase of a distributed
+	// merge index backfill completes, before any merge iterations begin. It receives
+	// the SST manifests produced by the map phase.
+	AfterDistributedMergeMapPhase func(ctx context.Context, manifests []jobspb.BulkSSTManifest)
+
+	// AfterDistributedMergeIteration is called after each iteration of a
+	// distributed merge during index backfill. It receives the iteration number
+	// and the current SST manifests.
+	AfterDistributedMergeIteration func(ctx context.Context, iteration int, manifests []jobspb.BulkSSTManifest)
+
 	// SerializeIndexBackfillCreationAndIngestion ensures that every index batch
 	// created during an index backfill is also ingested before moving on to the
 	// next batch or returning.
@@ -254,6 +278,10 @@ type TestingKnobs struct {
 	// processor pushes the spans for which it has successfully backfilled the
 	// indexes.
 	IndexBackfillProgressReportInterval time.Duration
+
+	// RunDuringReencodeVectorIndexEntry is called during vector index entry backfill to
+	// simulate a transaction error.
+	RunDuringReencodeVectorIndexEntry func(txn *kv.Txn) error
 
 	// ForceDiskSpill forces any processors/operators that can fall back to disk
 	// to fall back to disk immediately.
@@ -315,6 +343,9 @@ type TestingKnobs struct {
 	// testing knobs.
 	IndexBackfillMergerTestingKnobs base.ModuleTestingKnobs
 
+	// BulkMergeTestingKnobs are specific to the distributed merge pipeline.
+	BulkMergeTestingKnobs base.ModuleTestingKnobs
+
 	// ProcessorNoTracingSpan is used to disable the creation of a tracing span
 	// in ProcessorBase.StartInternal if the tracing is enabled.
 	ProcessorNoTracingSpan bool
@@ -333,6 +364,14 @@ type TestingKnobs struct {
 	// will be assigned to the gateway before we start assigning partitions to
 	// other nodes.
 	MinimumNumberOfGatewayPartitions int
+
+	// TableReaderStartScanCb, when non-nil, will be called whenever the
+	// TableReader processor starts its scan.
+	TableReaderStartScanCb func()
+
+	// SampleAggregatorTestingKnobRowHook, if non-nil, is called for each row
+	// processed by the sample aggregator. Used for testing, e.g., to inject panics.
+	SampleAggregatorTestingKnobRowHook func()
 }
 
 // ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.

@@ -29,6 +29,13 @@ func (t T) HasLinearOrdering() bool {
 	return t == FORWARD
 }
 
+// HasScannablePrefix is true if compound indexes of this type can be used with
+// inequality constraints. For example, a VECTOR index's prefix can only be used
+// with equality constraints and so returns false.
+func (t T) HasScannablePrefix() bool {
+	return t != VECTOR
+}
+
 // AllowsPrefixColumns is true if this index type allows other columns from the
 // table to act as a key prefix that separates indexed values into distinct
 // groupings, e.g. by user or customer.
@@ -53,10 +60,11 @@ func (t T) SupportsStoring() bool {
 // SupportsOpClass is true if this index type allows columns to specify an
 // operator class, which defines an alternate set of operators used when sorting
 // and querying those columns.
-// NOTE: Currently, only inverted indexes support operator classes, and only on
-// the last column of the index.
+//
+// NOTE: Currently, only inverted and vector indexes support operator classes,
+// and only on the last column of the index.
 func (t T) SupportsOpClass() bool {
-	return t == INVERTED
+	return t == INVERTED || t == VECTOR
 }
 
 // ErrorText describes the type of the index using the phrase "an inverted

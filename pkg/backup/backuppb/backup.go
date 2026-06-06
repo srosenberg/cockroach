@@ -117,18 +117,6 @@ func (m ScheduledBackupExecutionArgs) MarshalJSONPB(marshaller *jsonpb.Marshaler
 		backup.To[i] = tree.NewDString(clean)
 	}
 
-	for i := range backup.Options.IncrementalStorage {
-		raw, ok := backup.Options.IncrementalStorage[i].(*tree.StrVal)
-		if !ok {
-			return nil, errors.Errorf("unexpected %T arg in backup schedule: %v", raw, raw)
-		}
-		clean, err := cloud.SanitizeExternalStorageURI(raw.RawString(), nil /* extraParams */)
-		if err != nil {
-			return nil, err
-		}
-		backup.Options.IncrementalStorage[i] = tree.NewDString(clean)
-	}
-
 	for i := range backup.Options.EncryptionKMSURI {
 		raw, ok := backup.Options.EncryptionKMSURI[i].(*tree.StrVal)
 		if !ok {
@@ -244,6 +232,30 @@ var _ jobs.ProtobinExecutionDetailFile = &ExportStats{}
 // ToText implements the ProtobinExecutionDetailFile interface.
 func (e *ExportStats) ToText() []byte {
 	return []byte(e.String())
+}
+
+// The following functions implement the ManifestLike interface in
+// manifest_handling.go. They can be removed once the interface is cleaned up.
+// TODO (kev-cao): Remove in v26.2
+
+func (b BackupIndexMetadata) Start() hlc.Timestamp {
+	return b.StartTime
+}
+
+func (b BackupIndexMetadata) End() hlc.Timestamp {
+	return b.EndTime
+}
+
+func (b BackupIndexMetadata) Compacted() bool {
+	return b.IsCompacted
+}
+
+func (b BackupIndexMetadata) MVCC() MVCCFilter {
+	return b.MVCCFilter
+}
+
+func (b BackupIndexMetadata) RevisionStart() hlc.Timestamp {
+	return b.RevisionStartTime
 }
 
 func init() {

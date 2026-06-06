@@ -79,10 +79,6 @@ const (
 	// field was unset and that the MVCC timestamp value was assigned to it.
 	SetModTimeToMVCCTimestamp
 
-	// SetCreateAsOfTimeUsingModTime indicates that a table's CreateAsOfTime field
-	// was unset and the ModificationTime value was assigned to it.
-	SetCreateAsOfTimeUsingModTime
-
 	// SetSystemDatabaseDescriptorVersion indicates that the system database
 	// descriptor did not have its version set.
 	SetSystemDatabaseDescriptorVersion
@@ -123,4 +119,8 @@ const (
 	// FixedUsesSequencesIDForIdentityColumns indicates sequence ID references
 	// are fixed for identity / serial columns.
 	FixedUsesSequencesIDForIdentityColumns
+
+	// RepairedTriggerBackrefs indicates that trigger backrefs with TriggerID=0
+	// were repaired to have the correct TriggerID set.
+	RepairedTriggerBackrefs
 )

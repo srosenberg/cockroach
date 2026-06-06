@@ -47,6 +47,14 @@ func (b *Builder) buildMutationInput(
 		defer func() {
 			b.forceForUpdateLocking = 0
 		}()
+		if sd := b.evalCtx.SessionData(); !sd.OptimizerEnableLockElision ||
+			(b.mem.Metadata().Table(toLock).FamilyCount() >= 2 && !sd.OptimizerUseLockElisionMultipleFamilies) {
+			// When the table has multiple column families, it is possible that
+			// we'll use Gets with family-specific keys during the initial scan,
+			// which means that we won't truly lock the indexes. As such, we
+			// might want to say that we didn't lock any.
+			toLockIndexes = nil
+		}
 	}
 
 	input, inputCols, err := b.buildRelational(inputExpr)
@@ -192,7 +200,7 @@ func (b *Builder) tryBuildFastPathInsert(
 	insInput := ins.Input
 	values, ok := insInput.(*memo.ValuesExpr)
 	// Values expressions containing subqueries or UDFs, or having a size larger
-	// than the max mutation batch size are disallowed.
+	// than the max mutation SQL-level batch size are disallowed.
 	if !ok || !memo.ValuesLegalForInsertFastPath(values) {
 		return execPlan{}, colOrdMap{}, false, nil
 	}
@@ -433,8 +441,7 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (_ execPlan, outputCols colO
 		upd.VectorIndexDelPartitionCols,
 	)
 
-	// TODO(yuzefovich): use lockedIndexes to optimize locking behavior.
-	input, _, err := b.buildMutationInput(upd, upd.Input, colList, &upd.MutationPrivate)
+	input, lockedIndexes, err := b.buildMutationInput(upd, upd.Input, colList, &upd.MutationPrivate)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -456,18 +463,37 @@ func (b *Builder) buildUpdate(upd *memo.UpdateExpr) (_ execPlan, outputCols colO
 		}
 	}
 
-	node, err := b.factory.ConstructUpdate(
-		input.root,
-		tab,
-		fetchColOrds,
-		updateColOrds,
-		returnColOrds,
-		checkOrds,
-		passthroughCols,
-		upd.UniqueWithTombstoneIndexes,
-		b.allowAutoCommit && len(upd.UniqueChecks) == 0 &&
-			len(upd.FKChecks) == 0 && len(upd.FKCascades) == 0 && upd.AfterTriggers == nil,
-	)
+	allowAutoCommit := b.allowAutoCommit && len(upd.UniqueChecks) == 0 &&
+		len(upd.FKChecks) == 0 && len(upd.FKCascades) == 0 && upd.AfterTriggers == nil
+	var node exec.Node
+	if upd.Swap {
+		if !checkOrds.Empty() || len(upd.UniqueWithTombstoneIndexes) != 0 {
+			return execPlan{}, colOrdMap{}, errors.AssertionFailedf("update swap does not support checks")
+		}
+		node, err = b.factory.ConstructUpdateSwap(
+			input.root,
+			tab,
+			fetchColOrds,
+			updateColOrds,
+			returnColOrds,
+			passthroughCols,
+			lockedIndexes,
+			allowAutoCommit,
+		)
+	} else {
+		node, err = b.factory.ConstructUpdate(
+			input.root,
+			tab,
+			fetchColOrds,
+			updateColOrds,
+			returnColOrds,
+			checkOrds,
+			passthroughCols,
+			upd.UniqueWithTombstoneIndexes,
+			lockedIndexes,
+			allowAutoCommit,
+		)
+	}
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -508,8 +534,7 @@ func (b *Builder) buildUpsert(ups *memo.UpsertExpr) (_ execPlan, outputCols colO
 		ups.VectorIndexDelPartitionCols,
 	)
 
-	// TODO(yuzefovich): use lockedIndexes to optimize locking behavior.
-	input, _, err := b.buildMutationInput(ups, ups.Input, colList, &ups.MutationPrivate)
+	input, lockedIndexes, err := b.buildMutationInput(ups, ups.Input, colList, &ups.MutationPrivate)
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -545,6 +570,7 @@ func (b *Builder) buildUpsert(ups *memo.UpsertExpr) (_ execPlan, outputCols colO
 		returnColOrds,
 		checkOrds,
 		ups.UniqueWithTombstoneIndexes,
+		lockedIndexes,
 		b.allowAutoCommit && len(ups.UniqueChecks) == 0 &&
 			len(ups.FKChecks) == 0 && len(ups.FKCascades) == 0 && ups.AfterTriggers == nil,
 	)
@@ -616,16 +642,30 @@ func (b *Builder) buildDelete(del *memo.DeleteExpr) (_ execPlan, outputCols colO
 		}
 	}
 
-	node, err := b.factory.ConstructDelete(
-		input.root,
-		tab,
-		fetchColOrds,
-		returnColOrds,
-		passthroughCols,
-		lockedIndexes,
-		b.allowAutoCommit && len(del.FKChecks) == 0 &&
-			len(del.FKCascades) == 0 && del.AfterTriggers == nil,
-	)
+	allowAutoCommit := b.allowAutoCommit && len(del.FKChecks) == 0 &&
+		len(del.FKCascades) == 0 && del.AfterTriggers == nil
+	var node exec.Node
+	if del.Swap {
+		node, err = b.factory.ConstructDeleteSwap(
+			input.root,
+			tab,
+			fetchColOrds,
+			returnColOrds,
+			passthroughCols,
+			lockedIndexes,
+			allowAutoCommit,
+		)
+	} else {
+		node, err = b.factory.ConstructDelete(
+			input.root,
+			tab,
+			fetchColOrds,
+			returnColOrds,
+			passthroughCols,
+			lockedIndexes,
+			allowAutoCommit,
+		)
+	}
 	if err != nil {
 		return execPlan{}, colOrdMap{}, err
 	}
@@ -686,6 +726,9 @@ func (b *Builder) canUseDeleteRange(del *memo.DeleteExpr) bool {
 // logical Delete operator, checking all required conditions. See
 // exec.Factory.ConstructDeleteRange.
 func (b *Builder) tryBuildDeleteRange(del *memo.DeleteExpr) (_ execPlan, ok bool, _ error) {
+	if !b.allowDeleteRangeFastPath {
+		return execPlan{}, false, nil
+	}
 	if !b.canUseDeleteRange(del) {
 		return execPlan{}, false, nil
 	}
@@ -731,7 +774,7 @@ func (b *Builder) buildDeleteRange(del *memo.DeleteExpr) (execPlan, error) {
 		// Mutations only allow auto-commit if there are no FK checks or cascades.
 
 		if maxRows, ok := b.indexConstraintMaxResults(&scan.ScanPrivate, scan.Relational()); ok {
-			if maxKeys := maxRows * uint64(tab.FamilyCount()); maxKeys <= row.TableTruncateChunkSize {
+			if maxKeys := maxRows * uint64(tab.FamilyCount()); maxKeys <= uint64(row.DeleteRangeChunkSize(b.evalCtx.TestingKnobs.ForceProductionValues)) {
 				autoCommit = true
 			}
 		}
@@ -1163,6 +1206,7 @@ func (b *Builder) shouldApplyImplicitLockingToMutationInput(
 		}()
 	}
 
+	md := b.mem.Metadata()
 	switch t := mutExpr.(type) {
 	case *memo.InsertExpr:
 		// Unlike with the other three mutation expressions, it never makes
@@ -1172,16 +1216,14 @@ func (b *Builder) shouldApplyImplicitLockingToMutationInput(
 		return 0, nil, nil
 
 	case *memo.UpdateExpr:
-		md := b.mem.Metadata()
 		tableID, toLockIndexes := shouldApplyImplicitLockingToUpdateOrDeleteInput(md, t.Input, t.Table)
 		return tableID, toLockIndexes.Ordered(), nil
 
 	case *memo.UpsertExpr:
-		tableID, toLockIndexes := shouldApplyImplicitLockingToUpsertInput(t)
+		tableID, toLockIndexes := shouldApplyImplicitLockingToUpsertInput(md, t)
 		return tableID, toLockIndexes.Ordered(), nil
 
 	case *memo.DeleteExpr:
-		md := b.mem.Metadata()
 		tableID, toLockIndexes := shouldApplyImplicitLockingToUpdateOrDeleteInput(md, t.Input, t.Table)
 		return tableID, toLockIndexes.Ordered(), nil
 
@@ -1223,7 +1265,7 @@ func shouldApplyImplicitLockingToUpdateOrDeleteInput(
 	var toLockIndexes intsets.Fast
 	// Try to match the mutation's input expression against the pattern:
 	//
-	//   [Project]* [IndexJoin] (Scan | LookupJoin [LookupJoin] Values)
+	//   [Project]* [IndexJoin] (Scan | PlaceholderScan | LookupJoin [LookupJoin] Values)
 	//
 	// The IndexJoin will only be present if the base expression is a Scan, but
 	// making it an optional prefix to the LookupJoins makes the logic simpler.
@@ -1232,10 +1274,14 @@ func shouldApplyImplicitLockingToUpdateOrDeleteInput(
 		input = idxJoin.Input
 		toLockIndexes.Add(cat.PrimaryIndex)
 	}
+	var toLock opt.TableID
 	switch t := input.(type) {
 	case *memo.ScanExpr:
 		toLockIndexes.Add(t.Index)
-		return t.Table, toLockIndexes
+		toLock = t.Table
+	case *memo.PlaceholderScanExpr:
+		toLockIndexes.Add(t.Index)
+		toLock = t.Table
 	case *memo.LookupJoinExpr:
 		toLockIndexes.Add(t.Index)
 		if innerJoin, ok := t.Input.(*memo.LookupJoinExpr); ok && innerJoin.Table == t.Table {
@@ -1246,16 +1292,20 @@ func shouldApplyImplicitLockingToUpdateOrDeleteInput(
 			t = innerJoin
 			toLockIndexes.Add(t.Index)
 		}
-		mutStableID := md.Table(tabID).ID()
-		lookupStableID := md.Table(t.Table).ID()
-		// Only lock rows read in the lookup join if the lookup table is the
-		// same as the table being updated. Also, don't lock rows if there is an
-		// ON condition so that we don't lock rows that won't be updated.
-		if mutStableID == lookupStableID && t.On.IsTrue() && t.Input.Op() == opt.ValuesOp {
-			return t.Table, toLockIndexes
+		// Don't lock rows if there is an ON condition so that we don't lock rows
+		// that won't be updated.
+		if !t.On.IsTrue() || t.Input.Op() != opt.ValuesOp {
+			return 0, intsets.Fast{}
 		}
+		toLock = t.Table
+	default:
+		return 0, intsets.Fast{}
 	}
-	return 0, intsets.Fast{}
+	if md.Table(tabID).ID() != md.Table(toLock).ID() {
+		// Make sure that this is the table being updated.
+		return 0, intsets.Fast{}
+	}
+	return toLock, toLockIndexes
 }
 
 // tryApplyImplicitLockingToUpsertInput determines whether or not the builder
@@ -1263,7 +1313,9 @@ func shouldApplyImplicitLockingToUpdateOrDeleteInput(
 // an UPSERT statement. If the builder should lock the initial row scan, it
 // returns the TableID of the scan (as well as ordinals of indexes to lock),
 // otherwise it returns 0.
-func shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) (opt.TableID, intsets.Fast) {
+func shouldApplyImplicitLockingToUpsertInput(
+	md *opt.Metadata, ups *memo.UpsertExpr,
+) (opt.TableID, intsets.Fast) {
 	var toLockIndexes intsets.Fast
 	// Try to match the Upsert's input expression against the pattern:
 	//
@@ -1298,6 +1350,10 @@ func shouldApplyImplicitLockingToUpsertInput(ups *memo.UpsertExpr) (opt.TableID,
 	default:
 		return 0, intsets.Fast{}
 	}
+	if md.Table(ups.Table).ID() != md.Table(toLock).ID() {
+		// Make sure that this is the table being updated.
+		return 0, intsets.Fast{}
+	}
 	input = unwrapProjectExprs(input)
 	if _, ok := input.(*memo.ValuesExpr); ok {
 		return toLock, toLockIndexes
@@ -1326,7 +1382,8 @@ func (b *Builder) buildLock(lock *memo.LockExpr) (_ execPlan, outputCols colOrdM
 
 	// In some simple cases we can push the locking down into the input operation
 	// instead of adding what would be a redundant lookup join. We only apply
-	// these optimizations for single-column-family tables.
+	// these optimizations when all necessary column families would be locked by
+	// the input operation.
 	//
 	// TODO(michae2): To optimize more complex cases, such as a Project on top of
 	// a Scan, or multiple Lock ops, etc, we need to do something similar to
@@ -1334,29 +1391,38 @@ func (b *Builder) buildLock(lock *memo.LockExpr) (_ execPlan, outputCols colOrdM
 	// make various operators provide the physical property, with a
 	// locking-semi-LookupJoin as the enforcer of last resort.
 	tab := b.mem.Metadata().Table(lock.Table)
-	if tab.FamilyCount() == 1 {
-		switch input := lock.Input.(type) {
-		case *memo.ScanExpr:
-			if input.Table == lock.KeySource && input.Index == cat.PrimaryIndex {
-				// Make a shallow copy of the scan to avoid mutating the original.
-				scan := *input
-				scan.Locking = scan.Locking.Max(locking)
-				return b.buildRelational(&scan)
-			}
-		case *memo.IndexJoinExpr:
-			if input.Table == lock.KeySource {
-				// Make a shallow copy of the join to avoid mutating the original.
-				join := *input
-				join.Locking = join.Locking.Max(locking)
-				return b.buildRelational(&join)
-			}
-		case *memo.LookupJoinExpr:
-			if input.Table == lock.KeySource && input.Index == cat.PrimaryIndex &&
-				(input.JoinType == opt.InnerJoinOp || input.JoinType == opt.SemiJoinOp) &&
-				!input.IsFirstJoinInPairedJoiner && !input.IsSecondJoinInPairedJoiner &&
-				// We con't push the locking down if the lookup join has additional on
-				// predicates that will filter out rows after the join.
-				len(input.On) == 0 {
+	srcTab := b.mem.Metadata().Table(lock.KeySource)
+	lockFamilies := opt.FamiliesForCols(tab, lock.Table, lock.LockCols)
+	switch input := lock.Input.(type) {
+	case *memo.ScanExpr:
+		if input.Table == lock.KeySource && input.Index == cat.PrimaryIndex &&
+			// Check that all necessary column families would be locked.
+			colFamiliesContainLockFamilies(srcTab, lock.KeySource, input.Cols, lockFamilies) {
+			// Make a shallow copy of the scan to avoid mutating the original.
+			scan := *input
+			scan.Locking = scan.Locking.Max(locking)
+			return b.buildRelational(&scan)
+		}
+	case *memo.IndexJoinExpr:
+		if input.Table == lock.KeySource &&
+			// Check that all necessary column families would be locked.
+			colFamiliesContainLockFamilies(srcTab, lock.KeySource, input.Cols, lockFamilies) {
+			// Make a shallow copy of the join to avoid mutating the original.
+			join := *input
+			join.Locking = join.Locking.Max(locking)
+			return b.buildRelational(&join)
+		}
+	case *memo.LookupJoinExpr:
+		if input.Table == lock.KeySource && input.Index == cat.PrimaryIndex &&
+			(input.JoinType == opt.InnerJoinOp || input.JoinType == opt.SemiJoinOp) &&
+			!input.IsFirstJoinInPairedJoiner && !input.IsSecondJoinInPairedJoiner &&
+			// We con't push the locking down if the lookup join has additional on
+			// predicates that will filter out rows after the join.
+			len(input.On) == 0 {
+			// Check that all necessary column families would be locked.
+			joinInputCols := input.Input.Relational().OutputCols
+			lookupCols := input.Cols.Difference(joinInputCols)
+			if colFamiliesContainLockFamilies(srcTab, lock.KeySource, lookupCols, lockFamilies) {
 				// Make a shallow copy of the join to avoid mutating the original.
 				join := *input
 				join.Locking = join.Locking.Max(locking)
@@ -1380,6 +1446,18 @@ func (b *Builder) buildLock(lock *memo.LockExpr) (_ execPlan, outputCols colOrdM
 	}
 	join.CopyGroup(lock)
 	return b.buildLookupJoin(join)
+}
+
+// colFamiliesContainLockFamilies checks that the families for cols include all
+// of the lock families.
+func colFamiliesContainLockFamilies(
+	tab cat.Table, tabID opt.TableID, cols opt.ColSet, lockFamilies intsets.Fast,
+) bool {
+	if tab.FamilyCount() == 1 {
+		return true
+	}
+	families := opt.FamiliesForCols(tab, tabID, cols)
+	return lockFamilies.SubsetOf(families)
 }
 
 func (b *Builder) setMutationFlags(e memo.RelExpr) {

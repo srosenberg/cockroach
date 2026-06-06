@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/liveness"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/liveness/livenesspb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvtestutils"
 	"github.com/cockroachdb/cockroach/pkg/raft"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -274,9 +275,9 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 		// can increment it again later.
 		_, err := tc.Server(0).DB().Inc(ctx, key, 1)
 		require.NoError(t, err)
-		log.Infof(ctx, "test: waiting for initial values...")
+		log.KvExec.Infof(ctx, "test: waiting for initial values...")
 		tc.WaitForValues(t, key, []int64{1, 1, 1})
-		log.Infof(ctx, "test: waiting for initial values... done")
+		log.KvExec.Infof(ctx, "test: waiting for initial values... done")
 	}
 
 	// Partition the original leader from its followers. We do this by installing
@@ -291,7 +292,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	//        x      x
 	//      [1]<---->[2]
 	//
-	log.Infof(ctx, "test: partitioning node")
+	log.KvExec.Infof(ctx, "test: partitioning node")
 	const partitionNodeIdx = 0
 	partitionStore := tc.GetFirstStoreFromServer(t, partitionNodeIdx)
 	partRepl, err := partitionStore.GetReplica(rngDesc.RangeID)
@@ -306,18 +307,18 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 
 	for _, i := range []int{0, 1, 2} {
 		store := tc.GetFirstStoreFromServer(t, i)
-		h := &unreliableRaftHandler{
-			name:                       fmt.Sprintf("store %d", i),
-			rangeID:                    rngDesc.RangeID,
+		h := &kvtestutils.UnreliableRaftHandler{
+			Name:                       fmt.Sprintf("store %d", i),
+			RangeID:                    rngDesc.RangeID,
 			IncomingRaftMessageHandler: store,
 		}
 		if i != partitionNodeIdx {
 			// Only filter messages from the partitioned store on the other two
 			// stores.
-			h.dropReq = func(req *kvserverpb.RaftMessageRequest) bool {
+			h.DropReq = func(req *kvserverpb.RaftMessageRequest) bool {
 				return req.FromReplica.StoreID == partRepl.StoreID()
 			}
-			h.dropHB = func(hb *kvserverpb.RaftHeartbeat) bool {
+			h.DropHB = func(hb *kvserverpb.RaftHeartbeat) bool {
 				return hb.FromReplicaID == partReplDesc.ReplicaID
 			}
 		}
@@ -325,12 +326,12 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	}
 
 	// Stop the heartbeats so that n1's lease can expire.
-	log.Infof(ctx, "test: suspending heartbeats for n1")
+	log.KvExec.Infof(ctx, "test: suspending heartbeats for n1")
 	resumeN1Heartbeats := partitionStore.GetStoreConfig().NodeLiveness.PauseAllHeartbeatsForTest()
 
 	// Wait until another replica campaigns and becomes leader, replacing the
 	// partitioned one.
-	log.Infof(ctx, "test: waiting for leadership transfer")
+	log.KvExec.Infof(ctx, "test: waiting for leadership transfer")
 	testutils.SucceedsSoon(t, func() error {
 		// Make sure this replica has not inadvertently quiesced. We need the
 		// replica ticking so that it campaigns.
@@ -348,7 +349,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	})
 
 	leaderReplicaID := roachpb.ReplicaID(otherRepl.RaftStatus().Lead)
-	log.Infof(ctx, "test: the leader is replica ID %d", leaderReplicaID)
+	log.KvExec.Infof(ctx, "test: the leader is replica ID %d", leaderReplicaID)
 	if leaderReplicaID != 2 && leaderReplicaID != 3 {
 		t.Fatalf("expected leader to be 1 or 2, was: %d", leaderReplicaID)
 	}
@@ -358,7 +359,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait until the lease expires.
-	log.Infof(ctx, "test: waiting for lease expiration")
+	log.KvExec.Infof(ctx, "test: waiting for lease expiration")
 	partitionedReplica, err := partitionStore.GetReplica(rngDesc.RangeID)
 	require.NoError(t, err)
 	testutils.SucceedsSoon(t, func() error {
@@ -375,11 +376,11 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 		}
 		return nil
 	})
-	log.Infof(ctx, "test: lease expired")
+	log.KvExec.Infof(ctx, "test: lease expired")
 
 	{
 		// Write something to generate some Raft log entries and then truncate the log.
-		log.Infof(ctx, "test: incrementing")
+		log.KvExec.Infof(ctx, "test: incrementing")
 		incArgs := incrementArgs(key, 1)
 		sender := leaderStore.TestSender()
 		_, pErr := kv.SendWrapped(ctx, sender, incArgs)
@@ -392,7 +393,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	// Truncate the log at index+1 (log entries < N are removed, so this includes
 	// the increment). This means that the partitioned replica will need a
 	// snapshot to catch up.
-	log.Infof(ctx, "test: truncating log...")
+	log.KvExec.Infof(ctx, "test: truncating log...")
 	truncArgs := &kvpb.TruncateLogRequest{
 		RequestHeader: kvpb.RequestHeader{
 			Key: key,
@@ -408,7 +409,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	// Resume n1's heartbeats and wait for it to become live again. This is to
 	// ensure that the rest of the test does not somehow fool itself because n1 is
 	// not live.
-	log.Infof(ctx, "test: resuming n1 heartbeats")
+	log.KvExec.Infof(ctx, "test: resuming n1 heartbeats")
 	resumeN1Heartbeats()
 
 	// Resolve the partition, but continue blocking snapshots destined for the
@@ -418,7 +419,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 	// allow the replica in question to figure out that it's not the leader any
 	// more. As long as it is completely partitioned, the replica continues
 	// believing that it is the leader, and lease acquisition requests block.
-	log.Infof(ctx, "test: removing partition")
+	log.KvExec.Infof(ctx, "test: removing partition")
 	slowSnapHandler := &slowSnapRaftHandler{
 		rangeID:                    rngDesc.RangeID,
 		waitCh:                     make(chan struct{}),
@@ -439,7 +440,7 @@ func TestRequestsOnLaggingReplicaEpochLeases(t *testing.T) {
 
 	// Now we're going to send a request to the behind replica, and we expect it
 	// to not block; we expect a redirection to the leader.
-	log.Infof(ctx, "test: sending request")
+	log.KvExec.Infof(ctx, "test: sending request")
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	for {
@@ -549,19 +550,19 @@ func TestSnapshotAfterTruncationWithUncommittedTailEpochLeases(t *testing.T) {
 	//        x      x
 	//      [1]<---->[2]
 	//
-	log.Infof(ctx, "test: installing unreliable Raft transports")
+	log.KvExec.Infof(ctx, "test: installing unreliable Raft transports")
 	for _, s := range []int{0, 1, 2} {
-		h := &unreliableRaftHandler{
-			rangeID:                    partRepl.RangeID,
+		h := &kvtestutils.UnreliableRaftHandler{
+			RangeID:                    partRepl.RangeID,
 			IncomingRaftMessageHandler: tc.GetFirstStoreFromServer(t, s),
 		}
 		if s != partStore {
 			// Only filter messages from the partitioned store on the other
 			// two stores.
-			h.dropReq = func(req *kvserverpb.RaftMessageRequest) bool {
+			h.DropReq = func(req *kvserverpb.RaftMessageRequest) bool {
 				return req.FromReplica.StoreID == partRepl.StoreID()
 			}
-			h.dropHB = func(hb *kvserverpb.RaftHeartbeat) bool {
+			h.DropHB = func(hb *kvserverpb.RaftHeartbeat) bool {
 				return hb.FromReplicaID == partReplDesc.ReplicaID
 			}
 		}
@@ -572,7 +573,7 @@ func TestSnapshotAfterTruncationWithUncommittedTailEpochLeases(t *testing.T) {
 	// not succeed before their context is canceled, but they will be appended
 	// to the partitioned replica's Raft log because it is currently the Raft
 	// leader.
-	log.Infof(ctx, "test: sending writes to partitioned replica")
+	log.KvExec.Infof(ctx, "test: sending writes to partitioned replica")
 	g := ctxgroup.WithContext(ctx)
 	otherKeys := make([]roachpb.Key, 32)
 	otherKeys[0] = key.Next()
@@ -609,7 +610,7 @@ func TestSnapshotAfterTruncationWithUncommittedTailEpochLeases(t *testing.T) {
 	nonPartitionedSenders[0] = tc.GetFirstStoreFromServer(t, 1).TestSender()
 	nonPartitionedSenders[1] = tc.GetFirstStoreFromServer(t, 2).TestSender()
 
-	log.Infof(ctx, "test: sending write to transfer lease")
+	log.KvExec.Infof(ctx, "test: sending write to transfer lease")
 	incArgs = incrementArgs(key, incB)
 	var i int
 	var newLeaderRepl *kvserver.Replica
@@ -632,15 +633,15 @@ func TestSnapshotAfterTruncationWithUncommittedTailEpochLeases(t *testing.T) {
 		newLeaderReplSender = tc.GetFirstStoreFromServer(t, newLeaderStoreIdx).TestSender()
 		return nil
 	})
-	log.Infof(ctx, "test: waiting for values...")
+	log.KvExec.Infof(ctx, "test: waiting for values...")
 	tc.WaitForValues(t, key, []int64{incA, incAB, incAB})
-	log.Infof(ctx, "test: waiting for values... done")
+	log.KvExec.Infof(ctx, "test: waiting for values... done")
 
 	index := newLeaderRepl.GetLastIndex()
 
 	// Truncate the log at index+1 (log entries < N are removed, so this
 	// includes the increment).
-	log.Infof(ctx, "test: truncating log")
+	log.KvExec.Infof(ctx, "test: truncating log")
 	truncArgs := truncateLogArgs(index+1, partRepl.RangeID)
 	truncArgs.Key = partRepl.Desc().StartKey.AsRawKey()
 	testutils.SucceedsSoon(t, func() error {
@@ -659,13 +660,13 @@ func TestSnapshotAfterTruncationWithUncommittedTailEpochLeases(t *testing.T) {
 	snapsBefore := snapsMetric.Count()
 
 	// Remove the partition. Snapshot should follow.
-	log.Infof(ctx, "test: removing the partition")
+	log.KvExec.Infof(ctx, "test: removing the partition")
 	for _, s := range []int{0, 1, 2} {
-		tc.Servers[s].RaftTransport().(*kvserver.RaftTransport).ListenIncomingRaftMessages(tc.Target(s).StoreID, &unreliableRaftHandler{
-			rangeID:                    partRepl.RangeID,
+		tc.Servers[s].RaftTransport().(*kvserver.RaftTransport).ListenIncomingRaftMessages(tc.Target(s).StoreID, &kvtestutils.UnreliableRaftHandler{
+			RangeID:                    partRepl.RangeID,
 			IncomingRaftMessageHandler: tc.GetFirstStoreFromServer(t, s),
-			unreliableRaftHandlerFuncs: unreliableRaftHandlerFuncs{
-				dropReq: func(req *kvserverpb.RaftMessageRequest) bool {
+			UnreliableRaftHandlerFuncs: kvtestutils.UnreliableRaftHandlerFuncs{
+				DropReq: func(req *kvserverpb.RaftMessageRequest) bool {
 					// Make sure that even going forward no MsgApp for what we just truncated can
 					// make it through. The Raft transport is asynchronous so this is necessary
 					// to make the test pass reliably.
@@ -673,8 +674,8 @@ func TestSnapshotAfterTruncationWithUncommittedTailEpochLeases(t *testing.T) {
 					// entries in the MsgApp, so filter where msg.Index < index, not <= index.
 					return req.Message.Type == raftpb.MsgApp && kvpb.RaftIndex(req.Message.Index) < index
 				},
-				dropHB:   func(*kvserverpb.RaftHeartbeat) bool { return false },
-				dropResp: func(*kvserverpb.RaftMessageResponse) bool { return false },
+				DropHB:   func(*kvserverpb.RaftHeartbeat) bool { return false },
+				DropResp: func(*kvserverpb.RaftMessageResponse) bool { return false },
 			},
 		})
 	}

@@ -9,40 +9,59 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync/atomic"
 
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann/memstore"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann/quantize"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/vector"
+	"github.com/cockroachdb/cockroach/pkg/workload/vecann"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
 )
 
 const seed = 42
 
+// MemSearchState holds prepared search state.
+type MemSearchState struct {
+	beamSize   int
+	maxResults int
+}
+
+// Close is a no-op for the MemProvider.
+func (s *MemSearchState) Close() {
+}
+
 // MemProvider implements VectorProvider using an in-memory store.
 type MemProvider struct {
-	stopper       *stop.Stopper
-	indexFileName string
-	dims          int
-	options       cspann.IndexOptions
-	store         *memstore.Store
-	index         *cspann.Index
+	stopper          *stop.Stopper
+	datasetName      string
+	dims             int
+	distMetric       vecpb.DistanceMetric
+	options          cspann.IndexOptions
+	store            *memstore.Store
+	index            *cspann.Index
+	successfulSplits atomic.Int64
 }
 
 // NewMemProvider creates a new MemProvider that maintains an in-memory, indexed
 // dataset of vectors.
 func NewMemProvider(
-	stopper *stop.Stopper, datasetName string, dims int, options cspann.IndexOptions,
+	stopper *stop.Stopper,
+	datasetName string,
+	dims int,
+	distMetric vecpb.DistanceMetric,
+	options cspann.IndexOptions,
 ) *MemProvider {
-	indexFileName := fmt.Sprintf("%s/%s.idx", tempDir, datasetName)
 	return &MemProvider{
-		stopper:       stopper,
-		indexFileName: indexFileName,
-		dims:          dims,
-		options:       options,
+		stopper:     stopper,
+		datasetName: datasetName,
+		dims:        dims,
+		distMetric:  distMetric,
+		options:     options,
 	}
 }
 
@@ -53,12 +72,17 @@ func (m *MemProvider) Close() {
 	}
 	m.store = nil
 	m.index = nil
+	m.successfulSplits.Store(0)
 }
 
 // Load implements the VectorProvider interface.
 func (m *MemProvider) Load(ctx context.Context) (bool, error) {
 	// If no index file exists, return false.
-	_, err := os.Stat(m.indexFileName)
+	indexFileName, err := m.ensureIndexCache()
+	if err != nil {
+		return false, err
+	}
+	_, err = os.Stat(indexFileName)
 	if err != nil {
 		if oserror.IsNotExist(err) {
 			return false, nil
@@ -70,7 +94,7 @@ func (m *MemProvider) Load(ctx context.Context) (bool, error) {
 	m.Close()
 
 	// Load vectors from the index file.
-	m.store, err = loadMemStore(m.indexFileName)
+	m.store, err = loadMemStore(indexFileName)
 	if err != nil {
 		return false, err
 	}
@@ -79,91 +103,102 @@ func (m *MemProvider) Load(ctx context.Context) (bool, error) {
 			"expected index with %d dims, got %d", m.dims, m.store.Dims())
 	}
 
+	if err = m.ensureIndex(ctx); err != nil {
+		return false, err
+	}
+
 	return true, nil
 }
 
-// Clear implements the VectorProvider interface
-func (m *MemProvider) Clear(ctx context.Context) error {
+// New implements the VectorProvider interface.
+func (m *MemProvider) New(ctx context.Context) error {
+	// Clear any existing state.
 	m.Close()
-	err := os.Remove(m.indexFileName)
-	if oserror.IsNotExist(err) {
-		return nil
+
+	// Remove persisted index, if it exists.
+	indexFileName, err := m.ensureIndexCache()
+	if err != nil {
+		return err
 	}
-	return err
+	err = os.Remove(indexFileName)
+	if err != nil {
+		if !oserror.IsNotExist(err) {
+			return err
+		}
+	}
+
+	return m.ensureIndex(ctx)
 }
 
 // InsertVector implements the VectorProvider interface.
 func (m *MemProvider) InsertVectors(
 	ctx context.Context, keys []cspann.KeyBytes, vectors vector.Set,
 ) (err error) {
-	if err = m.ensureIndex(ctx); err != nil {
-		return err
-	}
-
-	var txn cspann.Txn
-	txn, err = m.store.BeginTransaction(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err == nil {
-			err = m.store.CommitTransaction(ctx, txn)
+	return m.store.RunTransaction(ctx, func(txn cspann.Txn) error {
+		var idxCtx cspann.Context
+		idxCtx.Init(txn)
+		for i := range vectors.Count {
+			key := keys[i]
+			vec := vectors.At(i)
+			m.store.InsertVector(key, vec)
+			if err = m.index.Insert(ctx, &idxCtx, nil /* treeKey */, vec, key); err != nil {
+				return err
+			}
 		}
-		if err != nil {
-			err = errors.CombineErrors(err, m.store.AbortTransaction(ctx, txn))
-		}
-	}()
+		return nil
+	})
+}
 
-	var idxCtx cspann.Context
-	idxCtx.Init(txn)
-	for i := range vectors.Count {
-		key := keys[i]
-		vec := vectors.At(i)
-		m.store.InsertVector(key, vec)
-		if err = m.index.Insert(ctx, &idxCtx, nil /* treeKey */, vec, key); err != nil {
-			return err
-		}
-	}
+// CreateIndex implements the VectorProvider interface.
+func (m *MemProvider) CreateIndex(ctx context.Context) error {
+	// No-op for in-memory provider as index is built incrementally during insertion.
+	return nil
+}
 
-	return err
+// CheckIndexCreationStatus implements the VectorProvider interface.
+func (m *MemProvider) CheckIndexCreationStatus(ctx context.Context) (float64, error) {
+	// Always return 100% complete for in-memory provider since index is built incrementally.
+	return 1.0, nil
+}
+
+// SetupSearch implements the VectorProvider interface.
+func (m *MemProvider) SetupSearch(
+	ctx context.Context, maxResults int, beamSize int,
+) (SearchState, error) {
+	return &MemSearchState{maxResults: maxResults, beamSize: beamSize}, nil
 }
 
 // Search implements the VectorProvider interface.
 func (m *MemProvider) Search(
-	ctx context.Context, vec vector.T, maxResults int, beamSize int, stats *cspann.SearchStats,
+	ctx context.Context, state SearchState, vec vector.T, stats *cspann.SearchStats,
 ) (keys []cspann.KeyBytes, err error) {
-	if err = m.ensureIndex(ctx); err != nil {
-		return nil, err
-	}
-
-	var txn cspann.Txn
-	txn, err = m.store.BeginTransaction(ctx)
-	defer func() {
-		if err == nil {
-			err = m.store.CommitTransaction(ctx, txn)
-		}
+	memState := state.(*MemSearchState)
+	err = m.store.RunTransaction(ctx, func(txn cspann.Txn) error {
+		// Search the store.
+		var idxCtx cspann.Context
+		idxCtx.Init(txn)
+		maxResults, maxExtraResults :=
+			cspann.IncreaseRerankResults(memState.beamSize, memState.maxResults, 50)
+		searchSet := cspann.SearchSet{MaxResults: maxResults, MaxExtraResults: maxExtraResults}
+		searchOptions := cspann.SearchOptions{BaseBeamSize: memState.beamSize}
+		err = m.index.Search(ctx, &idxCtx, nil /* treeKey */, vec, &searchSet, searchOptions)
 		if err != nil {
-			err = m.store.AbortTransaction(ctx, txn)
+			return err
 		}
-	}()
+		*stats = searchSet.Stats
 
-	// Search the store.
-	var idxCtx cspann.Context
-	idxCtx.Init(txn)
-	searchSet := cspann.SearchSet{MaxResults: maxResults}
-	searchOptions := cspann.SearchOptions{BaseBeamSize: beamSize}
-	err = m.index.Search(ctx, &idxCtx, nil /* treeKey */, vec, &searchSet, searchOptions)
-	if err != nil {
-		return nil, err
-	}
-	*stats = searchSet.Stats
+		// Get result keys.
+		results := searchSet.PopResults()
+		if len(results) > memState.maxResults {
+			results = results[:memState.maxResults]
+		}
+		keys = make([]cspann.KeyBytes, len(results))
+		for i, res := range results {
+			keys[i] = []byte(res.ChildKey.KeyBytes)
+		}
 
-	// Get result keys.
-	results := searchSet.PopResults()
-	keys = make([]cspann.KeyBytes, len(results))
-	for i, res := range results {
-		keys[i] = []byte(res.ChildKey.KeyBytes)
-	}
+		return nil
+	})
 
 	return keys, err
 }
@@ -176,7 +211,9 @@ func (m *MemProvider) Save(ctx context.Context) error {
 	}
 
 	// Wait for any remaining background fixups to be processed.
-	m.index.ProcessFixups()
+	if err := m.index.ProcessFixups(ctx); err != nil {
+		return err
+	}
 
 	startTime := timeutil.Now()
 
@@ -185,7 +222,12 @@ func (m *MemProvider) Save(ctx context.Context) error {
 		return err
 	}
 
-	indexFile, err := os.Create(m.indexFileName)
+	// Remove persisted index, if it exists.
+	indexFileName, err := m.ensureIndexCache()
+	if err != nil {
+		return err
+	}
+	indexFile, err := os.Create(indexFileName)
 	if err != nil {
 		return err
 	}
@@ -204,19 +246,24 @@ func (m *MemProvider) Save(ctx context.Context) error {
 
 // GetMetrics implements the VectorProvider interface.
 func (m *MemProvider) GetMetrics() ([]IndexMetric, error) {
-	// queueSize is the size of the background fixup queue for processing splits
-	// and merges.
-	queueSize := IndexMetric{Name: "fixup queue size"}
+	// successfulSplits is the number of splits successfuly completed by the
+	// background fixup processor.
+	successfulSplits := IndexMetric{Name: "successful splits"}
+
+	// pendingSplitsMerges is the number of splits/merges waiting to be processed
+	// by the background fixup processor.
+	pendingSplitsMerges := IndexMetric{Name: "pending splits/merges"}
 
 	// pacerOpsPerSec returnss the ops/sec currently allowed by the pacer.
 	pacerOpsPerSec := IndexMetric{Name: "pacer ops/sec"}
 
 	if m.index != nil {
-		queueSize.Value = float64(m.index.Fixups().QueueSize())
+		successfulSplits.Value = float64(m.successfulSplits.Load())
+		pendingSplitsMerges.Value = float64(m.index.Fixups().PendingSplitsMerges())
 		pacerOpsPerSec.Value = m.index.Fixups().AllowedOpsPerSec()
 	}
 
-	return []IndexMetric{queueSize, pacerOpsPerSec}, nil
+	return []IndexMetric{successfulSplits, pendingSplitsMerges, pacerOpsPerSec}, nil
 }
 
 // FormatStats implements the VectorProvider interface.
@@ -233,15 +280,29 @@ func (m *MemProvider) ensureIndex(ctx context.Context) error {
 	if m.index != nil {
 		return nil
 	}
+
+	quantizer := quantize.NewRaBitQuantizer(m.dims, seed, m.distMetric)
 	if m.store == nil {
 		// Construct empty store if one doesn't yet exist.
-		m.store = memstore.New(m.dims, seed)
+		m.store = memstore.New(quantizer, seed)
 	}
 
 	var err error
-	quantizer := quantize.NewRaBitQuantizer(m.dims, seed)
 	m.index, err = cspann.NewIndex(ctx, m.store, quantizer, seed, &m.options, m.stopper)
+	m.index.Fixups().OnSuccessfulSplit(func() {
+		m.successfulSplits.Add(1)
+	})
 	return err
+}
+
+// ensureIndexCache ensures that the folder that contains the cached index file
+// has been created. It returns the name of the cached index file.
+func (m *MemProvider) ensureIndexCache() (string, error) {
+	cacheFolder, err := vecann.EnsureCacheFolder("")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s/%s.idx", cacheFolder, m.datasetName), nil
 }
 
 // loadMemStore loads a previously saved in-memory store from disk.

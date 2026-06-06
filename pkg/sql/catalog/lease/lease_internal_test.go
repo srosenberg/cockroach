@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/base"
+	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver"
@@ -30,9 +31,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlliveness"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlliveness/sqllivenesstestutils"
+	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
 	"github.com/cockroachdb/cockroach/pkg/util/admission"
+	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
@@ -180,7 +183,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 			if err := leaseManager.AcquireFreshestFromStore(context.Background(), tableDesc.GetID()); err != nil {
 				t.Fatal(err)
 			}
-			table, err := leaseManager.Acquire(context.Background(), s.Clock().Now(), tableDesc.GetID())
+			table, err := leaseManager.Acquire(context.Background(), TimestampToReadTimestamp(s.Clock().Now()), tableDesc.GetID())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -208,8 +211,8 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		t.Fatalf("found %d versions instead of 2", numLeases)
 	}
 	ctx := context.Background()
-	if err := purgeOldVersions(
-		ctx, kvDB, tableDesc.GetID(), false, 2 /* minVersion */, leaseManager); err != nil {
+	if err := leaseManager.purgeOldVersions(
+		ctx, kvDB, tableDesc.GetID(), false, 2 /* minVersion */); err != nil {
 		t.Fatal(err)
 	}
 
@@ -241,8 +244,8 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 	if numLeases := getNumVersions(ts); numLeases != 2 {
 		t.Fatalf("found %d versions instead of 2", numLeases)
 	}
-	if err := purgeOldVersions(
-		context.Background(), kvDB, tableDesc.GetID(), false, 2 /* minVersion */, leaseManager); err != nil {
+	if err := leaseManager.purgeOldVersions(
+		context.Background(), kvDB, tableDesc.GetID(), false, 2 /* minVersion */); err != nil {
 		t.Fatal(err)
 	}
 	if numLeases := getNumVersions(ts); numLeases != 1 {
@@ -300,7 +303,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		if err := leaseManager.AcquireFreshestFromStore(ctx, tableDesc.GetID()); err != nil {
 			t.Fatal(err)
 		}
-		table, err := leaseManager.Acquire(ctx, futureTime, tableDesc.GetID())
+		table, err := leaseManager.Acquire(ctx, TimestampToReadTimestamp(futureTime), tableDesc.GetID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -347,7 +350,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 
 	// Purge old versions and make sure that the newest lease survives the
 	// purge.
-	if err := purgeOldVersions(ctx, kvDB, tableDesc.GetID(), false, 2 /* minVersion */, leaseManager); err != nil {
+	if err := leaseManager.purgeOldVersions(ctx, kvDB, tableDesc.GetID(), false, 2 /* minVersion */); err != nil {
 		t.Fatal(err)
 	}
 	if numLeases := getNumVersions(ts); numLeases != 1 {
@@ -571,12 +574,15 @@ CREATE TABLE t.%s (k CHAR PRIMARY KEY, v CHAR);
 	}
 	expiration := lease.Expiration(context.Background())
 	// Acquire another lease.
-	if _, err := acquireNodeLease(
-		context.Background(), leaseManager, tableDesc.GetID(), AcquireBlock,
-	); err != nil {
-		t.Fatal(err)
-	}
-
+	func() {
+		lease.t.markAcquisitionStart(context.Background())
+		defer lease.t.markAcquisitionDone(context.Background())
+		if _, err := leaseManager.acquireNodeLease(
+			context.Background(), tableDesc.GetID(), AcquireBlock,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	// Check the name resolves to the new lease.
 	newLease, _ := leaseManager.names.get(context.Background(), tableDesc.GetParentID(), tableDesc.GetParentSchemaID(), tableName, s.Clock().Now())
 	if newLease == nil {
@@ -665,7 +671,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 	ctx := context.Background()
 	table, err := leaseManager.AcquireByName(
 		ctx,
-		leaseManager.storage.clock.Now(),
+		TimestampToReadTimestamp(leaseManager.storage.clock.Now()),
 		tableDesc.GetParentID(),
 		tableDesc.GetParentSchemaID(),
 		"test",
@@ -694,7 +700,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		ctx := context.Background()
 		desc, err := leaseManager.AcquireByName(
 			ctx,
-			timestamp,
+			TimestampToReadTimestamp(timestamp),
 			tableDesc.GetParentID(),
 			tableDesc.GetParentSchemaID(),
 			"test",
@@ -716,7 +722,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		tableChan <- desc
 		tableByName, err := leaseManager.AcquireByName(
 			ctx,
-			timestamp,
+			TimestampToReadTimestamp(timestamp),
 			tableDesc.GetParentID(),
 			tableDesc.GetParentSchemaID(),
 			"test",
@@ -779,7 +785,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 			if err := leaseManager.AcquireFreshestFromStore(context.Background(), tableDesc.GetID()); err != nil {
 				t.Error(err)
 			}
-			table, err := leaseManager.Acquire(context.Background(), s.Clock().Now(), tableDesc.GetID())
+			table, err := leaseManager.Acquire(context.Background(), TimestampToReadTimestamp(s.Clock().Now()), tableDesc.GetID())
 			if err != nil {
 				t.Error(err)
 			}
@@ -830,7 +836,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 	for i := 0; i < numRoutines; i++ {
 		go func() {
 			defer wg.Done()
-			table, err := leaseManager.Acquire(context.Background(), now, tableDesc.GetID())
+			table, err := leaseManager.Acquire(context.Background(), TimestampToReadTimestamp(now), tableDesc.GetID())
 			if err != nil {
 				t.Error(err)
 			}
@@ -889,7 +895,7 @@ func TestLeaseAcquireAndReleaseConcurrently(t *testing.T) {
 		m *Manager,
 		acquireChan chan Result,
 	) {
-		acquireChan <- mkResult(m.Acquire(ctx, m.storage.clock.Now(), getDescID()))
+		acquireChan <- mkResult(m.Acquire(ctx, TimestampToReadTimestamp(m.storage.clock.Now()), getDescID()))
 	}
 
 	testCases := []struct {
@@ -1015,7 +1021,7 @@ func TestLeaseAcquireAndReleaseConcurrently(t *testing.T) {
 						acquireChan <- mkResult(nil, err)
 						return
 					}
-					acquireChan <- mkResult(m.Acquire(ctx, s.Clock().Now(), getDescID()))
+					acquireChan <- mkResult(m.Acquire(ctx, TimestampToReadTimestamp(s.Clock().Now()), getDescID()))
 				}(ctx, leaseManager, acquireResultChan)
 
 			} else {
@@ -1115,7 +1121,7 @@ func TestReadOlderVersionForTimestamp(t *testing.T) {
 		require.NoError(t, err)
 	}
 	{
-		last, err := manager.Acquire(ctx, s.Clock().Now(), tableID)
+		last, err := manager.Acquire(ctx, TimestampToReadTimestamp(s.Clock().Now()), tableID)
 		require.NoError(t, err)
 		descs[numHistoricalVersions] = last.Underlying()
 		last.Release(ctx)
@@ -1255,7 +1261,7 @@ func TestReadOlderVersionForTimestamp(t *testing.T) {
 			resetDescriptorState(manager, tableID, tc)
 
 			// Retrieve historicalDescriptors modification times.
-			retrieved, err := manager.readOlderVersionForTimestamp(ctx, tableID, tc.ts)
+			retrieved, err := manager.readOlderVersionForTimestamp(ctx, tableID, TimestampToReadTimestamp(tc.ts))
 			require.NoError(t, err)
 
 			// Validate retrieved descriptors match expected versions.
@@ -1393,7 +1399,7 @@ func TestDescriptorByteSizeOrder(t *testing.T) {
 				tdb.Exec(t, expr)
 				var tableID descpb.ID
 				tdb.QueryRow(t, "SELECT id FROM system.namespace WHERE name = "+"'"+size+"'").Scan(&tableID)
-				desc, err := manager.Acquire(ctx, s.Clock().Now(), tableID)
+				desc, err := manager.Acquire(ctx, TimestampToReadTimestamp(s.Clock().Now()), tableID)
 				require.NoError(t, err)
 				descs = append(descs, desc)
 			}
@@ -1501,7 +1507,7 @@ func TestLeasedDescriptorByteSizeBaseline(t *testing.T) {
 			var descID descpb.ID
 			tdb.QueryRow(t, "SELECT id FROM system.namespace WHERE name ="+
 				"'"+tc.name+"'").Scan(&descID)
-			desc, err := manager.Acquire(ctx, s.Clock().Now(), descID)
+			desc, err := manager.Acquire(ctx, TimestampToReadTimestamp(s.Clock().Now()), descID)
 			require.NoError(t, err)
 
 			// Confirm each descriptor byte size is at least the baseline's.
@@ -1512,43 +1518,37 @@ func TestLeasedDescriptorByteSizeBaseline(t *testing.T) {
 	}
 }
 
-// TODO(adityamaru): We do not set SplitMidKey to true for ExportRequests sent
-// in getDescriptorsFromStoreForInterval. This disallows the elastic CPU limiter
-// from preempting the ExportRequest unless we are on a key boundary. In this
-// test we are only exporting revisions of the same key so we should never be
-// allowed to paginate because of exhausted CPU tokens. Once we do add support
-// for SplitMidKey, we should change the test to verify the correctness of our
-// pagination logic.
-//
-// For now, assert that all revisions are fetched in a single ExportRequest even
-// though we are always OverLimit according to the elastic CPU limiter.
+// TestGetDescriptorsFromStoreForIntervalCPULimiterPagination confirms that throttling
+// is not applied to getDescriptorsFromStoreForInterval. This function is invoked on behalf
+// of SQL work, and should not be subject to elastic CPU control.
 func TestGetDescriptorsFromStoreForIntervalCPULimiterPagination(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
 	var numRequests int
+	var sqlCodec atomic.Pointer[keys.SQLCodec]
 	srv, db, kvDB := serverutils.StartServer(t, base.TestServerArgs{
-		Knobs: base.TestingKnobs{Store: &kvserver.StoreTestingKnobs{
-			TestingRequestFilter: func(ctx context.Context, request *kvpb.BatchRequest) *kvpb.Error {
-				for _, ru := range request.Requests {
-					if _, ok := ru.GetInner().(*kvpb.ExportRequest); ok {
-						numRequests++
-						h := admission.ElasticCPUWorkHandleFromContext(ctx)
-						if h == nil {
-							t.Fatalf("expected context to have CPU work handle")
+		Knobs: base.TestingKnobs{
+			Store: &kvserver.StoreTestingKnobs{
+				TestingRequestFilter: func(ctx context.Context, request *kvpb.BatchRequest) *kvpb.Error {
+					for _, ru := range request.Requests {
+						if export, ok := ru.GetInner().(*kvpb.ExportRequest); ok && TestIsLeasingTxnExportRequest(sqlCodec.Load(), request, export) {
+							numRequests++
+							h := admission.ElasticCPUWorkHandleFromContext(ctx)
+							if h != nil {
+								t.Fatalf("expected context to have not have CPU work handle")
+							}
 						}
-						h.TestingOverrideOverLimit(func() (bool, time.Duration) {
-							return true, 0
-						})
 					}
-				}
-				return nil
-			},
-		}},
+					return nil
+				},
+			}},
 	})
 	defer srv.Stopper().Stop(ctx)
 	s := srv.ApplicationLayer()
+	codec := s.Codec()
+	sqlCodec.Store(&codec)
 
 	sqlDB := sqlutils.MakeSQLRunner(db)
 	beforeCreate := hlc.Timestamp{WallTime: timeutil.Now().UnixNano()}
@@ -1559,10 +1559,10 @@ func TestGetDescriptorsFromStoreForIntervalCPULimiterPagination(t *testing.T) {
 	var tableID int
 	sqlDB.QueryRow(t, `SELECT id FROM system.namespace WHERE name = 'baz'`).Scan(&tableID)
 	descs, err := getDescriptorsFromStoreForInterval(ctx, kvDB, s.Codec(), descpb.ID(tableID),
-		beforeCreate, afterCreate)
+		beforeCreate, afterCreate, false /*isOffline */)
 	require.NoError(t, err)
 	require.Len(t, descs, 3)
-	require.Equal(t, numRequests, 1)
+	require.Equal(t, 1, numRequests)
 }
 
 // TestLeaseCountDetailSessionBased will test out the extra debugging info that
@@ -1653,7 +1653,11 @@ func TestLeaseManagerSessionIDChanges(t *testing.T) {
 	runner := sqlutils.MakeSQLRunner(sqlDB)
 	runner.Exec(t, `SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false`)
 	runner.Exec(t, `SET CLUSTER SETTING sql.catalog.descriptor_wait_for_initial_version.enabled = false`)
-
+	// Disable the range feed for this test. This prevents a race condition
+	// where the range feed could insert a lease with the real session ID
+	// (if the session ID hook was disabled) before the initial descriptor
+	// acquisition completes.
+	leaseManager.TestingSetDisableRangeFeedCheckpointFn(true)
 	runner.Exec(t, `
 CREATE DATABASE t;
 CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
@@ -1695,6 +1699,7 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		// Restore the original provider so valid session IDs
 		// are assigned.
 		leaseManager.storage.livenessProvider = fs.Provider
+		leaseManager.TestingSetDisableRangeFeedCheckpointFn(false)
 	}()
 
 	// Repeatedly lease the same descriptor, with the session ID continuously changing
@@ -1707,13 +1712,13 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		enableHook.Swap(true)
 		nextSessionID.Add(1)
 		now := s.Clock().Now()
-		desc, err := leaseManager.Acquire(ctx, now, tableDesc.GetID())
+		desc, err := leaseManager.Acquire(ctx, TimestampToReadTimestamp(now), tableDesc.GetID())
 		require.NoError(t, err)
 		// We expect a new session ID each time, and the descriptor
 		// to be expired.
 		newSessionID := getLatestLeasedDesc().getSessionID()
 		newExpiry := getLatestLeasedDesc().getExpiration(ctx)
-		require.NotEqualf(t, previousSessionID, newSessionID, "session ID should not match")
+		require.NotEqualf(t, previousSessionID, newSessionID, "session ID should not match %v %v", previousSessionID, newSessionID)
 		require.Truef(t, previousExpiry.Less(newExpiry), "session expiry should be later.")
 		// Disable the hook before the lease query.
 		enableHook.Swap(false)
@@ -1726,4 +1731,297 @@ CREATE TABLE t.test (k CHAR PRIMARY KEY, v CHAR);
 		desc.Release(ctx)
 	}
 
+}
+
+// TestLeaseManagerLockedTimestampBasic basic sanity that version locking
+// allows us to read descriptors fine.
+func TestLeaseManagerLockedTimestampBasic(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	var blockUpdates atomic.Bool
+	updateCh := make(chan hlc.Timestamp)
+
+	st := cluster.MakeTestingClusterSettings()
+	ctx := context.Background()
+	LockedLeaseTimestamp.Override(ctx, &st.SV, true)
+	// Old versions need to be retained, since we don't have code
+	// to read them from storage in this test.
+	RetainOldVersionsForLocked.Override(ctx, &st.SV, true)
+	// Intentionally disable WaitForInitialVersion support, so that we can run
+	// historical queries at timestamps before the lease manager is fully caught
+	// up.
+	WaitForInitialVersion.Override(ctx, &st.SV, false)
+	var tableID atomic.Int64
+	var expectedVersion atomic.Int64
+	srv, db, _ := serverutils.StartServer(
+		t, base.TestServerArgs{
+			// Avoid using tenants since async tenant migration steps can acquire
+			// leases on our user tables.
+			DefaultTestTenant: base.TestNeedsTightIntegrationBetweenAPIsAndTestingKnobs,
+			Knobs: base.TestingKnobs{
+				SQLLeaseManager: &ManagerTestingKnobs{
+					// TestingDescriptorUpdateEvent will fire before the new descriptor version
+					// is leased.
+					TestingDescriptorUpdateEvent: func(descriptor *descpb.Descriptor) error {
+						if !blockUpdates.Load() || descriptor == nil {
+							return nil
+						}
+						id, version, _, _, _ := descpb.GetDescriptorMetadata(descriptor)
+						if id != descpb.ID(tableID.Load()) {
+							return nil
+						}
+						// Skip events for versions we've already seen. The rangefeed
+						// may deliver older versions after blockUpdates is set.
+						if int64(version) < expectedVersion.Load() {
+							return nil
+						}
+						ts, err := descpb.GetDescriptorModificationTime(descriptor)
+						if err != nil {
+							return err
+						}
+						updateCh <- ts
+						return nil
+					},
+				},
+			},
+			Settings: st,
+		})
+	defer srv.Stopper().Stop(context.Background())
+	s := srv.ApplicationLayer()
+
+	r := sqlutils.MakeSQLRunner(db)
+
+	r.Exec(t, "CREATE TABLE t1(n int)")
+	// These queries will be intentionally executed before the lease manager is
+	// fully aware of their existence, since WaitForInitialVersion support is
+	// disabled. We should be forced to use a non-locked timestamp to be aware
+	// of the tables existence.
+	r.Exec(t, "SELECT * FROM t1")
+	r.Exec(t, "INSERT INTO t1 VALUES (1)")
+
+	var id int
+	r.QueryRow(t, "SELECT 't1'::REGCLASS::OID;").Scan(&id)
+	tableID.Store(int64(id))
+
+	lm := s.LeaseManager().(*Manager)
+	getDescriptorVersion := func(ts ReadTimestamp) descpb.DescriptorVersion {
+		state := lm.findDescriptorState(descpb.ID(id), false)
+		require.NotNilf(t, state, "the descriptor was not leased yet")
+		var version descpb.DescriptorVersion
+		testutils.SucceedsSoon(t, func() error {
+			ld, _, err := state.findForTimestamp(ctx, ts)
+			// Lease renewal error can be observed as we are processing
+			// the new descriptor version. This happens because we are
+			// aware of the new version but the lease is not yet been
+			// acquired.
+			// errReadOlderVersion can be observed transiently when
+			// a previous version is removed from active.data before
+			// acquireLeaseOnPrevious re-acquires it during version
+			// purge.
+			if errors.Is(err, errRenewLease) || errors.Is(err, errReadOlderVersion) {
+				return err
+			}
+			require.NoError(t, err)
+			defer ld.Release(ctx)
+			version = ld.GetVersion()
+			return nil
+		})
+		return version
+	}
+
+	waitForTimestampChange := func(ts ReadTimestamp) {
+		testutils.SucceedsSoon(t, func() error {
+			if lm.GetSafeReplicationTS().Less(ts.GetTimestamp()) {
+				return errors.Newf("timestamp did not change: %s < %s", lm.GetSafeReplicationTS().String(), ts.GetTimestamp().String())
+			}
+			return nil
+		})
+	}
+	// Acquire a read timestamp and wait for it to change.
+	ts := lm.GetReadTimestamp(ctx, srv.Clock().Now())
+	var releaseTS = func() {
+		if ts == nil {
+			return
+		}
+		ts.Release(ctx)
+		ts = nil
+	}
+	defer releaseTS()
+	initialVersion := getDescriptorVersion(ts)
+	// Set expectedVersion so the hook only fires for the ALTER TABLE's new
+	// version, not for stale rangefeed deliveries of the current version.
+	expectedVersion.Store(int64(initialVersion + 1))
+	blockUpdates.Store(true)
+
+	grp := ctxgroup.WithContext(context.Background())
+	grp.GoCtx(func(ctx context.Context) error {
+		_, err := db.Exec("ALTER TABLE t1 ADD COLUMN n2 int")
+		return err
+	})
+
+	// The old version will still be cached as long as this timestamp is in use.
+	// Even if we released the leases already.
+	afterTS := <-updateCh
+	// Select a timestamp after which the new version will be visible.
+	nextVersion := getDescriptorVersion(ts)
+	require.Equalf(t, initialVersion, nextVersion, "new version should not be leased yet")
+	waitForTimestampChange(TimestampToReadTimestamp(afterTS))
+	// If we release the old timestamp, then the old version will be released.
+	releaseTS()
+	ts = lm.GetReadTimestamp(ctx, srv.Clock().Now())
+	nextVersion = getDescriptorVersion(ts)
+	require.Equalf(t, initialVersion+1, nextVersion, "new version should be visible now")
+	blockUpdates.Store(false)
+	close(updateCh)
+	releaseTS()
+	require.NoError(t, grp.Wait())
+}
+
+// TestLeaseManagerLockedTimestampCluster intentionally leases the descriptor
+// at an older version and validates.
+func TestLeaseManagerLockedTimestampCluster(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	var blockUpdates atomic.Bool
+	var tableID atomic.Int64
+	// newVersionCh sends a message when a new version of a descriptor
+	// is available.
+	newVersionCh := make(chan struct{})
+	// allowNextVersion blocks the lease manager from processing the
+	// next version.
+	allowNextVersion := make(chan struct{})
+	allowNextVersionClosed := false
+
+	st := cluster.MakeTestingClusterSettings()
+	ctx := context.Background()
+	LockedLeaseTimestamp.Override(ctx, &st.SV, true)
+	tc := serverutils.StartCluster(
+		t, 3, base.TestClusterArgs{
+			ServerArgs: base.TestServerArgs{
+				Settings: st,
+				// Avoid using tenants since async tenant migration steps can acquire
+				// leases on our user tables.
+				DefaultTestTenant: base.TestNeedsTightIntegrationBetweenAPIsAndTestingKnobs,
+			},
+			ServerArgsPerNode: map[int]base.TestServerArgs{2: {
+				Knobs: base.TestingKnobs{
+					SQLLeaseManager: &ManagerTestingKnobs{
+						TestingDescriptorRefreshedEvent: func(descriptor *descpb.Descriptor) {
+							if !blockUpdates.Load() {
+								return
+							}
+							tbl, _, _, _, _ := descpb.GetDescriptors(descriptor)
+							if tbl == nil || int64(tbl.ID) != tableID.Load() {
+								return
+							}
+							select {
+							case newVersionCh <- struct{}{}:
+							case <-allowNextVersion:
+								return
+							}
+							<-allowNextVersion
+						},
+					},
+				},
+			},
+			},
+		})
+	defer tc.Stopper().Stop(context.Background())
+	closeAllowNextVersion := func() {
+		if allowNextVersionClosed {
+			return
+		}
+		allowNextVersionClosed = true
+		close(allowNextVersion)
+	}
+	defer closeAllowNextVersion()
+
+	node1Conn := tc.ServerConn(0)
+	r := sqlutils.MakeSQLRunner(node1Conn)
+	node2Conn := tc.ServerConn(2)
+	execConn := sqlutils.MakeSQLRunner(node2Conn)
+	// Disable automatic stats collection, since it can interfere with this test.
+	r.Exec(t, "SET CLUSTER SETTING sql.stats.automatic_collection.enabled = false")
+	r.Exec(t, "CREATE DATABASE d1")
+	r.Exec(t, "CREATE TABLE d1.public.t1(n int)")
+	var id int
+	r.QueryRow(t, "SELECT 'd1.public.t1'::REGCLASS::OID;").Scan(&id)
+	tableID.Store(int64(id))
+	execConn.Exec(t, "SELECT * FROM d1.public.t1")
+	blockUpdates.Store(true)
+
+	lm := tc.Server(2).LeaseManager().(*Manager)
+	assertDescriptorsCount := func(expectedCount int) {
+		t.Helper()
+		state := lm.findDescriptorState(descpb.ID(id), false)
+		require.NotNilf(t, state, "the descriptor was not leased yet")
+		// Lease releases from prior queries on the same connection may be
+		// slightly delayed, so old versions may linger briefly.
+		require.NoError(t, testutils.SucceedsSoonError(func() error {
+			state.mu.Lock()
+			defer state.mu.Unlock()
+			if len(state.mu.active.data) == expectedCount {
+				return nil
+			}
+			return errors.AssertionFailedf("expected %d descriptors, got %d (state: %s)",
+				expectedCount, len(state.mu.active.data), state.mu.active.String())
+		}))
+	}
+	// moveToNextDescriptorVersion waits for the next descriptor version to be
+	// fully processed (including old version purging), then keeps the lease
+	// manager loop blocked to ensure a stable state for assertions.
+	var releaseNextVersion bool
+	moveToNextDescriptorVersion := func() {
+		newest, _ := lm.findNewest(descpb.ID(id))
+		require.NotNil(t, newest)
+		lastVersion := newest.GetVersion()
+		if releaseNextVersion {
+			allowNextVersion <- struct{}{}
+		}
+		<-newVersionCh
+		newest, _ = lm.findNewest(descpb.ID(id))
+		// Ensure that the new version is acquired. To avoid any race conditions, this
+		// assertion only fires if we released a previous version.
+		if releaseNextVersion {
+			require.NotNil(t, newest)
+			require.Greaterf(t, newest.GetVersion(), lastVersion, "new version should be leased")
+		}
+		releaseNextVersion = true
+	}
+	// In the initial state we only expect a single version.
+	assertDescriptorsCount(1)
+
+	grp := ctxgroup.WithContext(context.Background())
+	grp.GoCtx(func(ctx context.Context) error {
+		_, err := node1Conn.Exec("ALTER TABLE d1.public.t1 ADD COLUMN n2 int DEFAULT 364")
+		return err
+	})
+
+	moveToNextDescriptorVersion()
+	execConn.Exec(t, "SELECT * FROM d1.public.t1")
+	moveToNextDescriptorVersion()
+	// Wait for old versions to be purged before starting the txn. Timestamp
+	// advances can be async.
+	assertDescriptorsCount(1)
+	txn := execConn.Begin(t)
+	_, err := txn.Exec("SELECT * FROM d1.public.t1")
+	require.NoError(t, err)
+	moveToNextDescriptorVersion()
+	_, err = txn.Exec("SELECT * FROM d1.public.t1")
+	require.NoError(t, err)
+	_, err = txn.Exec("SELECT * FROM d1.public.t1")
+	assertDescriptorsCount(2)
+	require.NoError(t, err)
+	_, err = txn.Exec("INSERT INTO d1.public.t1 VALUES (1)")
+	require.NoError(t, err)
+	_, err = txn.Exec("INSERT INTO d1.public.t1 VALUES (2)")
+	require.NoError(t, err)
+	assertDescriptorsCount(2)
+	require.NoError(t, txn.Commit())
+	moveToNextDescriptorVersion()
+	assertDescriptorsCount(1)
+	closeAllowNextVersion()
+	require.NoError(t, grp.Wait())
 }

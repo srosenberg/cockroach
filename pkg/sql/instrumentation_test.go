@@ -8,7 +8,6 @@ package sql
 import (
 	"context"
 	gosql "database/sql"
-	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +29,13 @@ func TestSampledStatsCollection(t *testing.T) {
 	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
-	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
+		Knobs: base.TestingKnobs{
+			SQLStatsKnobs: &sqlstats.TestingKnobs{
+				SynchronousSQLStats: true,
+			},
+		},
+	})
 	defer s.Stopper().Stop(ctx)
 	tt := s.ApplicationLayer()
 	sv, sqlStats := &tt.ClusterSettings().SV, tt.SQLServer().(*Server).localSqlStats
@@ -43,14 +48,12 @@ func TestSampledStatsCollection(t *testing.T) {
 		func(
 			t *testing.T,
 			stmt string,
-			implicitTxn bool,
 			database string,
 		) *appstatspb.CollectedStatementStatistics {
 			t.Helper()
 			key := appstatspb.StatementStatisticsKey{
-				Query:       stmt,
-				ImplicitTxn: implicitTxn,
-				Database:    database,
+				Query:    stmt,
+				Database: database,
 			}
 			var stats *appstatspb.CollectedStatementStatistics
 			require.NoError(t, sqlStats.
@@ -59,7 +62,6 @@ func TestSampledStatsCollection(t *testing.T) {
 					sqlstats.IteratorOptions{},
 					func(ctx context.Context, statistics *appstatspb.CollectedStatementStatistics) error {
 						if statistics.Key.Query == key.Query &&
-							statistics.Key.ImplicitTxn == key.ImplicitTxn &&
 							statistics.Key.Database == key.Database {
 							stats = statistics
 						}
@@ -121,7 +123,7 @@ func TestSampledStatsCollection(t *testing.T) {
 		toggleSampling(true)
 		queryDB(t, db, selectOrderBy)
 
-		stats := getStmtStats(t, selectOrderBy, true /* implicitTxn */, "defaultdb")
+		stats := getStmtStats(t, selectOrderBy, "defaultdb")
 
 		require.Equal(t, int64(2), stats.Stats.Count, "expected to have collected two sets of general stats")
 		require.Equal(t, int64(1), stats.Stats.ExecStats.Count, "expected to have collected exactly one set of execution stats")
@@ -146,8 +148,8 @@ func TestSampledStatsCollection(t *testing.T) {
 		toggleSampling(true)
 		doTxn(t)
 
-		aggStats := getStmtStats(t, aggregation, false /* implicitTxn */, "defaultdb")
-		selectStats := getStmtStats(t, selectOrderBy, false /* implicitTxn */, "defaultdb")
+		aggStats := getStmtStats(t, aggregation, "defaultdb")
+		selectStats := getStmtStats(t, selectOrderBy, "defaultdb")
 
 		require.Equal(t, int64(2), aggStats.Stats.Count, "expected to have collected two sets of general stats")
 		require.Equal(t, int64(1), aggStats.Stats.ExecStats.Count, "expected to have collected exactly one set of execution stats")
@@ -184,7 +186,7 @@ func TestSampledStatsCollection(t *testing.T) {
 
 		// Make sure DEALLOCATE statements are grouped together rather than having
 		// one key per prepared statement name.
-		stats := getStmtStats(t, "DEALLOCATE _", true /* implicitTxn */, "defaultdb")
+		stats := getStmtStats(t, "DEALLOCATE _", "defaultdb")
 
 		require.Equal(t, int64(2), stats.Stats.Count, "expected to have collected two sets of general stats")
 		require.Equal(t, int64(0), stats.Stats.ExecStats.Count, "expected to have collected zero execution stats")
@@ -207,18 +209,18 @@ func TestSampledStatsCollectionOnNewFingerprint(t *testing.T) {
 
 	testApp := `sampling-test`
 	ctx := context.Background()
-	var collectedTxnStats []sqlstats.RecordedTxnStats
+	var collectedTxnStats []*sqlstats.RecordedTxnStats
 	s := serverutils.StartServerOnly(t, base.TestServerArgs{
 		Knobs: base.TestingKnobs{
+			SQLStatsKnobs: &sqlstats.TestingKnobs{
+				SynchronousSQLStats: true,
+			},
 			SQLExecutor: &ExecutorTestingKnobs{
 				DisableProbabilisticSampling: true,
-				OnRecordTxnFinish: func(isInternal bool, _ *sessionphase.Times, stmt string, txnStats sqlstats.RecordedTxnStats) {
+				OnRecordTxnFinish: func(isInternal bool, _ *sessionphase.Times, stmt string, txnStats *sqlstats.RecordedTxnStats) {
 					// We won't run into a race here because we'll only observe
 					// txns from a single connection.
 					if txnStats.Application == testApp {
-						if strings.Contains(stmt, `SET application_name`) {
-							return
-						}
 						collectedTxnStats = append(collectedTxnStats, txnStats)
 					}
 				},
@@ -232,6 +234,7 @@ func TestSampledStatsCollectionOnNewFingerprint(t *testing.T) {
 	conn.Exec(t, "SET application_name = $1", testApp)
 
 	t.Run("do-sampling-when-container-not-full", func(t *testing.T) {
+		collectedTxnStats = nil
 		// All of these statements should be sampled because they are new
 		// fingerprints.
 		queries := []string{
@@ -257,9 +260,8 @@ func TestSampledStatsCollectionOnNewFingerprint(t *testing.T) {
 		require.False(t, collectedTxnStats[len(queries)-1].CollectedExecStats)
 	})
 
-	collectedTxnStats = nil
-
 	t.Run("skip-sampling-when-container-full", func(t *testing.T) {
+		collectedTxnStats = nil
 		// We'll set the in-memory container cap to 1 statement. The container
 		// will be full after the first statement is recorded, and thus each
 		// subsequent statement will be new to the container.

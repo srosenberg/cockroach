@@ -23,14 +23,12 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catalogkeys"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descbuilder"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/funcdesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/multiregion"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/nstree"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemadesc"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/typedesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/zone"
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
@@ -78,6 +76,9 @@ func (s *TestState) ClusterID() uuid.UUID {
 
 // Codec implements the scbuild.Dependencies interface.
 func (s *TestState) Codec() keys.SQLCodec {
+	if s.evalCtx.Codec.IsSet() {
+		return s.evalCtx.Codec
+	}
 	return keys.SystemSQLCodec
 }
 
@@ -88,6 +89,9 @@ func (s *TestState) SessionData() *sessiondata.SessionData {
 
 // ClusterSettings implements the scbuild.Dependencies interface.
 func (s *TestState) ClusterSettings() *cluster.Settings {
+	if s.clusterSettings != nil {
+		return s.clusterSettings
+	}
 	return cluster.MakeTestingClusterSettings()
 }
 
@@ -161,6 +165,13 @@ func (s *TestState) IncrementDropOwnedByCounter() {
 // IncrementSchemaChangeIndexCounter implements the scbuild.Dependencies interface.
 func (s *TestState) IncrementSchemaChangeIndexCounter(counterType string) {
 	s.LogSideEffectf("increment telemetry for sql.schema.%s_index", counterType)
+}
+
+// IncrementAlterTableLocalityCounter implements the scbuild.Dependencies interface.
+func (s *TestState) IncrementAlterTableLocalityCounter(counterTypeFrom, counterTypeTo string) {
+	s.LogSideEffectf(
+		"increment telemetry for sql.multiregion.alter_table.locality.from.%s.to.%s",
+		counterTypeFrom, counterTypeTo)
 }
 
 var _ scbuild.AuthorizationAccessor = (*TestState)(nil)
@@ -240,27 +251,6 @@ func (s *TestState) CheckRoleExists(ctx context.Context, role username.SQLUserna
 	return nil
 }
 
-// IndexPartitioningCCLCallback implements the scbuild.Dependencies interface.
-func (s *TestState) IndexPartitioningCCLCallback() scbuild.CreatePartitioningCCLCallback {
-	if ccl := scdeps.CreatePartitioningCCL; ccl != nil {
-		return ccl
-	}
-	return func(
-		ctx context.Context,
-		st *cluster.Settings,
-		evalCtx *eval.Context,
-		columnLookupFn func(tree.Name) (catalog.Column, error),
-		oldNumImplicitColumns int,
-		oldKeyColumnNames []string,
-		partBy *tree.PartitionBy,
-		allowedNewColumnNames []tree.Name,
-		allowImplicitPartitioning bool,
-	) (newImplicitCols []catalog.Column, newPartitioning catpb.PartitioningDescriptor, err error) {
-		newPartitioning.NumColumns = uint32(len(partBy.Fields))
-		return nil, newPartitioning, nil
-	}
-}
-
 var _ scbuild.CatalogReader = (*TestState)(nil)
 
 // MayResolveDatabase implements the scbuild.CatalogReader interface.
@@ -329,7 +319,7 @@ func (s *TestState) MayResolvePrefix(
 
 // MayResolveTable implements the scbuild.CatalogReader interface.
 func (s *TestState) MayResolveTable(
-	ctx context.Context, name tree.UnresolvedObjectName,
+	ctx context.Context, name tree.UnresolvedObjectName, allowOffline bool,
 ) (catalog.ResolvedObjectPrefix, catalog.TableDescriptor) {
 	prefix, desc, err := s.mayResolveObject(name)
 	if err != nil {
@@ -383,7 +373,7 @@ func (s *TestState) MayResolveIndex(
 	idx catalog.Index,
 ) {
 	if tableIndexName.Table.Object() != "" {
-		prefix, tbl = s.MayResolveTable(ctx, *tableIndexName.Table.ToUnresolvedObjectName())
+		prefix, tbl = s.MayResolveTable(ctx, *tableIndexName.Table.ToUnresolvedObjectName(), false /* allowOffline */)
 		if tbl == nil {
 			return false, catalog.ResolvedObjectPrefix{}, nil, nil
 		}
@@ -692,6 +682,8 @@ func (s *TestState) mustReadImmutableDescriptor(id descpb.ID) (catalog.Descripto
 // mustReadMutableDescriptor looks up a descriptor and returns a mutable
 // deep copy.
 func (s *TestState) mustReadMutableDescriptor(id descpb.ID) (catalog.MutableDescriptor, error) {
+	//
+
 	u := s.uncommittedInMemory.LookupDescriptor(id)
 	if u == nil {
 		return nil, errors.Wrapf(catalog.ErrDescriptorNotFound, "reading mutable descriptor #%d", id)
@@ -739,6 +731,11 @@ func (s *TestState) MustReadMutableDescriptor(
 	ctx context.Context, id descpb.ID,
 ) (catalog.MutableDescriptor, error) {
 	return s.mustReadMutableDescriptor(id)
+}
+
+// TestingEnsureLatestLeaseIsAvailable( implements the scexec.Catalog interface.
+func (s *TestState) TestingEnsureLatestLeaseIsAvailable(ctx context.Context, id descpb.IDs) error {
+	return nil
 }
 
 // GetFullyQualifiedName implements scexec.Catalog
@@ -1133,7 +1130,7 @@ func (s *TestState) UpdateSchemaChangeJob(
 		Details:          jobspb.WrapPayloadDetails(scJob.Details),
 		PauseReason:      "",
 	}
-	oldJobMetadata := jobs.JobMetadata{
+	oldJobMetadata := jobs.DeprecatedJobMetadata{
 		ID:       scJob.JobID,
 		State:    jobs.StateRunning,
 		Payload:  &oldPayload,
@@ -1256,6 +1253,20 @@ func (s *TestState) ValidateConstraint(
 	return nil
 }
 
+// ValidateEnumTypeValueRemoval implements the validator interface.
+func (s *TestState) ValidateEnumTypeValueRemoval(
+	ctx context.Context,
+	job *jobs.Job,
+	typeDesc catalog.TypeDescriptor,
+	physicalRep []byte,
+	logicalRep string,
+	override sessiondata.InternalExecutorOverride,
+) error {
+	s.LogSideEffectf("validate enum value %q removal in type #%d",
+		logicalRep, typeDesc.GetID())
+	return nil
+}
+
 func (s *TestState) ValidateForeignKeyConstraint(
 	ctx context.Context,
 	out catalog.TableDescriptor,
@@ -1332,8 +1343,24 @@ func (s *TestState) DeleteSchedule(ctx context.Context, id jobspb.ScheduleID) er
 }
 
 // UpdateTTLScheduleLabel implements scexec.DescriptorMetadataUpdater
-func (s *TestState) UpdateTTLScheduleLabel(ctx context.Context, tbl *tabledesc.Mutable) error {
-	s.LogSideEffectf("update ttl schedule label #%d", tbl.ID)
+func (s *TestState) UpdateTTLScheduleLabel(ctx context.Context, tbl catalog.TableDescriptor) error {
+	s.LogSideEffectf("update ttl schedule label #%d", tbl.GetID())
+	return nil
+}
+
+// UpdateTTLScheduleCron implements scexec.DescriptorMetadataUpdater
+func (s *TestState) UpdateTTLScheduleCron(
+	ctx context.Context, scheduleID jobspb.ScheduleID, cronExpr string,
+) error {
+	s.LogSideEffectf("update ttl schedule cron #%d to %q", scheduleID, cronExpr)
+	return nil
+}
+
+// CreateRowLevelTTLSchedule implements scexec.DescriptorMetadataUpdater
+func (s *TestState) CreateRowLevelTTLSchedule(
+	ctx context.Context, tbl catalog.TableDescriptor,
+) error {
+	s.LogSideEffectf("create row-level TTL schedule for table #%d", tbl.GetID())
 	return nil
 }
 
@@ -1389,10 +1416,7 @@ func (s *TestState) ResolveFunction(
 	if err != nil {
 		return nil, err
 	}
-	fd, err := tree.GetBuiltinFuncDefinition(fnName, path)
-	if err != nil {
-		return nil, err
-	}
+	fd := tree.GetBuiltinFuncDefinition(fnName, path)
 	if fd != nil {
 		return fd, nil
 	}
@@ -1496,6 +1520,11 @@ func (s *TestState) GetTypeComment(typeID catid.DescID) (comment string, ok bool
 	return s.get(typeID, 0, catalogkeys.TypeCommentType)
 }
 
+// GetFunctionComment implements the scdecomp.CommentGetter interface.
+func (s *TestState) GetFunctionComment(funcID catid.DescID) (comment string, ok bool) {
+	return s.get(funcID, 0, catalogkeys.FunctionCommentType)
+}
+
 // GetColumnComment implements the scdecomp.CommentGetter interface.
 func (s *TestState) GetColumnComment(
 	tableID catid.DescID, pgAttrNum catid.PGAttributeNum,
@@ -1542,8 +1571,27 @@ func getNameEntryDescriptorType(parentID, parentSchemaID descpb.ID) string {
 }
 
 // InitializeSequence is part of the scexec.Catalog interface.
-func (s *TestState) InitializeSequence(id descpb.ID, startVal int64) {
+func (s *TestState) InitializeSequence(ctx context.Context, id descpb.ID, startVal int64) error {
 	s.LogSideEffectf("initializing sequence %d with starting value of %d", id, startVal)
+	return nil
+}
+
+func (s *TestState) SetSequence(ctx context.Context, seq *scexec.SequenceToSet) error {
+	s.LogSideEffectf("sequence %d value to %d", seq.ID, seq.Value)
+	return nil
+}
+
+func (s *TestState) MaybeUpdateSequenceValue(
+	ctx context.Context, seq *scexec.SequenceToMaybeUpdate,
+) error {
+	s.LogSideEffectf("sequence %d value may be updated", seq.ID)
+	return nil
+}
+
+// CheckMaxSchemaObjects is part of the scexec.Catalog interface.
+func (s *TestState) CheckMaxSchemaObjects(ctx context.Context, numNewObjects int) error {
+	// In tests, we don't enforce the limit.
+	return nil
 }
 
 // TemporarySchemaName is part of scbuild.TemporarySchemaProvider interface.
@@ -1588,7 +1636,52 @@ func (s *TestState) GetRegions(ctx context.Context) (*serverpb.RegionsResponse, 
 func (s *TestState) SynthesizeRegionConfig(
 	ctx context.Context, dbID descpb.ID, opts ...multiregion.SynthesizeRegionConfigOption,
 ) (multiregion.RegionConfig, error) {
-	return multiregion.RegionConfig{}, nil
+	var o multiregion.SynthesizeRegionConfigOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	// Read the database descriptor.
+	dbDesc, err := s.mustReadImmutableDescriptor(dbID)
+	if err != nil {
+		return multiregion.RegionConfig{}, err
+	}
+
+	db, err := catalog.AsDatabaseDescriptor(dbDesc)
+	if err != nil {
+		return multiregion.RegionConfig{}, err
+	}
+
+	// Return empty config if the database is not multi-region.
+	if !db.IsMultiRegion() {
+		return multiregion.RegionConfig{}, nil
+	}
+
+	// Get the region enum type ID.
+	regionEnumID, err := db.MultiRegionEnumID()
+	if err != nil {
+		return multiregion.RegionConfig{}, err
+	}
+
+	// Read the region enum type descriptor.
+	typeDesc, err := s.mustReadImmutableDescriptor(regionEnumID)
+	if err != nil {
+		return multiregion.RegionConfig{}, err
+	}
+
+	typ, err := catalog.AsTypeDescriptor(typeDesc)
+	if err != nil {
+		return multiregion.RegionConfig{}, err
+	}
+
+	regionEnumDesc := typ.AsRegionEnumTypeDescriptor()
+	if regionEnumDesc == nil {
+		return multiregion.RegionConfig{}, errors.AssertionFailedf(
+			"expected region enum type, not %s for type %q (%d)",
+			typ.GetKind(), typ.GetName(), typ.GetID())
+	}
+
+	return multiregion.SynthesizeRegionConfig(regionEnumDesc, db, o)
 }
 
 func (s *TestState) GetDefaultZoneConfig() *zonepb.ZoneConfig {

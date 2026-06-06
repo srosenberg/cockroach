@@ -8,11 +8,9 @@ package backupsink
 import (
 	"bytes"
 	"context"
-	io "io"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backuppb"
 	"github.com/cockroachdb/cockroach/pkg/base"
-	"github.com/cockroachdb/cockroach/pkg/ccl/storageccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -24,8 +22,8 @@ import (
 	hlc "github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/pebble/objstorage"
 	gogotypes "github.com/gogo/protobuf/types"
-	"github.com/kr/pretty"
 )
 
 var (
@@ -58,10 +56,11 @@ type FileSSTSink struct {
 	conf  SSTSinkConf
 	pacer *admission.Pacer
 
-	sst     storage.SSTWriter
+	isOpen bool
+	sst    storage.SSTWriter
+
 	ctx     context.Context
 	cancel  func()
-	out     io.WriteCloser
 	outName string
 
 	flushedFiles []backuppb.BackupManifest_File
@@ -133,7 +132,7 @@ func (s *FileSSTSink) Write(ctx context.Context, resp ExportedSpan) (roachpb.Key
 	}
 
 	// Initialize the writer if needed.
-	if s.out == nil {
+	if !s.isOpen {
 		if err := s.open(ctx); err != nil {
 			return nil, err
 		}
@@ -220,26 +219,27 @@ func (s *FileSSTSink) Write(ctx context.Context, resp ExportedSpan) (roachpb.Key
 
 func (s *FileSSTSink) WriteWithNoData(resp ExportedSpan) {
 	s.completedSpans += resp.CompletedSpans
+	s.flushedRevStart.Forward(resp.RevStart)
 	s.midRow = false
 }
 
 func (s *FileSSTSink) Close() error {
 	if log.V(1) && s.ctx != nil {
-		log.Infof(s.ctx, "backup sst sink recv'd %d files, wrote %d (%d due to size, %d due to re-ordering), %d recv files extended prior span",
+		log.Dev.Infof(s.ctx, "backup sst sink recv'd %d files, wrote %d (%d due to size, %d due to re-ordering), %d recv files extended prior span",
 			s.stats.files, s.stats.flushes, s.stats.sizeFlushes, s.stats.oooFlushes, s.stats.spanGrows)
 	}
 	if s.cancel != nil {
 		s.cancel()
 	}
-	if s.out != nil {
-		return s.out.Close()
-	}
+
 	s.sst.Close()
+	s.isOpen = false
+
 	return nil
 }
 
 func (s *FileSSTSink) Flush(ctx context.Context) error {
-	if s.out == nil {
+	if !s.isOpen {
 		// If the writer was not initialized but the sink has reported completed
 		// spans then there were empty ExportRequests that were processed by the
 		// owner of this sink. These still need to reported to the coordinator as
@@ -247,6 +247,7 @@ func (s *FileSSTSink) Flush(ctx context.Context) error {
 		if s.completedSpans != 0 {
 			progDetails := backuppb.BackupManifest_Progress{
 				CompletedSpans: s.completedSpans,
+				RevStartTime:   s.flushedRevStart,
 			}
 			var prog execinfrapb.RemoteProducerMetadata_BulkProcessorProgress
 			details, err := gogotypes.MarshalAny(&progDetails)
@@ -259,6 +260,7 @@ func (s *FileSSTSink) Flush(ctx context.Context) error {
 				return ctx.Err()
 			case s.conf.ProgCh <- prog:
 			}
+			s.flushedRevStart.Reset()
 			s.completedSpans = 0
 		}
 		return nil
@@ -277,13 +279,10 @@ func (s *FileSSTSink) Flush(ctx context.Context) error {
 	if err := s.sst.Finish(); err != nil {
 		return err
 	}
-	if err := s.out.Close(); err != nil {
-		log.Warningf(ctx, "failed to close write in FileSSTSink: % #v", pretty.Formatter(err))
-		return errors.Wrap(err, "writing SST")
-	}
+
 	wroteSize := s.sst.Meta.Size
 	s.outName = ""
-	s.out = nil
+	s.isOpen = false
 
 	for i := range s.flushedFiles {
 		s.flushedFiles[i].BackingFileSize = wroteSize
@@ -320,30 +319,30 @@ func (s *FileSSTSink) open(ctx context.Context) error {
 	if s.ctx == nil {
 		s.ctx, s.cancel = context.WithCancel(ctx)
 	}
-	w, err := s.dest.Writer(s.ctx, s.outName)
+	var w objstorage.Writable
+	w, err := cloud.OpenAbortableWriter(s.ctx, s.dest, s.outName)
 	if err != nil {
 		return err
 	}
-	s.out = w
 	if s.conf.Enc != nil {
-		e, err := storageccl.EncryptingWriter(w, s.conf.Enc.Key)
+		w, err = storage.EncryptingWriter(w, s.conf.Enc.Key)
 		if err != nil {
 			return err
 		}
-		s.out = e
 	}
-	// TODO(dt): make ExternalStorage.Writer return objstorage.Writable.
-	//
+	// NOTE: the sst writer takes ownership of the object writer. So we don't
+	// hold on to it to close it.
 	// Value blocks are disabled since such SSTs can be huge (e.g. 750MB in the
 	// mixed_version_backup.go roachtest), which can cause OOMs due to value
 	// block buffering.
 	s.sst = storage.MakeIngestionSSTWriterWithOverrides(
-		ctx, s.dest.Settings(), storage.NoopFinishAbortWritable(s.out),
+		ctx, s.dest.Settings(), w,
 		storage.WithValueBlocksDisabled,
 		storage.WithCompressionFromClusterSetting(
 			ctx, s.dest.Settings(), storage.CompressionAlgorithmBackupStorage,
 		),
 	)
+	s.isOpen = true
 
 	return nil
 }
@@ -364,7 +363,7 @@ func (s *FileSSTSink) copyPointKeys(ctx context.Context, dataSST []byte) (roachp
 
 	empty := true
 	for iter.SeekGE(storage.MVCCKey{Key: keys.MinKey}); ; iter.Next() {
-		if err := s.pacer.Pace(ctx); err != nil {
+		if _, err := s.pacer.Pace(ctx); err != nil {
 			return nil, err
 		}
 		if valid, err := iter.Valid(); !valid || err != nil {

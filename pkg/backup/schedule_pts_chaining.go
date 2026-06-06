@@ -15,7 +15,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobsprotectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/protectedts/ptpb"
-	roachpb "github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/scheduledjobs"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
@@ -185,7 +184,7 @@ func manageFullBackupPTSChaining(
 	)
 	if err != nil {
 		if jobs.HasScheduledJobNotFoundError(err) {
-			log.Warningf(ctx, "could not find dependent schedule with id %d",
+			log.Dev.Warningf(ctx, "could not find dependent schedule with id %d",
 				fullScheduleArgs.DependentScheduleID)
 			return nil
 		}
@@ -194,7 +193,7 @@ func manageFullBackupPTSChaining(
 
 	// Resolve the target that needs to be protected on this execution of the
 	// scheduled backup.
-	targetToProtect, deprecatedSpansToProtect, err := getTargetProtectedByBackup(ctx, pts, backupDetails)
+	targetToProtect, err := getTargetProtectedByBackup(ctx, pts, backupDetails)
 	if err != nil {
 		return errors.Wrap(err, "getting target to protect")
 	}
@@ -216,11 +215,10 @@ func manageFullBackupPTSChaining(
 	// inc schedule ID as the records' Meta. This ensures that even if the full
 	// schedule is dropped, the reconciliation job will not release the pts
 	// record stored on the inc schedule, and the chaining will continue.
-	log.Infof(ctx, "schedule %d is writing a protected timestamp record at %s",
+	log.Dev.Infof(ctx, "schedule %d is writing a protected timestamp record at %s",
 		scheduleID, backupDetails.EndTime.String())
 	ptsRecord, err := protectTimestampRecordForSchedule(
-		ctx, pts, targetToProtect, deprecatedSpansToProtect,
-		backupDetails.EndTime, incSj.ScheduleID(),
+		ctx, pts, targetToProtect, backupDetails.EndTime, incSj.ScheduleID(),
 	)
 	if err != nil {
 		return errors.Wrap(err, "protect pts record for schedule")
@@ -240,7 +238,7 @@ func manageFullBackupPTSChaining(
 	// about to release. Already running incremental backup jobs would have
 	// written their own pts record during planning, and should complete
 	// successfully.
-	log.Infof(ctx, "schedule %d is releasing a protected timestamp record held by the previous chain", scheduleID)
+	log.Dev.Infof(ctx, "schedule %d is releasing a protected timestamp record held by the previous chain", scheduleID)
 	if err := releaseProtectedTimestamp(
 		ctx, pts,
 		backupDetails.SchedulePTSChainingRecord.ProtectedTimestampRecord,
@@ -271,7 +269,7 @@ func manageIncrementalBackupPTSChaining(
 	if ptsRecordID == nil {
 		return errors.AssertionFailedf("unexpected nil pts record id on incremental schedule %d", scheduleID)
 	}
-	log.Infof(ctx, "schedule %d is updating a protected timestamp record to %s", scheduleID, tsToProtect.String())
+	log.Dev.Infof(ctx, "schedule %d is updating a protected timestamp record to %s", scheduleID, tsToProtect.String())
 	err := pts.UpdateTimestamp(ctx, *ptsRecordID, tsToProtect)
 	// If we cannot find the pts record to update it is possible that a concurrent
 	// full backup has released the record, and written a new record on the
@@ -282,7 +280,7 @@ func manageIncrementalBackupPTSChaining(
 	// In such a scenario it is okay to do nothing since the next incremental on
 	// the new full backup will rely on the pts record written by the full backup.
 	if err != nil && errors.Is(err, protectedts.ErrNotExists) {
-		log.Warningf(ctx, "failed to update timestamp record %d since it does not exist", ptsRecordID)
+		log.Dev.Warningf(ctx, "failed to update timestamp record %d since it does not exist", ptsRecordID)
 		return nil //nolint:returnerrcheck
 	}
 	return err
@@ -290,30 +288,29 @@ func manageIncrementalBackupPTSChaining(
 
 func getTargetProtectedByBackup(
 	ctx context.Context, pts protectedts.Storage, backupDetails jobspb.BackupDetails,
-) (target *ptpb.Target, deprecatedSpans []roachpb.Span, err error) {
+) (target *ptpb.Target, err error) {
 	if backupDetails.ProtectedTimestampRecord == nil {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	ptsRecord, err := pts.GetRecord(ctx, *backupDetails.ProtectedTimestampRecord)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return ptsRecord.Target, ptsRecord.DeprecatedSpans, nil
+	return ptsRecord.Target, nil
 }
 
 func protectTimestampRecordForSchedule(
 	ctx context.Context,
 	pts protectedts.Storage,
 	targetToProtect *ptpb.Target,
-	deprecatedSpansToProtect roachpb.Spans,
 	tsToProtect hlc.Timestamp,
 	scheduleID jobspb.ScheduleID,
 ) (uuid.UUID, error) {
 	protectedtsID := uuid.MakeV4()
 	return protectedtsID, pts.Protect(ctx, jobsprotectedts.MakeRecord(
-		protectedtsID, int64(scheduleID), tsToProtect, deprecatedSpansToProtect,
+		protectedtsID, int64(scheduleID), tsToProtect,
 		jobsprotectedts.Schedules, targetToProtect,
 	))
 }

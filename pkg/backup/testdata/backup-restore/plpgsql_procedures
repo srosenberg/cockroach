@@ -96,14 +96,14 @@ CREATE PROCEDURE sc1.p1(a sc1.enum1)
 	LANGUAGE plpgsql
 	SECURITY INVOKER
 	AS $$
-	DECLARE
-	foobar sc1.enum1;
-	BEGIN
-	SELECT a FROM db1.sc1.tbl1;
-	SELECT 'Good':::sc1.enum1;
-	SELECT nextval('sc1.sq1'::REGCLASS);
-	END;
-$$
+		DECLARE
+			foobar sc1.enum1;
+		BEGIN
+			SELECT a FROM sc1.tbl1;
+			SELECT 'Good':::sc1.enum1;
+			SELECT nextval('sc1.sq1'::REGCLASS);
+		END;
+	$$
 
 exec-sql
 CALL sc1.p1('Good'::sc1.enum1)
@@ -137,14 +137,14 @@ CREATE PROCEDURE sc1.p1(a sc1.enum1)
 	LANGUAGE plpgsql
 	SECURITY INVOKER
 	AS $$
-	DECLARE
-	foobar sc1.enum1;
-	BEGIN
-	SELECT a FROM db1_new.sc1.tbl1;
-	SELECT 'Good':::sc1.enum1;
-	SELECT nextval('sc1.sq1'::REGCLASS);
-	END;
-$$
+		DECLARE
+			foobar sc1.enum1;
+		BEGIN
+			SELECT a FROM sc1.tbl1;
+			SELECT 'Good':::sc1.enum1;
+			SELECT nextval('sc1.sq1'::REGCLASS);
+		END;
+	$$
 
 # Make sure procedure signature is rewritten in schema descriptor so that
 # procedure can be resolved and executed.
@@ -182,18 +182,16 @@ DROP TABLE sc1.tbl1
 ----
 pq: cannot drop table tbl1 because other objects depend on it
 
-# TODO(mgartner): The error message should say "procedure".
 exec-sql
 ALTER TABLE sc1.tbl1 RENAME TO tbl1_new
 ----
-pq: cannot rename relation "sc1.tbl1" because function "p1" depends on it
+pq: cannot rename relation "db1_new.sc1.tbl1" because procedure "p1" depends on it
 HINT: consider dropping "p1" first.
 
-# TODO(mgartner): The error message should say "procedure".
 exec-sql
 ALTER TABLE sc1.tbl1 SET SCHEMA sc2;
 ----
-pq: cannot set schema on relation "tbl1" because function "p1" depends on it
+pq: cannot set schema on relation "db1_new.sc1.tbl1" because procedure "p1" depends on it
 HINT: consider dropping "p1" first.
 
 exec-sql
@@ -304,14 +302,14 @@ CREATE PROCEDURE sc1.p1(a sc1.enum1)
 	LANGUAGE plpgsql
 	SECURITY INVOKER
 	AS $$
-	DECLARE
-	foobar sc1.enum1;
-	BEGIN
-	SELECT a FROM db1.sc1.tbl1;
-	SELECT 'Good':::sc1.enum1;
-	SELECT nextval('sc1.sq1'::REGCLASS);
-	END;
-$$
+		DECLARE
+			foobar sc1.enum1;
+		BEGIN
+			SELECT a FROM sc1.tbl1;
+			SELECT 'Good':::sc1.enum1;
+			SELECT nextval('sc1.sq1'::REGCLASS);
+		END;
+	$$
 
 query-sql
 CALL sc1.p1('Good'::sc1.enum1)
@@ -346,14 +344,14 @@ CREATE PROCEDURE sc1.p1(a sc1.enum1)
 	LANGUAGE plpgsql
 	SECURITY INVOKER
 	AS $$
-	DECLARE
-	foobar sc1.enum1;
-	BEGIN
-	SELECT a FROM db1.sc1.tbl1;
-	SELECT 'Good':::sc1.enum1;
-	SELECT nextval('sc1.sq1'::REGCLASS);
-	END;
-$$
+		DECLARE
+			foobar sc1.enum1;
+		BEGIN
+			SELECT a FROM sc1.tbl1;
+			SELECT 'Good':::sc1.enum1;
+			SELECT nextval('sc1.sq1'::REGCLASS);
+		END;
+	$$
 
 # Make sure procedure signature is rewritten in schema descriptor so that
 # procedure can be resolved and executed.
@@ -384,13 +382,13 @@ pq: cannot drop table tbl1 because other objects depend on it
 exec-sql
 ALTER TABLE sc1.tbl1 RENAME TO tbl1_new
 ----
-pq: cannot rename relation "sc1.tbl1" because function "p1" depends on it
+pq: cannot rename relation "db1.sc1.tbl1" because procedure "p1" depends on it
 HINT: consider dropping "p1" first.
 
 exec-sql
 ALTER TABLE sc1.tbl1 SET SCHEMA sc2;
 ----
-pq: cannot set schema on relation "tbl1" because function "p1" depends on it
+pq: cannot set schema on relation "db1.sc1.tbl1" because procedure "p1" depends on it
 HINT: consider dropping "p1" first.
 
 exec-sql

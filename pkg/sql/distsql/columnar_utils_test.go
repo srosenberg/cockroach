@@ -82,7 +82,7 @@ func verifyColOperator(t *testing.T, args verifyColOperatorArgs) error {
 
 	ctx := context.Background()
 	st := cluster.MakeTestingClusterSettings()
-	tempEngine, tempFS, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), base.DefaultTestStoreSpec, nil /* statsCollector */)
+	tempEngine, tempFS, err := storage.NewTempEngine(ctx, base.DefaultTestTempStorageConfig(st), nil /* statsCollector */)
 	if err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func verifyColOperator(t *testing.T, args verifyColOperatorArgs) error {
 	}
 
 	proc, err := rowexec.NewProcessor(
-		ctx, flowCtx, 0, &args.pspec.Core, &args.pspec.Post, inputsProc, nil,
+		ctx, flowCtx, 0, 0, &args.pspec.Core, &args.pspec.Post, inputsProc, nil,
 	)
 	if err != nil {
 		return err
@@ -198,11 +198,16 @@ func verifyColOperator(t *testing.T, args verifyColOperatorArgs) error {
 			colOpRows = append(colOpRows, printRowForChecking(rowColOp))
 		}
 		if metaColOp != nil {
-			if metaColOp.Err == nil {
+			if metaColOp.RowNum != nil {
+				// In test builds, the invariantsChecker can inject RowNum
+				// metadata in arbitrary Operator chains, so we'll just silently
+				// swallow it.
+			} else if metaColOp.Err == nil {
 				return errors.Errorf("unexpectedly columnar operator returned "+
 					"non-error meta\n%+v", metaColOp)
+			} else {
+				colOpMetas = append(colOpMetas, *metaColOp)
 			}
-			colOpMetas = append(colOpMetas, *metaColOp)
 		}
 
 		if rowProc == nil && metaProc == nil &&

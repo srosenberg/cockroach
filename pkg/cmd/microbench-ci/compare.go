@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"path"
 
@@ -66,19 +67,23 @@ func (c *CompareResult) status(metricName string) Status {
 	} else if cc.Delta*float64(entry.Better) < 0 {
 		status = Regressed
 	}
-	return status
-}
 
-// top returns the top status of all metrics in the comparison.
-func (c *CompareResult) top() Status {
-	topStatus := NoChange
-	for metric := range c.MetricMap {
-		status := c.status(metric)
-		if status > topStatus {
-			topStatus = status
+	// Check if the metric has a delta cutoff threshold.
+	threshold := 0.0
+	for _, metric := range c.Benchmark.Metrics {
+		if metric.Name == metricName {
+			threshold = metric.Threshold
+			break
 		}
 	}
-	return topStatus
+	// If the threshold is set and the delta is less than the threshold, we
+	// consider the metric to have no change. This accounts for compiler induced
+	// variance, where the regression might be reproducible, but the change is
+	// unrelated to the changes in the code.
+	if math.Abs(cc.Delta) < threshold {
+		status = NoChange
+	}
+	return status
 }
 
 // compare compares the metrics of a benchmark between two revisions. Only the
@@ -135,12 +140,6 @@ func (b Benchmarks) compareBenchmarks() (CompareResults, error) {
 		compareResult, err := benchmark.compare(benchmark.Count)
 		if err != nil {
 			return nil, err
-		}
-		if compareResult.top() != NoChange {
-			compareResult, err = benchmark.compare(0)
-			if err != nil {
-				return nil, err
-			}
 		}
 		compareResults = append(compareResults, compareResult)
 	}

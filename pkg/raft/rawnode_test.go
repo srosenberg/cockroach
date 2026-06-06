@@ -219,7 +219,8 @@ func testRawNodeProposeAndConfChange(t *testing.T, storeLivenessEnabled bool) {
 			for cs == nil {
 				rd := rawNode.Ready()
 				s.Append(rd.Entries)
-				for _, ent := range rd.CommittedEntries {
+				apply := committedEntries(t, rawNode, rd)
+				for _, ent := range apply {
 					var cc pb.ConfChangeI
 					if ent.Type == pb.EntryConfChange {
 						var ccc pb.ConfChange
@@ -234,7 +235,8 @@ func testRawNodeProposeAndConfChange(t *testing.T, storeLivenessEnabled bool) {
 						cs = rawNode.ApplyConfChange(cc)
 					}
 				}
-				rawNode.Advance(rd)
+				rawNode.AckAppend(rd.Ack())
+				rawNode.AckApplied(apply)
 				if storeLivenessEnabled {
 					// Revert the support state to how it was so that the test can run
 					// without having peer 1 not supported.
@@ -296,7 +298,8 @@ func testRawNodeProposeAndConfChange(t *testing.T, storeLivenessEnabled bool) {
 			var context []byte
 			if !tc.exp.AutoLeave {
 				require.Empty(t, rd.Entries)
-				rawNode.Advance(rd)
+				rawNode.AckAppend(rd.Ack())
+				rawNode.AckApplied(committedEntries(t, rawNode, rd))
 				if tc.exp2 == nil {
 					return
 				}
@@ -318,7 +321,8 @@ func testRawNodeProposeAndConfChange(t *testing.T, storeLivenessEnabled bool) {
 			cs = rawNode.ApplyConfChange(cc)
 			require.Equal(t, tc.exp2, cs)
 
-			rawNode.Advance(rd)
+			rawNode.AckAppend(rd.Ack())
+			rawNode.AckApplied(committedEntries(t, rawNode, rd))
 		})
 	}
 }
@@ -372,7 +376,8 @@ func testRawNodeJointAutoLeave(t *testing.T, storeLivenessEnabled bool) {
 	for cs == nil {
 		rd := rawNode.Ready()
 		s.Append(rd.Entries)
-		for _, ent := range rd.CommittedEntries {
+		apply := committedEntries(t, rawNode, rd)
+		for _, ent := range apply {
 			var cc pb.ConfChangeI
 			if ent.Type == pb.EntryConfChangeV2 {
 				var ccc pb.ConfChangeV2
@@ -404,7 +409,8 @@ func testRawNodeJointAutoLeave(t *testing.T, storeLivenessEnabled bool) {
 				cs = rawNode.ApplyConfChange(cc)
 			}
 		}
-		rawNode.Advance(rd)
+		rawNode.AckAppend(rd.Ack())
+		rawNode.AckApplied(apply)
 		// Once we are the leader, propose a command and a ConfChange.
 		if !proposed && rawNode.raft.state == pb.StateLeader {
 			require.NoError(t, rawNode.Propose([]byte("somedata")))
@@ -435,22 +441,18 @@ func testRawNodeJointAutoLeave(t *testing.T, storeLivenessEnabled bool) {
 	rd := rawNode.Ready()
 	t.Log(DescribeReady(rd, nil))
 	require.Empty(t, rd.Entries)
-	rawNode.Advance(rd)
+	rawNode.AckAppend(rd.Ack())
+	rawNode.AckApplied(committedEntries(t, rawNode, rd))
 
 	// Make it leader again. It should leave joint automatically after moving apply index.
 	rawNode.Campaign()
-	rd = rawNode.Ready()
-	t.Log(DescribeReady(rd, nil))
-	s.Append(rd.Entries)
-	rawNode.Advance(rd)
-	rd = rawNode.Ready()
-	t.Log(DescribeReady(rd, nil))
-	s.Append(rd.Entries)
-	rawNode.Advance(rd)
-	rd = rawNode.Ready()
-	t.Log(DescribeReady(rd, nil))
-	s.Append(rd.Entries)
-	rawNode.Advance(rd)
+	for i := 0; i < 3; i++ {
+		rd = rawNode.Ready()
+		t.Log(DescribeReady(rd, nil))
+		s.Append(rd.Entries)
+		rawNode.AckAppend(rd.Ack())
+		rawNode.AckApplied(committedEntries(t, rawNode, rd))
+	}
 	rd = rawNode.Ready()
 	t.Log(DescribeReady(rd, nil))
 	s.Append(rd.Entries)
@@ -466,8 +468,8 @@ func testRawNodeJointAutoLeave(t *testing.T, storeLivenessEnabled bool) {
 	require.Equal(t, exp2Cs, *cs)
 }
 
-// TestRawNodeProposeAddDuplicateNode ensures that two proposes to add the same node should
-// not affect the later propose to add new node.
+// TestRawNodeProposeAddDuplicateNode ensures that two proposals to add the same
+// node should not affect a later proposal to add a new node.
 func TestRawNodeProposeAddDuplicateNode(t *testing.T) {
 	s := newTestMemoryStorage(withPeers(1))
 	rawNode, err := NewRawNode(newTestConfig(1, 10, 1, s))
@@ -475,31 +477,37 @@ func TestRawNodeProposeAddDuplicateNode(t *testing.T) {
 
 	rd := rawNode.Ready()
 	s.Append(rd.Entries)
-	rawNode.Advance(rd)
+	rawNode.AckAppend(rd.Ack())
 
 	rawNode.Campaign()
-	for {
+	// Drain all Ready cycles until the leader's initial empty entry is committed
+	// and applied, so that applied index is >= pendingConfIndex and conf change
+	// proposals are not rejected.
+	for rawNode.HasReady() {
 		rd = rawNode.Ready()
 		s.Append(rd.Entries)
-		if rd.HardState.Lead == rawNode.raft.id {
-			rawNode.Advance(rd)
-			break
-		}
-		rawNode.Advance(rd)
+		rawNode.AckAppend(rd.Ack())
+		rawNode.AckApplied(committedEntries(t, rawNode, rd))
 	}
+	require.Equal(t, rawNode.raft.id, rawNode.raft.lead)
 
 	proposeConfChangeAndApply := func(cc pb.ConfChange) {
-		rawNode.ProposeConfChange(cc)
-		rd = rawNode.Ready()
-		s.Append(rd.Entries)
-		for _, entry := range rd.CommittedEntries {
-			if entry.Type == pb.EntryConfChange {
-				var cc pb.ConfChange
-				cc.Unmarshal(entry.Data)
-				rawNode.ApplyConfChange(cc)
+		require.NoError(t, rawNode.ProposeConfChange(cc))
+		// Drain all Ready cycles to ensure the conf change is committed and applied.
+		for rawNode.HasReady() {
+			rd = rawNode.Ready()
+			s.Append(rd.Entries)
+			committed := committedEntries(t, rawNode, rd)
+			for _, entry := range committed {
+				if entry.Type == pb.EntryConfChange {
+					var cc pb.ConfChange
+					cc.Unmarshal(entry.Data)
+					rawNode.ApplyConfChange(cc)
+				}
 			}
+			rawNode.AckAppend(rd.Ack())
+			rawNode.AckApplied(committed)
 		}
-		rawNode.Advance(rd)
 	}
 
 	cc1 := pb.ConfChange{Type: pb.ConfChangeAddNode, NodeID: 1}
@@ -507,7 +515,7 @@ func TestRawNodeProposeAddDuplicateNode(t *testing.T) {
 	require.NoError(t, err)
 	proposeConfChangeAndApply(cc1)
 
-	// try to add the same node again
+	// Try to add the same node again. This is a no-op but still gets committed.
 	proposeConfChangeAndApply(cc1)
 
 	// the new node join should be ok
@@ -522,6 +530,7 @@ func TestRawNodeProposeAddDuplicateNode(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 3)
 	assert.Equal(t, ccdata1, entries[0].Data)
+	assert.Equal(t, ccdata1, entries[1].Data)
 	assert.Equal(t, ccdata2, entries[2].Data)
 }
 
@@ -543,11 +552,12 @@ func TestRawNodeStart(t *testing.T) {
 		{Term: 1, Index: 3, Data: []byte("foo")}, // non-empty entry
 	}
 	want := Ready{
-		SoftState:        &SoftState{RaftState: pb.StateLeader},
-		HardState:        pb.HardState{Term: 1, Commit: 3, Vote: 1, Lead: 1, LeadEpoch: 1},
-		Entries:          nil, // emitted & checked in intermediate Ready cycle
-		CommittedEntries: entries,
-		MustSync:         true, // because we are advancing the commit index
+		SoftState: &SoftState{RaftState: pb.StateLeader},
+		StorageAppend: StorageAppend{
+			HardState: pb.HardState{Term: 1, Commit: 3, Vote: 1, Lead: 1, LeadEpoch: 1},
+			Entries:   nil, // emitted & checked in intermediate Ready cycle
+		},
+		Committed: pb.LogSpan{After: 1, Last: 3},
 	}
 
 	storage := NewMemoryStorage()
@@ -601,23 +611,23 @@ func TestRawNodeStart(t *testing.T) {
 	rawNode.Campaign()
 	rd := rawNode.Ready()
 	storage.Append(rd.Entries)
-	rawNode.Advance(rd)
+	rawNode.AckAppend(rd.Ack())
 	rawNode.Propose([]byte("foo"))
 	require.True(t, rawNode.HasReady())
 
 	rd = rawNode.Ready()
 	require.Equal(t, entries, rd.Entries)
 	storage.Append(rd.Entries)
-	rawNode.Advance(rd)
+	rawNode.AckAppend(rd.Ack())
 
 	require.True(t, rawNode.HasReady())
 	rd = rawNode.Ready()
 	require.Empty(t, rd.Entries)
-	require.True(t, rd.MustSync)
-	rawNode.Advance(rd)
+	rawNode.AckAppend(rd.Ack())
+	rawNode.AckApplied(committedEntries(t, rawNode, rd))
 
 	rd.SoftState, want.SoftState = nil, nil
-
+	rd.Responses = nil // TODO(pav-kv): assert on the responses too
 	require.Equal(t, want, rd)
 	assert.False(t, rawNode.HasReady())
 }
@@ -630,10 +640,10 @@ func TestRawNodeRestart(t *testing.T) {
 	st := pb.HardState{Term: 1, Commit: 1, Lead: 1, LeadEpoch: 1}
 
 	want := Ready{
-		HardState: emptyState, // no HardState is emitted because there was no change
+		// No storage append emitted because there was no change.
+		StorageAppend: StorageAppend{},
 		// commit up to commit index in st
-		CommittedEntries: entries[:st.Commit],
-		MustSync:         false,
+		Committed: pb.LogSpan{After: 0, Last: pb.Index(st.Commit)},
 	}
 
 	storage := newTestMemoryStorage(withPeers(1, 2))
@@ -644,8 +654,10 @@ func TestRawNodeRestart(t *testing.T) {
 	rawNode2, err := NewRawNode(newTestConfig(2, 10, 1, storage))
 	require.NoError(t, err)
 	rd := rawNode1.Ready()
-	assert.Equal(t, want, rd)
-	rawNode1.Advance(rd)
+	rawNode1.AckAppend(rd.Ack())
+	rawNode1.AckApplied(committedEntries(t, rawNode1, rd))
+	rd.Responses = nil // TODO(pav-kv): assert on the responses too
+	require.Equal(t, want, rd)
 	assert.False(t, rawNode1.HasReady())
 
 	// Ensure that the HardState was correctly loaded post rawNode1 restart.
@@ -691,10 +703,10 @@ func TestRawNodeRestartFromSnapshot(t *testing.T) {
 	st := pb.HardState{Term: 1, Commit: 3}
 
 	want := Ready{
-		HardState: emptyState,
+		// No storage append emitted because there was no change.
+		StorageAppend: StorageAppend{},
 		// commit up to commit index in st
-		CommittedEntries: entries,
-		MustSync:         false,
+		Committed: pb.LogSpan{After: 2, Last: 3},
 	}
 
 	s := NewMemoryStorage()
@@ -704,9 +716,10 @@ func TestRawNodeRestartFromSnapshot(t *testing.T) {
 	rawNode, err := NewRawNode(newTestConfig(1, 10, 1, s))
 	require.NoError(t, err)
 	rd := rawNode.Ready()
-	if assert.Equal(t, want, rd) {
-		rawNode.Advance(rd)
-	}
+	rawNode.AckAppend(rd.Ack())
+	rawNode.AckApplied(committedEntries(t, rawNode, rd))
+	rd.Responses = nil // TODO(pav-kv): assert on the responses too
+	require.Equal(t, want, rd)
 	assert.False(t, rawNode.HasReady())
 }
 
@@ -721,7 +734,7 @@ func TestRawNodeStatus(t *testing.T) {
 
 	rd := rn.Ready()
 	s.Append(rd.Entries)
-	rn.Advance(rd)
+	rn.AckAppend(rd.Ack())
 	status := rn.Status()
 	require.Equal(t, pb.PeerID(1), status.Lead)
 	require.Equal(t, pb.StateLeader, status.RaftState)
@@ -790,14 +803,16 @@ func TestRawNodeCommitPaginationAfterRestart(t *testing.T) {
 
 	for highestApplied := uint64(0); highestApplied != 11; {
 		rd := rawNode.Ready()
-		n := len(rd.CommittedEntries)
+		committed := committedEntries(t, rawNode, rd)
+		n := len(committed)
 		require.NotZero(t, n, "stopped applying entries at index %d", highestApplied)
-		next := rd.CommittedEntries[0].Index
+		next := committed[0].Index
 		require.False(t, highestApplied != 0 && highestApplied+1 != next,
 			"attempting to apply index %d after index %d, leaving a gap", next, highestApplied)
 
-		highestApplied = rd.CommittedEntries[n-1].Index
-		rawNode.Advance(rd)
+		highestApplied = committed[n-1].Index
+		rawNode.AckAppend(rd.Ack())
+		rawNode.AckApplied(committed)
 		rawNode.Step(pb.Message{
 			Type:    pb.MsgApp,
 			To:      1,
@@ -884,8 +899,9 @@ func TestRawNodeBoundedLogGrowthWithPartition(t *testing.T) {
 	for {
 		rd := rawNode.Ready()
 		s.Append(rd.Entries)
-		rawNode.Advance(rd)
-		if len(rd.CommittedEntries) > 0 {
+		rawNode.AckAppend(rd.Ack())
+		if !rd.Committed.Empty() {
+			rawNode.AckApplied(committedEntries(t, rawNode, rd))
 			break
 		}
 	}
@@ -909,16 +925,18 @@ func TestRawNodeBoundedLogGrowthWithPartition(t *testing.T) {
 	// disappear as entries are committed.
 	rd := rawNode.Ready()
 	require.Len(t, rd.Entries, maxEntries)
+	require.True(t, rd.Committed.Empty())
 	s.Append(rd.Entries)
-	rawNode.Advance(rd)
+	rawNode.AckAppend(rd.Ack())
 
 	// Entries are appended, but not applied.
 	checkUncommitted(maxEntrySize)
 
 	rd = rawNode.Ready()
 	require.Empty(t, rd.Entries)
-	require.Len(t, rd.CommittedEntries, maxEntries)
-	rawNode.Advance(rd)
+	require.Equal(t, uint64(maxEntries), rd.Committed.Len())
+	rawNode.AckAppend(rd.Ack())
+	rawNode.AckApplied(committedEntries(t, rawNode, rd))
 
 	checkUncommitted(0)
 }
@@ -973,8 +991,7 @@ func BenchmarkStatus(b *testing.B) {
 
 			b.Run("WithProgress", func(b *testing.B) {
 				b.ReportAllocs()
-				visit := func(pb.PeerID, ProgressType, tracker.Progress) {}
-
+				visit := func(pb.PeerID, tracker.Progress) {}
 				for i := 0; i < b.N; i++ {
 					rn.WithProgress(visit)
 				}
@@ -983,7 +1000,7 @@ func BenchmarkStatus(b *testing.B) {
 				b.ReportAllocs()
 				for i := 0; i < b.N; i++ {
 					var n uint64
-					visit := func(_ pb.PeerID, _ ProgressType, pr tracker.Progress) {
+					visit := func(_ pb.PeerID, pr tracker.Progress) {
 						n += pr.Match
 					}
 					rn.WithProgress(visit)
@@ -1008,7 +1025,7 @@ func TestRawNodeConsumeReady(t *testing.T) {
 	require.Equal(t, m1, rd.Messages[0])
 	// Add a message to raft to make sure that Advance() doesn't drop it.
 	rn.raft.msgs = append(rn.raft.msgs, m2)
-	rn.Advance(rd)
+	rn.AckAppend(rd.Ack())
 	require.Len(t, rn.raft.msgs, 1)
 	require.Equal(t, m2, rn.raft.msgs[0])
 }
@@ -1061,8 +1078,13 @@ func benchmarkRawNodeImpl(b *testing.B, peers ...pb.PeerID) {
 			if debug {
 				b.Log(DescribeReady(rd, nil))
 			}
-			if n := len(rd.CommittedEntries); n > 0 {
-				applied = rd.CommittedEntries[n-1].Index
+			if span := rd.Committed; !span.Empty() {
+				applied = uint64(rd.Committed.Last)
+				entries, err := rn.LogSnapshot().Slice(span, noLimit)
+				if err != nil {
+					panic(err)
+				}
+				rn.AckApplied(entries)
 			}
 			s.Append(rd.Entries)
 			for _, m := range rd.Messages {
@@ -1085,7 +1107,7 @@ func benchmarkRawNodeImpl(b *testing.B, peers ...pb.PeerID) {
 					rn.Step(resp)
 				}
 			}
-			rn.Advance(rd)
+			rn.AckAppend(rd.Ack())
 		}
 		return applied
 	}
@@ -1114,4 +1136,11 @@ func benchmarkRawNodeImpl(b *testing.B, peers ...pb.PeerID) {
 	b.ReportMetric(float64(s.callStats.term)/float64(b.N), "term/op")
 	b.ReportMetric(float64(numReady)/float64(b.N), "ready/op")
 	b.Logf("storage access stats: %+v", s.callStats)
+}
+
+func committedEntries(t *testing.T, rn *RawNode, rd Ready) []pb.Entry {
+	t.Helper()
+	entries, err := rn.LogSnapshot().Slice(rd.Committed, math.MaxUint64)
+	require.NoError(t, err)
+	return entries
 }

@@ -8,14 +8,15 @@ package logical
 import (
 	"context"
 	"fmt"
-	"runtime/pprof"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/backup"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster"
+	"github.com/cockroachdb/cockroach/pkg/crosscluster/replicationutils"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/kv/bulk"
+	"github.com/cockroachdb/cockroach/pkg/obs/workloadid"
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
@@ -30,7 +31,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
+	"github.com/cockroachdb/cockroach/pkg/util/pprofutil"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
+	"github.com/cockroachdb/cockroach/pkg/util/rangescanstats/rangescanstatspb"
 	"github.com/cockroachdb/cockroach/pkg/util/span"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
 	"github.com/cockroachdb/errors"
@@ -64,6 +67,8 @@ type offlineInitialScanProcessor struct {
 	errCh chan error
 
 	checkpointCh chan offlineCheckpoint
+
+	rangeStatsCh chan *rangescanstatspb.RangeStats
 
 	rekey *backup.KeyRewriter
 
@@ -104,6 +109,7 @@ func newNewOfflineInitialScanProcessor(
 		processorID:  processorID,
 		stopCh:       make(chan struct{}),
 		checkpointCh: make(chan offlineCheckpoint),
+		rangeStatsCh: make(chan *rangescanstatspb.RangeStats),
 		errCh:        make(chan error, 1),
 		rekey:        rekeyer,
 		lastKeyAdded: roachpb.Key{},
@@ -141,7 +147,9 @@ func (o *offlineInitialScanProcessor) setup(ctx context.Context) error {
 		true,            /* writeAtBatchTs */
 		true,            /* splitAndScatterRanges */
 		o.FlowCtx.Cfg.BackupMonitor.MakeConcurrentBoundAccount(),
-		o.FlowCtx.Cfg.BulkSenderLimiter)
+		o.FlowCtx.Cfg.BulkSenderLimiter,
+		nil,
+	)
 	if err != nil {
 		return err
 	}
@@ -187,11 +195,11 @@ func (o *offlineInitialScanProcessor) setup(ctx context.Context) error {
 }
 
 func (o *offlineInitialScanProcessor) Start(ctx context.Context) {
-	tags := &logtags.Buffer{}
-	tags = tags.Add("job", o.spec.JobID)
-	tags = tags.Add("src-node", o.spec.PartitionSpec.PartitionID)
-	tags = tags.Add("proc", o.ProcessorID)
-	ctx = logtags.AddTags(ctx, tags)
+	tags := logtags.BuildBuffer()
+	tags.Add("job", o.spec.JobID)
+	tags.Add("src-node", o.spec.PartitionSpec.PartitionID)
+	tags.Add("proc", o.ProcessorID)
+	ctx = logtags.AddTags(ctx, tags.Finish())
 
 	ctx = o.StartInternal(ctx, offlineInitialScanProcessorName)
 
@@ -202,7 +210,7 @@ func (o *offlineInitialScanProcessor) Start(ctx context.Context) {
 		return
 	}
 
-	log.Infof(ctx, "starting offline initial scan writer for partition %s", o.spec.PartitionSpec.PartitionID)
+	log.Dev.Infof(ctx, "starting offline initial scan writer for partition %s", o.spec.PartitionSpec.PartitionID)
 
 	// We use a different context for the subscription here so
 	// that we can explicitly cancel it.
@@ -211,24 +219,26 @@ func (o *offlineInitialScanProcessor) Start(ctx context.Context) {
 	o.workerGroup = ctxgroup.WithContext(o.Ctx())
 	o.workerGroup.GoCtx(func(_ context.Context) error {
 		if err := o.subscription.Subscribe(subscriptionCtx); err != nil {
-			log.Infof(o.Ctx(), "subscription completed. Error: %s", err)
+			log.Dev.Infof(o.Ctx(), "subscription completed. Error: %s", err)
 			o.sendError(errors.Wrap(err, "subscription"))
 		}
 		return nil
 	})
 	o.workerGroup.GoCtx(func(ctx context.Context) error {
 		defer close(o.checkpointCh)
-		pprof.Do(ctx, pprof.Labels("proc", fmt.Sprintf("%d", o.ProcessorID)), func(ctx context.Context) {
+		defer close(o.rangeStatsCh)
+		pprofutil.Do(ctx, func(ctx context.Context) {
 			for event := range o.subscription.Events() {
 				if err := o.handleEvent(ctx, event); err != nil {
-					log.Infof(o.Ctx(), "consumer completed. Error: %s", err)
+					log.Dev.Infof(o.Ctx(), "consumer completed. Error: %s", err)
 					o.sendError(errors.Wrap(err, "consume events"))
 				}
 			}
 			if err := o.subscription.Err(); err != nil {
 				o.sendError(errors.Wrap(err, "subscription"))
 			}
-		})
+		}, workloadid.ProfileTag, workloadid.WORKLOAD_NAME_LDR,
+			"proc", fmt.Sprintf("%d", o.ProcessorID))
 		return nil
 	})
 }
@@ -243,16 +253,8 @@ func (o *offlineInitialScanProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.P
 	case checkpoint, ok := <-o.checkpointCh:
 		switch {
 		case !ok:
-			select {
-			case err := <-o.errCh:
-				o.MoveToDrainingAndLogError(err)
-				return nil, o.DrainHelper()
-			case <-time.After(10 * time.Second):
-				logcrash.ReportOrPanic(o.Ctx(), &o.FlowCtx.Cfg.Settings.SV,
-					"event channel closed but no error found on err channel after 10 seconds")
-				o.MoveToDrainingAndLogError(nil /* error */)
-				return nil, o.DrainHelper()
-			}
+			o.MoveToDrainingAndLogError(o.waitForErr())
+			return nil, o.DrainHelper()
 		case checkpoint.afterInitialScanCompletion:
 			// The previous checkpoint completed the initial scan and was already
 			// ingested by the coordinator, so we can gracefully shut down the
@@ -267,10 +269,22 @@ func (o *offlineInitialScanProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.P
 				return nil, o.DrainHelper()
 			}
 			row := rowenc.EncDatumRow{
-				rowenc.DatumToEncDatum(types.Bytes, tree.NewDBytes(tree.DBytes(progressBytes))),
+				rowenc.DatumToEncDatumUnsafe(types.Bytes, tree.NewDBytes(tree.DBytes(progressBytes))),
 			}
 			return row, nil
 		}
+	case stats, ok := <-o.rangeStatsCh:
+		if !ok {
+			o.MoveToDrainingAndLogError(o.waitForErr())
+			return nil, o.DrainHelper()
+		}
+
+		meta, err := replicationutils.StreamRangeStatsToProgressMeta(o.Ctx(), o.FlowCtx, o.ProcessorID, stats)
+		if err != nil {
+			o.MoveToDrainingAndLogError(err)
+			return nil, o.DrainHelper()
+		}
+		return nil, meta
 	case err := <-o.errCh:
 		o.MoveToDrainingAndLogError(err)
 		return nil, o.DrainHelper()
@@ -279,7 +293,7 @@ func (o *offlineInitialScanProcessor) Next() (rowenc.EncDatumRow, *execinfrapb.P
 
 func (o *offlineInitialScanProcessor) MoveToDrainingAndLogError(err error) {
 	if err != nil {
-		log.Infof(o.Ctx(), "gracefully draining with error: %s", err)
+		log.Dev.Infof(o.Ctx(), "gracefully draining with error: %s", err)
 	}
 	o.MoveToDraining(err)
 }
@@ -313,7 +327,7 @@ func (o *offlineInitialScanProcessor) close() {
 	// worker group. The client close and stopCh close above should result
 	// in exit signals being sent to all relevant goroutines.
 	if err := o.workerGroup.Wait(); err != nil {
-		log.Errorf(o.Ctx(), "error on close(): %s", err)
+		log.Dev.Errorf(o.Ctx(), "error on close(): %s", err)
 	}
 
 	if o.batcher != nil {
@@ -330,7 +344,7 @@ func (o *offlineInitialScanProcessor) sendError(err error) {
 	select {
 	case o.errCh <- err:
 	default:
-		log.VInfof(o.Ctx(), 2, "dropping additional error: %s", err)
+		log.Dev.VInfof(o.Ctx(), 2, "dropping additional error: %s", err)
 	}
 }
 
@@ -343,22 +357,39 @@ func (o *offlineInitialScanProcessor) handleEvent(
 			return err
 		}
 	case crosscluster.CheckpointEvent:
-		if err := o.checkpoint(ctx, event.GetCheckpoint().ResolvedSpans); err != nil {
+		if err := o.checkpoint(ctx, event.GetCheckpoint()); err != nil {
 			return err
 		}
 	case crosscluster.SSTableEvent, crosscluster.DeleteRangeEvent:
 		return errors.AssertionFailedf("unexpected event for offline initial scan: %v", event)
 	case crosscluster.SplitEvent:
-		log.Infof(o.Ctx(), "SplitEvent received on logical replication stream")
+		log.Dev.Infof(o.Ctx(), "SplitEvent received on logical replication stream")
 	default:
 		return errors.Newf("unknown streaming event type %v", event.Type())
 	}
 	return nil
 }
 
+// waitForErr waits for an error to be sent on the error channel and returns the
+// error if one is found within the timeout.
+func (o *offlineInitialScanProcessor) waitForErr() error {
+	select {
+	case err := <-o.errCh:
+		return err
+	case <-time.After(10 * time.Second):
+		logcrash.ReportOrPanic(o.Ctx(), &o.FlowCtx.Cfg.Settings.SV,
+			"event channel closed but no error found on err channel after 10 seconds")
+		return nil
+	}
+}
+
 func (o *offlineInitialScanProcessor) checkpoint(
-	ctx context.Context, resolvedSpans []jobspb.ResolvedSpan,
+	ctx context.Context, checkpoint *streampb.StreamEvent_StreamCheckpoint,
 ) error {
+	if checkpoint == nil {
+		return errors.New("nil checkpoint event")
+	}
+	resolvedSpans := checkpoint.ResolvedSpans
 	if resolvedSpans == nil {
 		return errors.New("checkpoint event expected to have resolved spans")
 	}
@@ -377,7 +408,9 @@ func (o *offlineInitialScanProcessor) checkpoint(
 	if err := o.flushBatch(ctx); err != nil {
 		return errors.Wrap(err, "flushing batcher on checkpoint")
 	}
-	o.batcher.Reset(ctx)
+	if err := o.batcher.Reset(ctx); err != nil {
+		return errors.Wrap(err, "resetting batcher on checkpoint")
+	}
 
 	select {
 	case o.checkpointCh <- offlineCheckpoint{
@@ -402,6 +435,15 @@ func (o *offlineInitialScanProcessor) checkpoint(
 		// shutdown the processor.
 		o.initialScanCompleted = true
 	}
+
+	if checkpoint.RangeStats != nil {
+		select {
+		case o.rangeStatsCh <- checkpoint.RangeStats:
+		case <-o.stopCh:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 	return nil
 }
 
@@ -409,7 +451,9 @@ func (o *offlineInitialScanProcessor) flushBatch(ctx context.Context) error {
 	if err := o.batcher.Flush(ctx); err != nil {
 		return err
 	}
-	o.batcher.Reset(ctx)
+	if err := o.batcher.Reset(ctx); err != nil {
+		return errors.Wrap(err, "resetting batcher after flush")
+	}
 	o.lastKeyAdded = roachpb.Key{}
 	return nil
 }

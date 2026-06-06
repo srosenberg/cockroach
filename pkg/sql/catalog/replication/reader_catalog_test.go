@@ -70,10 +70,11 @@ func newReaderCatalogTest(
 	})
 	require.NoError(t, err)
 	destTenant, _, err := ts.StartSharedProcessTenant(ctx, base.TestSharedProcessTenantArgs{
-		TenantID:   serverutils.TestTenantID2(),
-		TenantName: "dest",
-		Knobs:      destTestingKnobs,
-		Settings:   destSettings,
+		TenantID:       serverutils.TestTenantID2(),
+		TenantName:     "dest",
+		Knobs:          destTestingKnobs,
+		Settings:       destSettings,
+		TenantReadOnly: true, // Mark the dest tenant as read-only for testing
 	})
 	require.NoError(t, err)
 	srcRunner := sqlutils.MakeSQLRunner(srcTenant.SQLConn(t))
@@ -185,6 +186,7 @@ func TestReaderCatalog(t *testing.T) {
 	r.srcRunner.Exec(t, `
 CREATE USER roacher WITH CREATEROLE;
 GRANT ADMIN TO roacher;
+GRANT SYSTEM VIEWACTIVITY TO roacher;
 ALTER USER roacher SET timezone='America/New_York';
 CREATE DATABASE db1;
 CREATE SCHEMA db1.sc1;
@@ -226,6 +228,7 @@ INSERT INTO t3(n) VALUES (3);
 		"INSERT INTO t1(val) VALUES('inactive');",
 		"CREATE USER roacher2 WITH CREATEROLE;",
 		"GRANT ADMIN TO roacher2;",
+		"GRANT SYSTEM VIEWACTIVITY TO roacher2;",
 		"ALTER USER roacher2 SET timezone='America/New_York';",
 		"CREATE TABLE t4(n int)",
 		"INSERT INTO t4 VALUES (32)",
@@ -239,6 +242,7 @@ INSERT INTO t3(n) VALUES (3);
 	r.compareEqual(t, "SELECT * FROM t1 ORDER BY n")
 	r.compareEqual(t, "SELECT * FROM v1 ORDER BY 1")
 	r.compareEqual(t, "SELECT * FROM system.users")
+	r.compareEqual(t, "SHOW SYSTEM GRANTS FOR roacher")
 	r.compareEqual(t, "SELECT * FROM system.table_statistics")
 	r.compareEqual(t, "SELECT * FROM system.role_options")
 	r.compareEqual(t, "SELECT * FROM system.database_role_settings")
@@ -266,6 +270,8 @@ INSERT INTO t3(n) VALUES (3);
 	r.compareEqual(t, "SELECT * FROM system.table_statistics")
 	r.compareEqual(t, "SELECT * FROM system.role_options")
 	r.compareEqual(t, "SELECT * FROM system.database_role_settings")
+	r.compareEqual(t, "SHOW SYSTEM GRANTS FOR roacher")
+	r.compareEqual(t, "SHOW SYSTEM GRANTS FOR roacher2")
 	r.compareEqual(t, "SELECT * FROM t4 ORDER BY n")
 	r.compareEqual(t, "SELECT * FROM t5 ORDER BY n")
 	r.compareEqual(t, "SELECT name FROM system.namespace ORDER BY name")
@@ -276,6 +282,8 @@ INSERT INTO t3(n) VALUES (3);
 	// Manipulate the schema first.
 	ddlToExec = []string{
 		"ALTER TABLE t1 ADD COLUMN j int default 32",
+		"CREATE SEQUENCE sq2;",
+		"ALTER TABLE t1 ALTER COLUMN n SET default nextval('sq2')",
 		"INSERT INTO t1(val, j) VALUES('open', 1);",
 		"INSERT INTO t1(val, j) VALUES('closed', 2);",
 		"INSERT INTO t1(val, j) VALUES('inactive', 3);",
@@ -301,6 +309,39 @@ INSERT INTO t3(n) VALUES (3);
 	r.destRunner.ExpectErr(t, "schema changes are not allowed on a reader catalog", "ALTER SEQUENCE sq1 RENAME TO sq4")
 	r.destRunner.ExpectErr(t, "schema changes are not allowed on a reader catalog", "ALTER TYPE status ADD VALUE 'newval' ")
 
+	// Validate that DML mutations are blocked on external row data tables,
+	// with and without the bypass session variable.
+	r.destRunner.ExpectErr(t, "cannot mutate materialized view", "INSERT INTO t1(val) VALUES('open')")
+	r.destRunner.Exec(t, "SET bypass_pcr_reader_catalog_aost = 'true'")
+	r.destRunner.ExpectErr(t, "cannot mutate materialized view", "INSERT INTO t1(val) VALUES('open')")
+	r.destRunner.Exec(t, "SET bypass_pcr_reader_catalog_aost = 'false'")
+
+	// Validate that explicit AOST is blocked on reader tenants.
+	r.destRunner.ExpectErr(t,
+		"explicit AS OF SYSTEM TIME is not allowed on a physical cluster replication reader virtual cluster",
+		"SELECT * FROM t1 AS OF SYSTEM TIME '-1s'")
+	r.destRunner.ExpectErr(t,
+		"explicit AS OF SYSTEM TIME is not allowed on a physical cluster replication reader virtual cluster",
+		"BEGIN AS OF SYSTEM TIME '-1s'")
+
+	// Validate that the bypass session variable allows explicit AOST.
+	r.destRunner.Exec(t, "SET bypass_pcr_reader_catalog_aost = 'true'")
+	r.destRunner.Exec(t, "SELECT * FROM t1 AS OF SYSTEM TIME '-1s'")
+	r.destRunner.Exec(t, "SET bypass_pcr_reader_catalog_aost = 'false'")
+
+	// As a final test intentionally drop dependencies between descriptors. If we
+	// don't batch descriptor updates this will cause a validation error, since
+	// the sequence and table depend on each other.
+	ddlToExec = []string{
+		"ALTER TABLE t1 ALTER COLUMN n SET default NULL",
+	}
+	for _, ddl := range ddlToExec {
+		r.srcRunner.Exec(t, ddl)
+	}
+	// Confirm that everything matches at the old timestamp.
+	require.NoError(t, r.advanceTS(ctx, r.ts.Clock().Now(), true))
+	r.compareEqual(t, "SELECT * FROM v1 ORDER BY 1")
+	r.compareEqual(t, "SELECT * FROM t2 ORDER BY j")
 }
 
 // TestReaderCatalogTSAdvance tests repeated advances of timestamp
@@ -528,6 +569,34 @@ func TestReaderCatalogTSAdvanceWithLongTxn(t *testing.T) {
 	_, err = tx.Exec("SELECT * FROM sq1")
 	require.NoError(t, err)
 	require.NoError(t, tx.Commit())
+}
+
+func TestReaderCatalogAutoStatsDisabled(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	skip.UnderDuress(t)
+
+	ctx := context.Background()
+	r, cleanup := newReaderCatalogTest(t, ctx, base.TestingKnobs{}, nil)
+	defer cleanup()
+
+	// Create a table and insert some data in the source tenant.
+	r.srcRunner.Exec(t, `
+		CREATE TABLE t1(n int);
+		INSERT INTO t1 VALUES (1), (2), (3);
+	`)
+
+	// Enable auto stats collection in the source tenant.
+	r.srcRunner.Exec(t, `SET CLUSTER SETTING sql.stats.automatic_collection.enabled = true`)
+
+	// Advance the reader catalog timestamp to replicate the table.
+	require.NoError(t, r.advanceTS(ctx, r.ts.Clock().Now(), true))
+
+	// Verify the table exists in the reader catalog.
+	r.compareEqual(t, "SELECT * FROM t1 ORDER BY n")
+
+	// Now verify that stats collection is disabled for the read-only tenant.
+	// Manual CREATE STATISTICS should fail with our tenant-level read-only error.
+	r.destRunner.ExpectErr(t, "cannot create statistics in read-only tenant", "CREATE STATISTICS test_stats FROM t1")
 }
 
 func TestMain(m *testing.M) {

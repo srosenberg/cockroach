@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
+	"github.com/cockroachdb/cockroach/pkg/util/metric/aggmetric"
 )
 
 // DistSQLMetrics contains pointers to the metrics for monitoring DistSQL
@@ -17,10 +18,12 @@ type DistSQLMetrics struct {
 	QueriesActive               *metric.Gauge
 	QueriesTotal                *metric.Counter
 	DistributedCount            *metric.Counter
-	ContendedQueriesCount       *metric.Counter
-	CumulativeContentionNanos   *metric.Counter
+	ContendedQueriesCount       *aggmetric.SQLCounter
+	CumulativeContentionNanos   *aggmetric.SQLCounter
 	FlowsActive                 *metric.Gauge
 	FlowsTotal                  *metric.Counter
+	RunnerReqParallelCount      *metric.Counter
+	RunnerReqSequentialCount    *metric.Counter
 	MaxBytesHist                metric.IHistogram
 	CurBytesCount               *metric.Gauge
 	VecOpenFDs                  *metric.Gauge
@@ -62,6 +65,9 @@ var (
 		Help:        "Number of SQL queries that experienced contention",
 		Measurement: "Queries",
 		Unit:        metric.Unit_COUNT,
+		Visibility:  metric.Metadata_ESSENTIAL,
+		Category:    metric.Metadata_SQL,
+		HowToUse:    `This metric is incremented whenever there is a non-trivial amount of contention experienced by a statement whether read-write or write-write conflicts. Monitor this metric to correlate possible workload performance issues to contention conflicts.`,
 	}
 	metaCumulativeContentionNanos = metric.Metadata{
 		Name:        "sql.distsql.cumulative_contention_nanos",
@@ -79,6 +85,18 @@ var (
 		Name:        "sql.distsql.flows.total",
 		Help:        "Number of distributed SQL flows executed",
 		Measurement: "Flows",
+		Unit:        metric.Unit_COUNT,
+	}
+	metaRunnerReqParallelCount = metric.Metadata{
+		Name:        "sql.distsql.parallel_runner.count",
+		Help:        "Number of SetupFlowRequest RPCs executed concurrently via DistSQL runners",
+		Measurement: "Requests",
+		Unit:        metric.Unit_COUNT,
+	}
+	metaRunnerReqSequentialCount = metric.Metadata{
+		Name:        "sql.distsql.sequential_runner.count",
+		Help:        "Number of SetupFlowRequest RPCs executed sequentially via the main gateway goroutine",
+		Measurement: "Requests",
 		Unit:        metric.Unit_COUNT,
 	}
 	metaMemMaxBytes = metric.Metadata{
@@ -153,10 +171,12 @@ func MakeDistSQLMetrics(histogramWindow time.Duration) DistSQLMetrics {
 		QueriesActive:             metric.NewGauge(metaQueriesActive),
 		QueriesTotal:              metric.NewCounter(metaQueriesTotal),
 		DistributedCount:          metric.NewCounter(metaDistributedCount),
-		ContendedQueriesCount:     metric.NewCounter(metaContendedQueriesCount),
-		CumulativeContentionNanos: metric.NewCounter(metaCumulativeContentionNanos),
+		ContendedQueriesCount:     aggmetric.NewSQLCounter(metaContendedQueriesCount),
+		CumulativeContentionNanos: aggmetric.NewSQLCounter(metaCumulativeContentionNanos),
 		FlowsActive:               metric.NewGauge(metaFlowsActive),
 		FlowsTotal:                metric.NewCounter(metaFlowsTotal),
+		RunnerReqParallelCount:    metric.NewCounter(metaRunnerReqParallelCount),
+		RunnerReqSequentialCount:  metric.NewCounter(metaRunnerReqSequentialCount),
 		MaxBytesHist: metric.NewHistogram(metric.HistogramOptions{
 			Metadata:     metaMemMaxBytes,
 			Duration:     histogramWindow,

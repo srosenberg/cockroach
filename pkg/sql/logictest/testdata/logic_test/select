@@ -243,9 +243,14 @@ SELECT * FROM xyzw LIMIT -100
 query error negative value for OFFSET
 SELECT * FROM xyzw OFFSET -100
 
+# In local-prepared, this value overflows int64 so it becomes a DECIMAL
+# placeholder, producing a type mismatch error instead of a range error.
+skipif config local-prepared
 query error numeric constant out of int64 range
 SELECT * FROM xyzw LIMIT 9223372036854775808
 
+# Same as above for OFFSET.
+skipif config local-prepared
 query error numeric constant out of int64 range
 SELECT * FROM xyzw OFFSET 9223372036854775808
 
@@ -368,6 +373,9 @@ SELECT a FROM MaxIntTest WHERE a = 9223372036854775807
 ----
 9223372036854775807
 
+# In local-prepared, $1 is treated as a placeholder from scalar replacement
+# rather than a literal in the SQL text, so the error differs.
+skipif config local-prepared
 query error no value provided for placeholder
 SELECT $1::int
 
@@ -831,7 +839,7 @@ statement ok
 SELECT * FROM pg_class
 
 statement ok
-SELECT * FROM crdb_internal.jobs
+SELECT * FROM crdb_internal.node_build_info
 
 # Tests for 'large_full_scan_rows'.
 statement ok
@@ -974,3 +982,34 @@ query I
 SELECT c FROM t102864 WHERE c IN (0, 862827606027206657::INT8);
 ----
 0
+
+# Regression test for ignoring the reverse direction of the scan in the batch
+# with Gets (#146637).
+statement ok
+CREATE TABLE t146637 (
+    a INT NOT NULL,
+    b TEXT NOT NULL,
+    c TEXT NOT NULL,
+    PRIMARY KEY (a, b),
+    FAMILY (a, b, c)
+);
+
+statement ok
+INSERT INTO t146637 VALUES
+    (0, 'foo', 'bar'),
+    (0, 'foo2', 'bar2'),
+    (0, 'foo3', 'bar3'),
+    (100, 'foo', 'bar'),
+    (100, 'foo2', 'bar2'),
+    (100, 'foo3', 'bar3'),
+    (2, 'foo4', 'bar4'),
+    (2, 'foo5', 'bar5');
+
+retry
+statement ok
+ALTER TABLE t146637 SPLIT AT VALUES (1), (2), (3);
+
+query ITT
+SELECT * FROM t146637 WHERE (a = 0 OR a = 100) AND b = 'foo' ORDER BY a DESC LIMIT 1;
+----
+100  foo  bar

@@ -183,19 +183,34 @@ func (s *testStream) SetSendErr(err error) {
 	s.mu.sendErr = err
 }
 
+func unwrapBulkEvents(in []*kvpb.RangeFeedEvent) []*kvpb.RangeFeedEvent {
+	if in == nil {
+		return nil
+	}
+	out := make([]*kvpb.RangeFeedEvent, 0, len(in))
+	for _, e := range in {
+		if e.BulkEvents != nil {
+			out = append(out, e.BulkEvents.Events...)
+		} else {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 func (s *testStream) GetAndClearEvents() []*kvpb.RangeFeedEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	es := s.mu.events
 	s.mu.events = nil
-	return es
+	return unwrapBulkEvents(es)
 }
 
 func (s *testStream) GetEvents() []*kvpb.RangeFeedEvent {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	es := s.mu.events
-	return es
+	return unwrapBulkEvents(es)
 }
 
 func (s *testStream) BlockSend() func() {
@@ -249,16 +264,53 @@ func (s *testStream) waitForEventCount(t *testing.T, expected int) {
 	})
 }
 
-func makeCatchUpIterator(
+type simpleCatchupIterAdapter struct {
+	storage.SimpleMVCCIterator
+}
+
+func (i simpleCatchupIterAdapter) NextIgnoringTime() {
+	i.SimpleMVCCIterator.Next()
+}
+
+func (i simpleCatchupIterAdapter) RangeKeyChangedIgnoringTime() bool {
+	return i.SimpleMVCCIterator.RangeKeyChanged()
+}
+
+func (i simpleCatchupIterAdapter) RangeKeysIgnoringTime() storage.MVCCRangeKeyStack {
+	return i.SimpleMVCCIterator.RangeKeys()
+}
+
+func (i simpleCatchupIterAdapter) Close() {
+	// Noop, since the closing is handled by testSnapshot.
+}
+
+var _ SimpleCatchupIter = simpleCatchupIterAdapter{}
+
+type testSnapshot struct {
+	iter simpleCatchupIterAdapter
+}
+
+func (snap *testSnapshot) Close() {
+	snap.iter.SimpleMVCCIterator.Close()
+	snap.iter.SimpleMVCCIterator = nil
+}
+
+func (snap *testSnapshot) NewMVCCIncrementalIterator(
+	context.Context, storage.MVCCIncrementalIterOptions,
+) (SimpleCatchupIter, error) {
+	return snap.iter, nil
+}
+
+func makeCatchUpSnap(
 	iter storage.SimpleMVCCIterator, span roachpb.Span, startTime hlc.Timestamp,
-) *CatchUpIterator {
+) *CatchUpSnapshot {
 	if iter == nil {
 		return nil
 	}
-	return &CatchUpIterator{
-		simpleCatchupIter: simpleCatchupIterAdapter{iter},
-		span:              span,
-		startTime:         startTime,
+	return &CatchUpSnapshot{
+		snap:      &testSnapshot{simpleCatchupIterAdapter{iter}},
+		span:      span,
+		startTime: startTime,
 	}
 }
 
@@ -338,6 +390,7 @@ type testRegistrationConfig struct {
 	withDiff                  bool
 	withFiltering             bool
 	withOmitRemote            bool
+	withBulkDelivery          int
 	withRegistrationTestTypes registrationType
 	metrics                   *Metrics
 }
@@ -357,10 +410,11 @@ func newTestRegistration(s *testStream, opts ...registrationOption) testRegistra
 			s.ctx,
 			cfg.span,
 			cfg.ts,
-			makeCatchUpIterator(cfg.catchup, cfg.span, cfg.ts),
+			makeCatchUpSnap(cfg.catchup, cfg.span, cfg.ts),
 			cfg.withDiff,
 			cfg.withFiltering,
 			cfg.withOmitRemote,
+			cfg.withBulkDelivery,
 			5,
 			false, /* blockWhenFull */
 			cfg.metrics,
@@ -372,10 +426,11 @@ func newTestRegistration(s *testStream, opts ...registrationOption) testRegistra
 			s.ctx,
 			cfg.span,
 			cfg.ts,
-			makeCatchUpIterator(cfg.catchup, cfg.span, cfg.ts),
+			makeCatchUpSnap(cfg.catchup, cfg.span, cfg.ts),
 			cfg.withDiff,
 			cfg.withFiltering,
 			cfg.withOmitRemote,
+			cfg.withBulkDelivery,
 			5,
 			cfg.metrics,
 			&testBufferedStream{Stream: s},

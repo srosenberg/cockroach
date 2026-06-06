@@ -1,6 +1,6 @@
 # 3node-tenant is blocked from running this file due to heavy reliance on
 # unavailable node IDs in this test.
-# LogicTest: !3node-tenant-default-configs
+# LogicTest: !3node-tenant-default-configs !local-prepared default-configs
 
 query error database "crdb_internal" does not exist
 ALTER DATABASE crdb_internal RENAME TO not_crdb_internal
@@ -79,6 +79,7 @@ SELECT * FROM crdb_internal.pg_catalog_table_is_implemented
 ----
 name                             implemented
 pg_aggregate                     false
+pg_aios                          true
 pg_am                            false
 pg_amop                          true
 pg_amproc                        true
@@ -88,6 +89,7 @@ pg_auth_members                  false
 pg_authid                        false
 pg_available_extension_versions  true
 pg_available_extensions          true
+pg_backend_memory_contexts       true
 pg_cast                          false
 pg_class                         false
 pg_collation                     false
@@ -109,6 +111,7 @@ pg_foreign_server                true
 pg_foreign_table                 true
 pg_group                         true
 pg_hba_file_rules                true
+pg_ident_file_mappings           true
 pg_index                         false
 pg_indexes                       false
 pg_inherits                      true
@@ -116,19 +119,21 @@ pg_init_privs                    true
 pg_language                      false
 pg_largeobject                   true
 pg_largeobject_metadata          true
-pg_locks                         true
+pg_locks                         false
 pg_matviews                      false
 pg_namespace                     false
 pg_opclass                       true
 pg_operator                      false
 pg_opfamily                      true
+pg_parameter_acl                 true
 pg_partitioned_table             true
-pg_policies                      true
+pg_policies                      false
 pg_policy                        false
 pg_prepared_statements           false
 pg_prepared_xacts                false
 pg_proc                          false
 pg_publication                   true
+pg_publication_namespace         true
 pg_publication_rel               true
 pg_publication_tables            true
 pg_range                         true
@@ -147,29 +152,37 @@ pg_shadow                        false
 pg_shdepend                      false
 pg_shdescription                 false
 pg_shmem_allocations             true
+pg_shmem_allocations_numa        true
 pg_shseclabel                    true
 pg_stat_activity                 true
 pg_stat_all_indexes              true
 pg_stat_all_tables               true
 pg_stat_archiver                 true
 pg_stat_bgwriter                 true
+pg_stat_checkpointer             true
 pg_stat_database                 true
 pg_stat_database_conflicts       true
 pg_stat_gssapi                   true
+pg_stat_io                       true
 pg_stat_progress_analyze         true
 pg_stat_progress_basebackup      true
 pg_stat_progress_cluster         true
+pg_stat_progress_copy            true
 pg_stat_progress_create_index    true
 pg_stat_progress_vacuum          true
+pg_stat_recovery_prefetch        true
 pg_stat_replication              true
+pg_stat_replication_slots        true
 pg_stat_slru                     true
 pg_stat_ssl                      true
 pg_stat_subscription             true
+pg_stat_subscription_stats       true
 pg_stat_sys_indexes              true
 pg_stat_sys_tables               true
 pg_stat_user_functions           true
 pg_stat_user_indexes             true
 pg_stat_user_tables              true
+pg_stat_wal                      true
 pg_stat_wal_receiver             true
 pg_stat_xact_all_tables          true
 pg_stat_xact_sys_tables          true
@@ -189,14 +202,15 @@ pg_statistic_ext                 false
 pg_statistic_ext_data            true
 pg_stats                         true
 pg_stats_ext                     true
+pg_stats_ext_exprs               true
 pg_subscription                  true
 pg_subscription_rel              true
 pg_tables                        false
 pg_tablespace                    false
-pg_timezone_abbrevs              true
+pg_timezone_abbrevs              false
 pg_timezone_names                false
 pg_transform                     true
-pg_trigger                       true
+pg_trigger                       false
 pg_ts_config                     true
 pg_ts_config_map                 true
 pg_ts_dict                       true
@@ -207,6 +221,7 @@ pg_user                          false
 pg_user_mapping                  true
 pg_user_mappings                 true
 pg_views                         false
+pg_wait_events                   true
 
 # Verify that table names are not double escaped.
 
@@ -246,10 +261,10 @@ SELECT * FROM crdb_internal.leases WHERE node_id < 0
 ----
 node_id  table_id  name  parent_id  expiration  deleted
 
-query ITTTTTIIITTRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBBTTTTBTTRRR colnames
+query ITTTTTIIITTRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRBTTTTBTTRRR colnames
 SELECT * FROM crdb_internal.node_statement_statistics WHERE node_id < 0
 ----
-node_id  application_name  flags  statement_id  key  anonymized  count  first_attempt_count  max_retries  last_error  last_error_code  rows_avg  rows_var  idle_lat_avg  idle_lat_var  parse_lat_avg  parse_lat_var  plan_lat_avg  plan_lat_var  run_lat_avg  run_lat_var  service_lat_avg  service_lat_var  overhead_lat_avg  overhead_lat_var  bytes_read_avg  bytes_read_var  rows_read_avg  rows_read_var  rows_written_avg  rows_written_var  network_bytes_avg  network_bytes_var  network_msgs_avg  network_msgs_var  max_mem_usage_avg  max_mem_usage_var  max_disk_usage_avg  max_disk_usage_var  contention_time_avg  contention_time_var  cpu_sql_nanos_avg  cpu_sql_nanos_var  mvcc_step_avg  mvcc_step_var  mvcc_step_internal_avg  mvcc_step_internal_var  mvcc_seek_avg  mvcc_seek_var  mvcc_seek_internal_avg  mvcc_seek_internal_var  mvcc_block_bytes_avg  mvcc_block_bytes_var  mvcc_block_bytes_in_cache_avg  mvcc_block_bytes_in_cache_var  mvcc_key_bytes_avg  mvcc_key_bytes_var  mvcc_value_bytes_avg  mvcc_value_bytes_var  mvcc_point_count_avg  mvcc_point_count_var  mvcc_points_covered_by_range_tombstones_avg  mvcc_points_covered_by_range_tombstones_var  mvcc_range_key_count_avg  mvcc_range_key_count_var  mvcc_range_key_contained_points_avg  mvcc_range_key_contained_points_var  mvcc_range_key_skipped_points_avg  mvcc_range_key_skipped_points_var  implicit_txn  full_scan  sample_plan  database_name  exec_node_ids  kv_node_ids  used_follower_read  txn_fingerprint_id  index_recommendations  latency_seconds_min  latency_seconds_max  failure_count
+node_id  application_name  flags  statement_id  key  anonymized  count  first_attempt_count  max_retries  last_error  last_error_code  rows_avg  rows_var  idle_lat_avg  idle_lat_var  parse_lat_avg  parse_lat_var  plan_lat_avg  plan_lat_var  run_lat_avg  run_lat_var  service_lat_avg  service_lat_var  overhead_lat_avg  overhead_lat_var  bytes_read_avg  bytes_read_var  rows_read_avg  rows_read_var  rows_written_avg  rows_written_var  network_bytes_avg  network_bytes_var  network_msgs_avg  network_msgs_var  max_mem_usage_avg  max_mem_usage_var  max_disk_usage_avg  max_disk_usage_var  contention_time_avg  contention_time_var  cpu_sql_nanos_avg  cpu_sql_nanos_var  mvcc_step_avg  mvcc_step_var  mvcc_step_internal_avg  mvcc_step_internal_var  mvcc_seek_avg  mvcc_seek_var  mvcc_seek_internal_avg  mvcc_seek_internal_var  mvcc_block_bytes_avg  mvcc_block_bytes_var  mvcc_block_bytes_in_cache_avg  mvcc_block_bytes_in_cache_var  mvcc_key_bytes_avg  mvcc_key_bytes_var  mvcc_value_bytes_avg  mvcc_value_bytes_var  mvcc_point_count_avg  mvcc_point_count_var  mvcc_points_covered_by_range_tombstones_avg  mvcc_points_covered_by_range_tombstones_var  mvcc_range_key_count_avg  mvcc_range_key_count_var  mvcc_range_key_contained_points_avg  mvcc_range_key_contained_points_var  mvcc_range_key_skipped_points_avg  mvcc_range_key_skipped_points_var  full_scan  sample_plan  database_name  exec_node_ids  kv_node_ids  used_follower_read  txn_fingerprint_id  index_recommendations  latency_seconds_min  latency_seconds_max  failure_count
 
 query ITTTIIRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR colnames
 SELECT * FROM crdb_internal.node_transaction_statistics WHERE node_id < 0
@@ -261,30 +276,30 @@ SELECT * FROM crdb_internal.session_trace WHERE span_idx < 0
 ----
 span_idx  message_idx  timestamp  duration  operation  loc  tag  message age
 
-query TTTBTTTT colnames
+query TTTBBBTTTT colnames
 SELECT * FROM crdb_internal.cluster_settings WHERE variable = ''
 ----
-variable  value  type  public  description  default_value  origin  key
+variable  value  type  public  sensitive  reportable  description  default_value  origin  key
 
 query TI colnames
 SELECT * FROM crdb_internal.feature_usage WHERE feature_name = ''
 ----
 feature_name  usage_count
 
-query TTB colnames
+query TTBT colnames
 SELECT * FROM crdb_internal.session_variables WHERE variable = ''
 ----
-variable  value  hidden
+variable  value  hidden  description
 
-query TTITTTTTTBTBTT colnames
+query TTITTTTTTBTBTTTII colnames
 SELECT * FROM crdb_internal.node_queries WHERE node_id < 0
 ----
-query_id  txn_id  node_id  session_id  user_name  start  query  client_address  application_name  distributed  phase  full_scan  plan_gist  database
+query_id  txn_id  node_id  session_id  user_name  start  query  client_address  application_name  distributed  phase  full_scan  plan_gist  database  isolation_level  num_txn_retries  num_txn_auto_retries
 
-query TTITTTTTTBTBTT colnames
+query TTITTTTTTBTBTTTII colnames
 SELECT * FROM crdb_internal.cluster_queries WHERE node_id < 0
 ----
-query_id  txn_id  node_id  session_id  user_name  start  query  client_address  application_name  distributed  phase  full_scan  plan_gist  database
+query_id  txn_id  node_id  session_id  user_name  start  query  client_address  application_name  distributed  phase  full_scan  plan_gist  database  isolation_level  num_txn_retries  num_txn_auto_retries
 
 query TITTTTIIITTTT colnames
 SELECT  * FROM crdb_internal.node_transactions WHERE node_id < 0
@@ -349,15 +364,15 @@ user root
 statement ok
 REVOKE SYSTEM VIEWACTIVITYREDACTED FROM testuser
 
-query ITTTTTTTITTTIITTIII colnames
+query ITTTTTTTITTTIITTIIIT colnames
 SELECT * FROM crdb_internal.node_sessions WHERE node_id < 0
 ----
-node_id  session_id  user_name  client_address  application_name  active_queries  last_active_query  num_txns_executed  session_start  active_query_start  kv_txn  alloc_bytes  max_alloc_bytes  status  session_end  pg_backend_pid  trace_id  goroutine_id  authentication_method
+node_id  session_id  user_name  client_address  application_name  active_queries  last_active_query  num_txns_executed  session_start  active_query_start  kv_txn  alloc_bytes  max_alloc_bytes  status  session_end  pg_backend_pid  trace_id  goroutine_id  authentication_method  isolation_level
 
-query ITTTTTTTITTTIITTIII colnames
+query ITTTTTTTITTTIITTIIIT colnames
 SELECT * FROM crdb_internal.cluster_sessions WHERE node_id < 0
 ----
-node_id  session_id  user_name  client_address  application_name  active_queries  last_active_query  num_txns_executed  session_start  active_query_start  kv_txn  alloc_bytes  max_alloc_bytes  status  session_end  pg_backend_pid  trace_id  goroutine_id  authentication_method
+node_id  session_id  user_name  client_address  application_name  active_queries  last_active_query  num_txns_executed  session_start  active_query_start  kv_txn  alloc_bytes  max_alloc_bytes  status  session_end  pg_backend_pid  trace_id  goroutine_id  authentication_method  isolation_level
 
 query IIITTTI colnames
 SELECT * FROM crdb_internal.node_contention_events WHERE table_id < 0
@@ -377,12 +392,12 @@ function  signature  category  details  schema  oid
 query ITTITTTTTTTTTBBBB colnames
 SELECT * FROM crdb_internal.create_statements WHERE database_name = ''
 ----
-database_id  database_name  schema_name  descriptor_id  descriptor_type  descriptor_name  create_statement  state  create_nofks  policy_statements  alter_statements  validate_statements  create_redactable  has_partitions  is_multi_region  is_virtual  is_temporary
+database_id  database_name  schema_name  descriptor_id  descriptor_type  descriptor_name  create_statement  state  create_nofks  rls_statements  fk_statements  validate_statements  create_redactable  has_partitions  is_multi_region  is_virtual  is_temporary
 
-query ITITTBTB colnames
+query ITITTBTBT colnames
 SELECT * FROM crdb_internal.table_columns WHERE descriptor_name = ''
 ----
-descriptor_id  descriptor_name  column_id  column_name  column_type  nullable  default_expr  hidden
+descriptor_id  descriptor_name  column_id  column_name  column_type  nullable  default_expr  hidden  on_update_expr
 
 query ITITTBBBBFITT colnames
 SELECT * FROM crdb_internal.table_indexes WHERE descriptor_name = ''
@@ -434,15 +449,15 @@ SELECT * FROM crdb_internal.ranges_no_leases WHERE range_id < 0
 ----
 range_id  start_key  start_pretty  end_key  end_pretty  replicas  replica_localities  voting_replicas  non_voting_replicas  learner_replicas  split_enforced_until
 
-query TTTBTTTTTIITITTTTTTTTTTTTTITT colnames
+query TTTBTTTTTIITITTTTTTTTTTTTTITTT colnames
 SELECT * FROM crdb_internal.cluster_execution_insights WHERE query = ''
 ----
-session_id  txn_id  txn_fingerprint_id  stmt_id  stmt_fingerprint_id  problem  causes  query  status  start_time  end_time  full_scan  user_name  app_name  database_name  plan_gist  rows_read  rows_written  priority  retries  last_retry_reason  exec_node_ids  kv_node_ids  contention  index_recommendations  implicit_txn  cpu_sql_nanos  error_code  last_error_redactable
+session_id  txn_id  txn_fingerprint_id  stmt_id  stmt_fingerprint_id  problem  causes  query  status  start_time  end_time  full_scan  user_name  app_name  database_name  plan_gist  rows_read  rows_written  priority  retries  last_retry_reason  exec_node_ids  kv_node_ids  contention  index_recommendations  implicit_txn  cpu_sql_nanos  error_code  last_error_redactable  query_tags
 
-query TTTBTTTTTIITITTTTTTTTTTTTTITT colnames
+query TTTBTTTTTIITITTTTTTTTTTTTTITTT colnames
 SELECT * FROM crdb_internal.node_execution_insights WHERE query = ''
 ----
-session_id  txn_id  txn_fingerprint_id  stmt_id  stmt_fingerprint_id  problem  causes  query  status  start_time  end_time  full_scan  user_name  app_name  database_name  plan_gist  rows_read  rows_written  priority  retries  last_retry_reason  exec_node_ids  kv_node_ids  contention  index_recommendations  implicit_txn  cpu_sql_nanos  error_code  last_error_redactable
+session_id  txn_id  txn_fingerprint_id  stmt_id  stmt_fingerprint_id  problem  causes  query  status  start_time  end_time  full_scan  user_name  app_name  database_name  plan_gist  rows_read  rows_written  priority  retries  last_retry_reason  exec_node_ids  kv_node_ids  contention  index_recommendations  implicit_txn  cpu_sql_nanos  error_code  last_error_redactable  query_tags
 
 query TTTBTTTTTIITITTTTTITTT colnames
 SELECT * FROM crdb_internal.cluster_txn_execution_insights WHERE query = ''
@@ -534,13 +549,23 @@ SELECT crdb_internal.unsafe_upsert_descriptor(id, descriptor, true) FROM encoded
 
 # Regression test for #139848. This query used to fail while querying
 # crdb_internal.zones because of the offline database.
+onlyif config schema-locked-disabled
 query TT
 SHOW CREATE empty
 ----
 empty  CREATE TABLE public.empty (
          rowid INT8 NOT VISIBLE NOT NULL DEFAULT unique_rowid(),
          CONSTRAINT empty_pkey PRIMARY KEY (rowid ASC)
-       )
+       );
+
+skipif config schema-locked-disabled
+query TT
+SHOW CREATE empty
+----
+empty  CREATE TABLE public.empty (
+         rowid INT8 NOT VISIBLE NOT NULL DEFAULT unique_rowid(),
+         CONSTRAINT empty_pkey PRIMARY KEY (rowid ASC)
+       ) WITH (schema_locked = true);
 
 query T
 SELECT raw_config_sql FROM crdb_internal.zones WHERE zone_id = $a_id
@@ -561,7 +586,7 @@ select crdb_internal.force_retry(interval '0s')
 ----
 0
 
-query error pq: crdb_internal.set_vmodule\(\): syntax error: expect comma-separated list of filename=N
+query error pq: syntax error: expect comma-separated list of filename=N
 select crdb_internal.set_vmodule('not anything reasonable')
 
 query I
@@ -587,7 +612,7 @@ select crdb_internal.get_vmodule()
 query T
 SELECT crdb_internal.release_series(crdb_internal.node_executable_version())
 ----
-25.2
+26.3
 
 query error version '1.0' not supported
 SELECT crdb_internal.release_series('1.0')
@@ -750,7 +775,7 @@ SELECT * FROM crdb_internal.check_consistency(true, b'\x02', b'\x04')
 query T
 SELECT crdb_internal.release_series(crdb_internal.node_executable_version())
 ----
-25.2
+26.3
 
 user root
 
@@ -798,7 +823,7 @@ RESET application_name
 # different fingerprint on retries is caused by in-place mutation of the AST
 # (#22847).
 #
-query TII
+query TII retry
 SELECT key, max_retries, failure_count
   FROM crdb_internal.node_statement_statistics
  WHERE application_name = 'test_max_retry'
@@ -838,8 +863,15 @@ start_pretty    end_pretty
 statement ok
 SET CLUSTER SETTING jobs.registry.interval.adopt = '1s'
 
+
+statement ok
+ALTER TABLE foo SET (schema_locked=false)
+
 statement ok
 TRUNCATE TABLE foo
+
+statement ok
+ALTER TABLE foo RESET (schema_locked)
 
 # Ensure that there are no longer any splits left over on the original indexes.
 # TRUNCATE will have created equivalent splits points on the new indexes, so
@@ -908,10 +940,10 @@ start_pretty
 /Table/117/1/2
 /Table/117/1/3
 
-query T
-SELECT crdb_internal.cluster_name()
+query B
+SELECT length(crdb_internal.cluster_name()) > 0
 ----
-testclustername
+true
 
 # Regression for 41834.
 statement ok
@@ -957,7 +989,7 @@ query error is not less than end
 SELECT crdb_internal.compact_engine_span(1, 1, decode('c0898a', 'hex'), decode('c08989', 'hex'))
 
 user testuser
-query error crdb_internal.compact_engine_span\(\): user testuser does not have REPAIRCLUSTER system privilege
+query error user testuser does not have REPAIRCLUSTER system privilege
 SELECT crdb_internal.compact_engine_span(1, 1, decode('c08989', 'hex'), decode('c0898a', 'hex'))
 
 user root
@@ -1005,15 +1037,18 @@ BEGIN; SELECT * FROM t_53504; COMMIT;
 statement ok
 SELECT * FROM t_53504
 
-query ITTTI colnames
+statement ok
+RESET application_name
+
+query ITTTI colnames,retry
 SELECT node_id, application_name, key, statement_ids, count FROM crdb_internal.node_transaction_statistics where application_name = 'test_txn_statistics' ORDER BY key
 ----
-node_id  application_name     key                   statement_ids                                                  count
-1        test_txn_statistics  17664899828239596817  {6504861979500726990}                                          1
-1        test_txn_statistics  17664899828239596829  {6504861979500726978}                                          1
-1        test_txn_statistics  17976145939037309168  {6204733445766643503}                                          1
-1        test_txn_statistics  18364202634803759405  {6504861979500726990,6504861979500726990}                      2
-1        test_txn_statistics  9852458619443781049   {6504861979500726990,6504861979500726990,6504861979500726990}  1
+node_id  application_name     key                   statement_ids                                                     count
+1        test_txn_statistics  16021385425563162885  {8157382750598442714}                                             1
+1        test_txn_statistics  375924234786734102    {12273488026305116105}                                            2
+1        test_txn_statistics  4357653409195888472   {12273488026305116105,12273488026305116105,12273488026305116105}  1
+1        test_txn_statistics  5878027931604984797   {18370550178083116034}                                            1
+1        test_txn_statistics  7183496765070414507   {12273488026305116105,12273488026305116105}                       2
 
 ## crdb_internal.cluster_database_privileges
 subtest cluster_database_privileges
@@ -1027,6 +1062,7 @@ SELECT * FROM crdb_internal.cluster_database_privileges
 database_name  grantee  privilege_type  is_grantable
 other_db       admin    ALL             YES
 other_db       public   CONNECT         NO
+other_db       public   TEMPORARY       NO
 other_db       root     ALL             YES
 
 statement ok
@@ -1039,6 +1075,7 @@ SELECT * FROM crdb_internal.cluster_database_privileges
 database_name  grantee   privilege_type  is_grantable
 other_db       admin     ALL             YES
 other_db       public    CONNECT         NO
+other_db       public    TEMPORARY       NO
 other_db       root      ALL             YES
 other_db       testuser  CONNECT         NO
 other_db       testuser  DROP            NO
@@ -1091,22 +1128,27 @@ SELECT * FROM "".crdb_internal.cluster_database_privileges ORDER BY 1,2,3
 database_name  grantee   privilege_type  is_grantable
 defaultdb      admin     ALL             YES
 defaultdb      public    CONNECT         NO
+defaultdb      public    TEMPORARY       NO
 defaultdb      root      ALL             YES
 other_db       admin     ALL             YES
 other_db       public    CONNECT         NO
+other_db       public    TEMPORARY       NO
 other_db       root      ALL             YES
 other_db       testuser  CONNECT         NO
 other_db       testuser  DROP            NO
 postgres       admin     ALL             YES
 postgres       public    CONNECT         NO
+postgres       public    TEMPORARY       NO
 postgres       root      ALL             YES
 system         admin     CONNECT         YES
 system         root      CONNECT         YES
 test           admin     ALL             YES
 test           public    CONNECT         NO
+test           public    TEMPORARY       NO
 test           root      ALL             YES
 testdb         admin     ALL             YES
 testdb         public    CONNECT         NO
+testdb         public    TEMPORARY       NO
 testdb         root      ALL             YES
 
 statement ok
@@ -1118,22 +1160,27 @@ SELECT * FROM crdb_internal.cluster_database_privileges ORDER BY 1,2,3
 database_name  grantee   privilege_type  is_grantable
 defaultdb      admin     ALL             YES
 defaultdb      public    CONNECT         NO
+defaultdb      public    TEMPORARY       NO
 defaultdb      root      ALL             YES
 other_db       admin     ALL             YES
 other_db       public    CONNECT         NO
+other_db       public    TEMPORARY       NO
 other_db       root      ALL             YES
 other_db       testuser  CONNECT         NO
 other_db       testuser  DROP            NO
 postgres       admin     ALL             YES
 postgres       public    CONNECT         NO
+postgres       public    TEMPORARY       NO
 postgres       root      ALL             YES
 system         admin     CONNECT         YES
 system         root      CONNECT         YES
 test           admin     ALL             YES
 test           public    CONNECT         NO
+test           public    TEMPORARY       NO
 test           root      ALL             YES
 testdb         admin     ALL             YES
 testdb         public    CONNECT         NO
+testdb         public    TEMPORARY       NO
 testdb         root      ALL             YES
 
 statement ok
@@ -1398,10 +1445,43 @@ REVOKE SYSTEM VIEWACTIVITY FROM testuser
 
 # Regression tests for not setting SQL stats provider in the backfill (#76710).
 statement ok
-CREATE TABLE t76710_1 AS SELECT * FROM crdb_internal.statement_statistics;
-
-statement ok
 CREATE MATERIALIZED VIEW t76710_2 AS SELECT fingerprint_id FROM crdb_internal.cluster_statement_statistics;
+
+subtest end
+
+
+subtest statement_statistics_columns
+
+# Validate that crdb_internal.cluster_statement_statistics includes query,
+# query_summary, and database columns.
+query TTTTTTTTTTTTT colnames
+SELECT * FROM crdb_internal.cluster_statement_statistics WHERE aggregated_ts < '1970-01-01'
+----
+aggregated_ts  fingerprint_id  transaction_fingerprint_id  plan_hash  app_name  metadata  statistics  sampled_plan  aggregation_interval  index_recommendations  query  query_summary  database
+
+# Validate that crdb_internal.statement_statistics includes query,
+# query_summary, and database columns.
+skipif config local-mixed-25.4 local-mixed-26.1
+query TTTTTTTTTTTTT colnames
+SELECT * FROM crdb_internal.statement_statistics WHERE aggregated_ts < '1970-01-01'
+----
+aggregated_ts  fingerprint_id  transaction_fingerprint_id  plan_hash  app_name  metadata  statistics  sampled_plan  aggregation_interval  index_recommendations  query  query_summary  database
+
+# Validate that crdb_internal.statement_statistics_persisted includes query,
+# query_summary, and database columns.
+skipif config local-mixed-25.4 local-mixed-26.1
+query TTTTTITTTTTTIRRRRRTTT colnames
+SELECT * FROM crdb_internal.statement_statistics_persisted WHERE aggregated_ts < '1970-01-01'
+----
+aggregated_ts  fingerprint_id  transaction_fingerprint_id  plan_hash  app_name  node_id  agg_interval  metadata  statistics  plan  index_recommendations  indexes_usage  execution_count  service_latency  cpu_sql_nanos  contention_time  total_estimated_execution_time  p99_latency  query  query_summary  database
+
+# Validate that crdb_internal.statement_activity includes query,
+# query_summary, and database columns.
+skipif config local-mixed-25.4 local-mixed-26.1
+query TTTTTTTTTTIRRRRRRTTT colnames
+SELECT * FROM crdb_internal.statement_activity WHERE aggregated_ts < '1970-01-01'
+----
+aggregated_ts  fingerprint_id  transaction_fingerprint_id  plan_hash  app_name  agg_interval  metadata  statistics  plan  index_recommendations  execution_count  execution_total_seconds  execution_total_cluster_seconds  contention_time_avg_seconds  cpu_sql_avg_nanos  service_latency_avg_seconds  service_latency_p99_seconds  query  query_summary  database
 
 subtest end
 
@@ -1556,24 +1636,24 @@ FROM crdb_internal.create_procedure_statements
 WHERE procedure_name IN ('p', 'p2')
 ORDER BY procedure_id;
 ----
-104  test  105  public  142  p   CREATE PROCEDURE public.p(INT8)
+104  test  105  public  141  p   CREATE PROCEDURE public.p(INT8)
                                    LANGUAGE SQL
                                    SECURITY INVOKER
                                    AS $$
-                                   SELECT 1;
-                                 $$
-104  test  105  public  143  p   CREATE PROCEDURE public.p(STRING, b INT8)
+                                     SELECT 1;
+                                   $$
+104  test  105  public  142  p   CREATE PROCEDURE public.p(STRING, b INT8)
                                    LANGUAGE SQL
                                    SECURITY INVOKER
                                    AS $$
-                                   SELECT 'hello';
-                                 $$
-104  test  145  sc      146  p2  CREATE PROCEDURE sc.p2(STRING)
+                                     SELECT 'hello';
+                                   $$
+104  test  144  sc      145  p2  CREATE PROCEDURE sc.p2(STRING)
                                    LANGUAGE SQL
                                    SECURITY INVOKER
                                    AS $$
-                                   SELECT 'hello';
-                                 $$
+                                     SELECT 'hello';
+                                   $$
 
 statement ok
 CREATE DATABASE test_cross_db;
@@ -1587,30 +1667,30 @@ FROM "".crdb_internal.create_procedure_statements
 WHERE procedure_name IN ('p', 'p2', 'p_cross_db')
 ORDER BY procedure_id;
 ----
-104  test           105  public  142  p           CREATE PROCEDURE public.p(INT8)
+104  test           105  public  141  p           CREATE PROCEDURE public.p(INT8)
                                                     LANGUAGE SQL
                                                     SECURITY INVOKER
                                                     AS $$
-                                                    SELECT 1;
-                                                  $$
-104  test           105  public  143  p           CREATE PROCEDURE public.p(STRING, b INT8)
+                                                      SELECT 1;
+                                                    $$
+104  test           105  public  142  p           CREATE PROCEDURE public.p(STRING, b INT8)
                                                     LANGUAGE SQL
                                                     SECURITY INVOKER
                                                     AS $$
-                                                    SELECT 'hello';
-                                                  $$
-104  test           145  sc      146  p2          CREATE PROCEDURE sc.p2(STRING)
+                                                      SELECT 'hello';
+                                                    $$
+104  test           144  sc      145  p2          CREATE PROCEDURE sc.p2(STRING)
                                                     LANGUAGE SQL
                                                     SECURITY INVOKER
                                                     AS $$
-                                                    SELECT 'hello';
-                                                  $$
-147  test_cross_db  148  public  149  p_cross_db  CREATE PROCEDURE public.p_cross_db()
+                                                      SELECT 'hello';
+                                                    $$
+146  test_cross_db  147  public  148  p_cross_db  CREATE PROCEDURE public.p_cross_db()
                                                     LANGUAGE SQL
                                                     SECURITY INVOKER
                                                     AS $$
-                                                    SELECT 1;
-                                                  $$
+                                                      SELECT 1;
+                                                    $$
 
 statement ok
 DROP PROCEDURE p(INT);
@@ -1661,7 +1741,10 @@ statement ok
 CREATE TABLE foo (a INT PRIMARY KEY, INDEX idx(a)); INSERT INTO foo VALUES(1);
 
 statement ok
-CREATE TABLE bar (a INT PRIMARY KEY, INDEX idx(a));
+CREATE SCHEMA droptest;
+
+statement ok
+CREATE TABLE droptest.bar (a INT PRIMARY KEY, INDEX idx(a));
 
 query TB rowsort
 SELECT name, dropped  
@@ -1672,7 +1755,7 @@ foo    false
 bar    false
 
 statement ok
-DROP TABLE bar
+DROP SCHEMA droptest CASCADE
 
 query TB rowsort
 SELECT name, dropped  
@@ -1714,8 +1797,10 @@ ORDER BY role, inheriting_member
 admin  real_user  true  false
 admin  root       true  true
 
-statement ok
+statement count 1
 DELETE FROM system.users WHERE username = 'non_cached_user';
+
+statement count 1
 DELETE FROM system.role_members WHERE member = 'non_cached_user';
 
 statement ok
@@ -1748,5 +1833,30 @@ SELECT * FROM crdb_internal.create_type_statements WHERE descriptor_name = 'enum
 query ITTITTT
 SELECT * FROM crdb_internal.create_type_statements WHERE descriptor_id = (('other_db.public.enum1'::regtype::int) - 100000)
 ----
+
+subtest end
+
+subtest cluster_inspect_errors_view
+
+query TT colnames
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'crdb_internal' AND table_name = 'cluster_inspect_errors'
+ORDER BY ordinal_position
+----
+column_name                 data_type
+error_id                   uuid
+job_id                     bigint
+error_type                 text
+aost                       timestamp with time zone
+database_id                oid
+schema_id                  oid
+id                         oid
+primary_key                text
+details                    jsonb
+crdb_internal_expiration   timestamp with time zone
+
+statement ok
+SELECT count(*) FROM crdb_internal.cluster_inspect_errors
 
 subtest end

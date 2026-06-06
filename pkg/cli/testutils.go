@@ -29,6 +29,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/security/certnames"
 	"github.com/cockroachdb/cockroach/pkg/security/securitytest"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
+	"github.com/cockroachdb/cockroach/pkg/server/pgurl"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats"
 	"github.com/cockroachdb/cockroach/pkg/sql/stats"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
@@ -39,7 +40,7 @@ import (
 )
 
 // TestingReset resets global mutable state so that Run can be called multiple
-// times from the same test process. It is public for cliccl.
+// times from the same test process.
 func TestingReset() {
 	// Reset the client contexts for each test.
 	initCLIDefaults()
@@ -182,8 +183,8 @@ func newCLITestWithArgs(params TestCLIParams, argsFn func(args *base.TestServerA
 		}
 		c.Server = s
 
-		log.Infof(context.Background(), "server started at %s", c.Server.AdvRPCAddr())
-		log.Infof(context.Background(), "SQL listener at %s", c.Server.AdvSQLAddr())
+		log.Dev.Infof(context.Background(), "server started at %s", c.Server.AdvRPCAddr())
+		log.Dev.Infof(context.Background(), "SQL listener at %s", c.Server.AdvSQLAddr())
 
 		// When run under leader leases, requests will not heartbeat NodeLiveness on
 		// the lease acquisition codepath. This may then cause CLI commands
@@ -191,7 +192,7 @@ func newCLITestWithArgs(params TestCLIParams, argsFn func(args *base.TestServerA
 		// heartbeat the NodeLiveness record to prevent tests from flaking.
 		err = retry.ForDuration(200*time.Second, c.Server.HeartbeatNodeLiveness)
 		if err != nil {
-			log.Fatalf(context.Background(), "Couldn't heartbeat node liveness: %s", err)
+			log.Dev.Fatalf(context.Background(), "Couldn't heartbeat node liveness: %s", err)
 		}
 	}
 
@@ -249,7 +250,7 @@ func setCLIDefaultsForTests() {
 // stopServer stops the test server.
 func (c *TestCLI) stopServer() {
 	if c.Server != nil {
-		log.Infof(context.Background(), "stopping server at %s / %s",
+		log.Dev.Infof(context.Background(), "stopping server at %s / %s",
 			c.Server.AdvRPCAddr(), c.Server.AdvSQLAddr())
 		c.Server.Stopper().Stop(context.Background())
 	}
@@ -259,7 +260,7 @@ func (c *TestCLI) stopServer() {
 // have changed after this method returns.
 func (c *TestCLI) RestartServer(params TestCLIParams) {
 	c.stopServer()
-	log.Info(context.Background(), "restarting server")
+	log.Dev.Info(context.Background(), "restarting server")
 	s, err := serverutils.StartServerOnlyE(params.T, base.TestServerArgs{
 		Insecure:    params.Insecure,
 		SSLCertsDir: c.certsDir,
@@ -270,14 +271,14 @@ func (c *TestCLI) RestartServer(params TestCLIParams) {
 	}
 	c.Insecure = params.Insecure
 	c.Server = s
-	log.Infof(context.Background(), "restarted server at %s / %s",
+	log.Dev.Infof(context.Background(), "restarted server at %s / %s",
 		c.Server.AdvRPCAddr(), c.Server.AdvSQLAddr())
 	if params.TenantArgs != nil {
 		if c.Insecure {
 			params.TenantArgs.ForceInsecure = true
 		}
 		c.tenant, _ = serverutils.StartTenant(c.t, c.Server, *params.TenantArgs)
-		log.Infof(context.Background(), "restarted tenant SQL only server at %s", c.tenant.SQLAddr())
+		log.Dev.Infof(context.Background(), "restarted tenant SQL only server at %s", c.tenant.SQLAddr())
 	}
 }
 
@@ -293,7 +294,7 @@ func (c *TestCLI) Cleanup() {
 	// Restore stderr.
 	stderr = c.prevStderr
 
-	log.Info(context.Background(), "stopping server and cleaning up CLI test")
+	log.Dev.Info(context.Background(), "stopping server and cleaning up CLI test")
 
 	c.stopServer()
 
@@ -363,6 +364,12 @@ func captureOutput(f func()) (out string, err error) {
 		if x := recover(); x != nil {
 			err = errors.Errorf("panic: %v", x)
 		}
+		// Strip license-related NOTICE messages that the SQL driver may inject
+		// into output. These appear nondeterministically and can split retrieval
+		// lines across multiple lines, breaking the <dumping SQL tables> collapsing
+		// below. Strip them early so retrieval lines remain intact.
+		out = regexp.MustCompile(`NOTICE: No license is installed[^\n]*\n?`).
+			ReplaceAllString(out, "")
 		// Replace any series of 'retrieving SQL data for ...' messages with a
 		// single '<dumping SQL tables>' message so that these tests are agnostic to
 		// both specific names and total number of system and internal tables that
@@ -412,16 +419,31 @@ func (c TestCLI) RunWithArgs(origArgs []string) {
 		args := append([]string(nil), origArgs[:1]...)
 		if c.Server != nil {
 			addr := c.getRPCAddr()
-			if isSQL, err := isSQLCommand(origArgs); err != nil {
+			isSQL, err := isSQLCommand(origArgs)
+			if err != nil {
 				return err
-			} else if isSQL {
+			}
+			if isSQL {
 				addr = c.getSQLAddr()
 			}
+
 			h, p, err := net.SplitHostPort(addr)
 			if err != nil {
 				return err
 			}
-			args = append(args, fmt.Sprintf("--host=%s", net.JoinHostPort(h, p)))
+
+			if isSQL {
+				// Create a connection string URL with client_min_messages = 'warning'.
+				// This avoids showing SQL notices, which can be non-deterministic.
+				u := pgurl.New().WithNet(pgurl.NetTCP(h, p))
+				if err := u.SetOption("client_min_messages", "warning"); err != nil {
+					return err
+				}
+				args = append(args, fmt.Sprintf("--url=%s", u.String()))
+			} else {
+				args = append(args, fmt.Sprintf("--host=%s", net.JoinHostPort(h, p)))
+			}
+
 			if c.Insecure {
 				args = append(args, "--insecure=true")
 			} else {

@@ -75,8 +75,7 @@ type planNode interface {
 	// of results each time that Next() returns true.
 	//
 	// Available after startPlan(). It is illegal to call Next() after it returns
-	// false. It is legal to call Next() even if the node implements
-	// planNodeFastPath and the FastPathResults() method returns true.
+	// false.
 	Next(params runParams) (bool, error)
 
 	// Values returns the values at the current row. The result is only valid
@@ -100,21 +99,27 @@ type planNode interface {
 
 	InputCount() int
 	Input(i int) (planNode, error)
+	SetInput(i int, p planNode) error
 }
 
 // zeroInputPlanNode is embedded in planNode implementations that have no input
-// planNode. It implements the InputCount and Input methods of planNode.
+// planNode. It implements the InputCount, Input, and SetInput methods of
+// planNode.
 type zeroInputPlanNode struct{}
 
 func (zeroInputPlanNode) InputCount() int { return 0 }
 
 func (zeroInputPlanNode) Input(i int) (planNode, error) {
-	return nil, errors.AssertionFailedf("input node has no inputs")
+	return nil, errors.AssertionFailedf("node has no inputs")
+}
+
+func (zeroInputPlanNode) SetInput(i int, p planNode) error {
+	return errors.AssertionFailedf("node has no inputs")
 }
 
 // singleInputPlanNode is embedded in planNode implementations that have a
-// single input planNode. It implements the InputCount and Input methods of
-// planNode.
+// single input planNode. It implements the InputCount, Input, and SetInput
+// methods of planNode.
 type singleInputPlanNode struct {
 	input planNode
 }
@@ -128,25 +133,49 @@ func (n *singleInputPlanNode) Input(i int) (planNode, error) {
 	return nil, errors.AssertionFailedf("input index %d is out of range", i)
 }
 
+func (n *singleInputPlanNode) SetInput(i int, p planNode) error {
+	if i == 0 {
+		n.input = p
+		return nil
+	}
+	return errors.AssertionFailedf("input index %d is out of range", i)
+}
+
 // mutationPlanNode is a specification of planNode for mutations operations
 // (those that insert/update/detele/etc rows).
 type mutationPlanNode interface {
 	planNode
 
-	// rowsWritten returns the number of rows modified by this planNode. It
-	// should only be called once Next returns false.
+	// rowsWritten returns the number of table rows modified by this planNode.
+	// It does not include rows written to secondary indexes. It should only be
+	// called once Next returns false.
 	rowsWritten() int64
-}
 
-// planNodeFastPath is implemented by nodes that can perform all their
-// work during startPlan(), possibly affecting even multiple rows. For
-// example, DELETE can do this.
-type planNodeFastPath interface {
-	// FastPathResults returns the affected row count and true if the
-	// node has no result set and has already executed when startPlan() completes.
-	// Note that Next() must still be valid even if this method returns
-	// true, although it may have nothing left to do.
-	FastPathResults() (int, bool)
+	// indexRowsWritten returns the number of primary and secondary index rows
+	// modified by this planNode. It is always >= rowsWritten. It should only be
+	// called once Next returns false.
+	indexRowsWritten() int64
+
+	// indexBytesWritten returns the number of primary and secondary index bytes
+	// modified by this planNode. It should only be called once Next returns
+	// false.
+	indexBytesWritten() int64
+
+	// returnsRowsAffected indicates that the planNode returns the number of
+	// rows affected by the mutation, rather than the rows themselves.
+	returnsRowsAffected() bool
+
+	// kvCPUTime returns the cumulative CPU time (in nanoseconds) that KV reported
+	// in BatchResponse headers during the execution of this mutation. It should
+	// only be called once Next returns false.
+	kvCPUTime() int64
+
+	// localKVCPUTime returns the cumulative SQL goroutine CPU time (in
+	// nanoseconds) spent inside KV calls during the execution of this mutation,
+	// as measured by the grunning library. This is the portion of SQL goroutine
+	// CPU that overlapped with KV work, not the CPU consumed on KV servers (see
+	// kvCPUTime for that). It should only be called once Next returns false.
+	localKVCPUTime() int64
 }
 
 // planNodeReadingOwnWrites can be implemented by planNodes which do
@@ -192,6 +221,7 @@ var _ planNode = &CreateRoleNode{}
 var _ planNode = &createViewNode{}
 var _ planNode = &delayedNode{}
 var _ planNode = &deleteNode{}
+var _ planNode = &deleteSwapNode{}
 var _ planNode = &deleteRangeNode{}
 var _ planNode = &distinctNode{}
 var _ planNode = &dropDatabaseNode{}
@@ -200,6 +230,7 @@ var _ planNode = &dropSchemaNode{}
 var _ planNode = &dropSequenceNode{}
 var _ planNode = &dropTableNode{}
 var _ planNode = &dropTypeNode{}
+var _ planNode = &DropProvisionedRolesNode{}
 var _ planNode = &DropRoleNode{}
 var _ planNode = &dropViewNode{}
 var _ planNode = &errorIfRowsNode{}
@@ -228,11 +259,9 @@ var _ planNode = &renameIndexNode{}
 var _ planNode = &renameTableNode{}
 var _ planNode = &renderNode{}
 var _ planNode = &RevokeRoleNode{}
-var _ planNode = &rowCountNode{}
 var _ planNode = &scanBufferNode{}
 var _ planNode = &scanNode{}
 var _ planNode = &scatterNode{}
-var _ planNode = &serializeNode{}
 var _ planNode = &sequenceSelectNode{}
 var _ planNode = &showFingerprintsNode{}
 var _ planNode = &showTraceNode{}
@@ -245,6 +274,7 @@ var _ planNode = &truncateNode{}
 var _ planNode = &unaryNode{}
 var _ planNode = &unionNode{}
 var _ planNode = &updateNode{}
+var _ planNode = &updateSwapNode{}
 var _ planNode = &upsertNode{}
 var _ planNode = &valuesNode{}
 var _ planNode = &vectorMutationSearchNode{}
@@ -252,13 +282,6 @@ var _ planNode = &vectorSearchNode{}
 var _ planNode = &virtualTableNode{}
 var _ planNode = &windowNode{}
 var _ planNode = &zeroNode{}
-
-var _ planNodeFastPath = &deleteRangeNode{}
-var _ planNodeFastPath = &rowCountNode{}
-var _ planNodeFastPath = &serializeNode{}
-var _ planNodeFastPath = &setZoneConfigNode{}
-var _ planNodeFastPath = &controlJobsNode{}
-var _ planNodeFastPath = &controlSchedulesNode{}
 
 var _ planNodeReadingOwnWrites = &alterIndexNode{}
 var _ planNodeReadingOwnWrites = &alterSchemaNode{}
@@ -278,33 +301,11 @@ var _ planNodeReadingOwnWrites = &dropTypeNode{}
 var _ planNodeReadingOwnWrites = &refreshMaterializedViewNode{}
 var _ planNodeReadingOwnWrites = &setZoneConfigNode{}
 
-// planNodeRequireSpool serves as marker for nodes whose parent must
-// ensure that the node is fully run to completion (and the results
-// spooled) during the start phase. This is currently implemented by
-// all mutation statements except for upsert.
-type planNodeRequireSpool interface {
-	requireSpool()
-}
-
-var _ planNodeRequireSpool = &serializeNode{}
-
-// planNodeSpool serves as marker for nodes that can perform all their
-// execution during the start phase. This is different from the "fast
-// path" interface because a node that performs all its execution
-// during the start phase might still have some result rows and thus
-// not implement the fast path.
-//
-// This interface exists for the following optimization: nodes
-// that require spooling but are the children of a spooled node
-// do not require the introduction of an explicit spool.
-type planNodeSpooled interface {
-	spooled()
-}
-
-var _ planNodeSpooled = &spoolNode{}
-
 type flowInfo struct {
-	typ     planComponentType
+	typ planComponentType
+	// diagram is only populated when instrumentationHelper.shouldSaveDiagrams()
+	// returns true. (Even in that case we've seen a sentry report #149987 where
+	// it was nil.)
 	diagram execinfrapb.FlowDiagram
 	// explainVec and explainVecVerbose are only populated when collecting a
 	// statement bundle when the plan was vectorized.
@@ -423,6 +424,7 @@ const (
 	planComponentTypeMainQuery
 	planComponentTypeSubquery
 	planComponentTypePostquery
+	planComponentTypeInner
 )
 
 func (t planComponentType) String() string {
@@ -697,6 +699,17 @@ const (
 	planFlagContainsInsert
 	planFlagContainsUpdate
 	planFlagContainsUpsert
+
+	// planFlagUsesRLS is set if the plan applies row-level security policies.
+	planFlagUsesRLS
+
+	// planFlagCanaryAndStableStatsDiffer is set if at least one table
+	// referenced by the query has genuinely different canary (newest) vs.
+	// stable (second-newest) statistics within its canary window. This
+	// gates experiment metric recording: when false, the execution is not
+	// recorded in canary/stable experiment buckets even if StatsRollout is
+	// Canary or Stable.
+	planFlagCanaryAndStableStatsDiffer
 )
 
 // IsSet returns true if the receiver has all of the given flags set.

@@ -15,11 +15,11 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/schemaexpr"
-	"github.com/cockroachdb/cockroach/pkg/sql/catalog/tabledesc"
 	"github.com/cockroachdb/cockroach/pkg/sql/parser"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/eval"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
+	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
 )
@@ -57,9 +57,6 @@ type ShowCreateDisplayOptions struct {
 	// RedactableValues causes all constants, literals, and other user-provided
 	// values to be surrounded with redaction markers.
 	RedactableValues bool
-	// IgnoreRLSStatements causes all row level security related statements to
-	// not show up in the SHOW CREATE TABLE output.
-	IgnoreRLSStatements bool
 }
 
 // ShowCreateTable returns a valid SQL representation of the CREATE
@@ -115,7 +112,22 @@ func ShowCreateTable(
 		f.WriteString(",\n\tCONSTRAINT ")
 		formatQuoteNames(&f.Buffer, desc.GetPrimaryIndex().GetName())
 		f.WriteString(" ")
-		f.WriteString(tabledesc.PrimaryKeyString(desc))
+		primaryIdxStr, err := catformat.IndexForDisplay(
+			ctx,
+			desc,
+			&descpb.AnonymousTable,
+			desc.GetPrimaryIndex(),
+			"", /* partition */
+			fmtFlags,
+			p.EvalContext(),
+			p.SemaCtx(),
+			p.SessionData(),
+			catformat.IndexDisplayDefOnly,
+		)
+		if err != nil {
+			return "", err
+		}
+		f.WriteString(primaryIdxStr)
 	}
 
 	// TODO (lucy): Possibly include FKs in the mutations list here, or else
@@ -191,31 +203,27 @@ func ShowCreateTable(
 		return "", err
 	}
 
-	if storageParams := desc.GetStorageParams(true /* spaceBetweenEqual */); len(storageParams) > 0 {
+	pgCompat := p.SessionData().PgDumpCompatibility == sessiondatapb.PgDumpCompatibilityPostgres
+	var storageParams []string
+	if !pgCompat {
+		// All storage params are CockroachDB-specific, so skip them in
+		// postgres compat mode.
+		var err error
+		storageParams, err = desc.GetStorageParams(true /* spaceBetweenEqual */)
+		if err != nil {
+			return "", err
+		}
+	}
+	if len(storageParams) > 0 {
 		f.Buffer.WriteString(` WITH (`)
 		f.Buffer.WriteString(strings.Join(storageParams, ", "))
 		f.Buffer.WriteString(`)`)
 	}
 
-	if err := showCreateLocality(desc, f); err != nil {
-		return "", err
-	}
-
-	if !displayOptions.IgnoreRLSStatements {
-		if alterRLSStatements, err := showRLSAlterStatement(tn, desc, true); err != nil {
+	// Suppress CRDB-specific LOCALITY clause in postgres compat mode.
+	if !pgCompat {
+		if err := showCreateLocality(desc, f); err != nil {
 			return "", err
-		} else {
-			buf := &f.Buffer
-			buf.WriteString(alterRLSStatements)
-		}
-
-		for _, policyDesc := range desc.GetPolicies() {
-			if policyStatements, err := showPolicyStatement(ctx, tn, desc, p.EvalContext(), &p.semaCtx, p.SessionData(), policyDesc, true); err != nil {
-				return "", err
-			} else {
-				buf := &f.Buffer
-				buf.WriteString(policyStatements)
-			}
 		}
 	}
 
@@ -229,9 +237,7 @@ func ShowCreateTable(
 }
 
 // showRLSAlterStatement returns a string of the ALTER TABLE ... ROW LEVEL SECURITY statements
-func showRLSAlterStatement(
-	tn *tree.TableName, table catalog.TableDescriptor, addNewLine bool,
-) (string, error) {
+func showRLSAlterStatement(tn *tree.TableName, table catalog.TableDescriptor) (string, error) {
 	if !table.IsRowLevelSecurityEnabled() && !table.IsRowLevelSecurityForced() {
 		return "", nil
 	}
@@ -254,9 +260,6 @@ func showRLSAlterStatement(
 		cmds = append(cmds, forcedCmd)
 	}
 
-	if addNewLine {
-		f.WriteString(";\n")
-	}
 	f.FormatNode(&tree.AlterTable{
 		Table: un,
 		Cmds:  cmds,
@@ -274,7 +277,6 @@ func showPolicyStatement(
 	semaCtx *tree.SemaContext,
 	sessionData *sessiondata.SessionData,
 	policy descpb.PolicyDescriptor,
-	addNewLine bool,
 ) (string, error) {
 	un := tn.ToUnresolvedObjectName()
 
@@ -315,9 +317,6 @@ func showPolicyStatement(
 		}
 	}
 
-	if addNewLine {
-		f.WriteString(";\n")
-	}
 	f.FormatNode(&tree.CreatePolicy{
 		PolicyName: tree.Name(policy.Name),
 		TableName:  un,
@@ -402,7 +401,7 @@ func (p *planner) ShowCreate(
 	if desc.IsSequence() {
 		return ShowCreateSequence(ctx, &tn, desc)
 	}
-	lCtx := newInternalLookupCtx(allHydratedDescs, nil /* prefix */)
+	lCtx := newInternalLookupCtx(allHydratedDescs, nil /* prefix */, nil /*fallbackFn*/)
 	// Overwrite desc with hydrated descriptor.
 	var err error
 	desc, err = lCtx.getTableByID(desc.GetID())

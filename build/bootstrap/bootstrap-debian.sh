@@ -12,7 +12,7 @@
 set -euxo pipefail
 
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource.gpg.key | sudo apt-key add -
-echo "deb https://deb.nodesource.com/node_16.x focal main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+echo "deb https://deb.nodesource.com/node_22.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
 
 sudo apt-get update
 sudo DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold"
@@ -30,7 +30,7 @@ sudo apt-get install -y --no-install-recommends \
   bison
 
 # pnpm doesn't provide a Debian repository, and supports either `curl | sh` or `npm install -g` installations.
-curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=8.6.6 sh -
+curl -fsSL https://get.pnpm.io/install.sh | env PNPM_VERSION=9.15.5 sh -
 echo >> ~/.bashrc
 
 sudo adduser "${USER}" docker
@@ -45,9 +45,9 @@ sudo tar -C /usr --strip-components=1 -zxf /tmp/cmake.tgz && rm /tmp/cmake.tgz
 
 # Install Go.
 trap 'rm -f /tmp/go.tgz' EXIT
-curl -fsSL https://dl.google.com/go/go1.23.7.linux-amd64.tar.gz >/tmp/go.tgz
+curl -fsSL https://dl.google.com/go/go1.26.2.linux-amd64.tar.gz >/tmp/go.tgz
 sha256sum -c - <<EOF
-4741525e69841f2e22f9992af25df0c1112b07501f61f741c12c6389fcb119f3  /tmp/go.tgz
+990e6b4bbba816dc3ee129eaeaf4b42f17c2800b88a2166c265ac1a200262282  /tmp/go.tgz
 EOF
 sudo tar -C /usr/local -zxf /tmp/go.tgz && rm /tmp/go.tgz
 
@@ -69,9 +69,6 @@ curl -fsSL https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/baze
 echo '4cb534c52cdd47a6223d4596d530e7c9c785438ab3b0a49ff347e991c210b2cd /tmp/bazelisk' | sha256sum -c -
 chmod +x /tmp/bazelisk
 sudo mv /tmp/bazelisk /usr/bin/bazel
-
-# Install the Unison file-syncer.
-. bootstrap/bootstrap-unison.sh
 
 # Configure environment variables for CockroachDB
 echo 'export PATH="${PATH}:${HOME}/go/src/github.com/cockroachdb/cockroach/bin:/usr/local/go/bin"' >> ~/.bashrc_bootstrap

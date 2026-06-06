@@ -10,6 +10,11 @@ import (
 	"sync/atomic"
 )
 
+// uniqueOwner is a special value that indicates this owner is always considered
+// distinct from every other owner, including itself. Using this value reduces
+// memLock to a "regular" RWMutex, without ownership tracking or reentrancy.
+const uniqueOwner = uint64(0)
+
 // memLock wraps a read-write memLock, adding support for reentrancy and
 // ownership tracking.
 // NOTE: This is only used in testing and benchmarking code.
@@ -35,63 +40,63 @@ type memLock struct {
 
 // IsAcquiredBy returns true if the lock is exclusively owned by the given
 // owner, or false if not.
-func (pl *memLock) IsAcquiredBy(owner uint64) bool {
-	return pl.exclusiveOwner.Load() == owner
+func (l *memLock) IsAcquiredBy(owner uint64) bool {
+	return owner != uniqueOwner && l.exclusiveOwner.Load() == owner
 }
 
 // Acquire obtains exclusive write access to the resource protected by this
 // lock. The same owner can obtain the lock multiple times. The caller must
 // ensure that Release is called for each call to Acquire.
-func (pl *memLock) Acquire(owner uint64) {
-	if pl.exclusiveOwner.Load() == owner {
+func (l *memLock) Acquire(owner uint64) {
+	if owner != uniqueOwner && l.exclusiveOwner.Load() == owner {
 		// Exclusive lock has already been acquired by this owner.
-		pl.mu.reentrancy++
+		l.mu.reentrancy++
 		return
 	}
 
 	// Block until exclusive lock is acquired.
-	pl.mu.Lock()
-	pl.exclusiveOwner.Store(owner) //nolint:deferunlockcheck
+	l.mu.Lock()
+	l.exclusiveOwner.Store(owner) //nolint:deferunlockcheck
 }
 
 // AcquireShared obtains shared read access to the resource protected by this
 // lock. The same owner can obtain the lock multiple times. The caller must
 // ensure that ReleaseShared is called for each all to AcquireShared.
-func (pl *memLock) AcquireShared(owner uint64) {
-	if owner != 0 && pl.exclusiveOwner.Load() == owner {
+func (l *memLock) AcquireShared(owner uint64) {
+	if owner != uniqueOwner && l.exclusiveOwner.Load() == owner {
 		// Exclusive lock has already been acquired by this owner.
-		pl.mu.reentrancy++
+		l.mu.reentrancy++
 		return
 	}
 
 	// Block until shared lock is acquired.
-	pl.mu.RLock()
+	l.mu.RLock()
 }
 
 // Release unlocks exclusive write access to the protected resource obtained by
 // a call to Acquire. If the same owner made multiple Acquire calls, the lock
 // isn't released until Release is called the same number of times.
-func (pl *memLock) Release() {
-	if pl.mu.reentrancy > 0 {
-		pl.mu.reentrancy--
+func (l *memLock) Release() {
+	if l.mu.reentrancy > 0 {
+		l.mu.reentrancy--
 		return
 	}
 
 	// No remaining reentrancy, so release lock.
-	pl.exclusiveOwner.Store(0)
-	pl.mu.Unlock()
+	l.exclusiveOwner.Store(uniqueOwner)
+	l.mu.Unlock()
 }
 
 // ReleaseShared unlocks shared read access to the protected resource obtained
 // by a call to AcquireShared. If the same owner made multiple AcquireShared
 // calls, the lock isn't released until ReleaseShared is called the same number
 // of times.
-func (pl *memLock) ReleaseShared() {
-	if pl.mu.reentrancy > 0 {
-		pl.mu.reentrancy--
+func (l *memLock) ReleaseShared() {
+	if l.mu.reentrancy > 0 {
+		l.mu.reentrancy--
 		return
 	}
 
 	// No remaining reentrancy, so release lock.
-	pl.mu.RUnlock()
+	l.mu.RUnlock()
 }

@@ -12,7 +12,6 @@ go_library(
     deps = [
         "//pkg/backup/backuppb",
         "//pkg/base",
-        "//pkg/ccl/storageccl",
         "//pkg/cloud",
         "//pkg/keys",
         "//pkg/kv/kvpb",
@@ -25,21 +24,22 @@ go_library(
         "//pkg/util/log",
         "//pkg/util/unique",
         "@com_github_cockroachdb_errors//:errors",
+        "@com_github_cockroachdb_pebble//objstorage",
         "@com_github_gogo_protobuf//types",
-        "@com_github_kr_pretty//:pretty",
     ],
 )
 
 go_test(
     name = "backupsink_test",
+    size = "large",
     srcs = [
         "file_sst_sink_test.go",
         "sst_sink_key_writer_test.go",
     ],
     embed = [":backupsink"],
+    exec_properties = {"test.Pool": "large"},
     deps = [
         "//pkg/backup/backuppb",
-        "//pkg/ccl/storageccl",
         "//pkg/cloud",
         "//pkg/cloud/cloudpb",
         "//pkg/cloud/nodelocal",
@@ -54,6 +54,7 @@ go_test(
         "//pkg/util/leaktest",
         "//pkg/util/log",
         "@com_github_cockroachdb_errors//:errors",
+        "@com_github_cockroachdb_pebble//objstorage",
         "@com_github_gogo_protobuf//types",
         "@com_github_stretchr_testify//require",
     ],

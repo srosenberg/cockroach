@@ -8,7 +8,6 @@ package storage
 import (
 	"bytes"
 	"context"
-	"io"
 
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
@@ -49,53 +48,20 @@ var _ Writer = &SSTWriter{}
 var _ ExportWriter = &SSTWriter{}
 var _ InternalWriter = &SSTWriter{}
 
-// NoopFinishAbortWritable wraps an io.Writer to make a objstorage.Writable that
-// will ignore Finish and Abort calls.
-func NoopFinishAbortWritable(w io.Writer) objstorage.Writable {
-	return &noopFinishAbort{Writer: w}
-}
-
-// noopFinishAbort is used to wrap io.Writers for sstable.Writer.
-type noopFinishAbort struct {
-	io.Writer
-}
-
-var _ objstorage.Writable = (*noopFinishAbort)(nil)
-
-// Write is part of the objstorage.Writable interface.
-func (n *noopFinishAbort) Write(p []byte) error {
-	// An io.Writer always returns an error if it can't write the entire slice.
-	_, err := n.Writer.Write(p)
-	return err
-}
-
-// Finish is part of the objstorage.Writable interface.
-func (*noopFinishAbort) Finish() error {
-	return nil
-}
-
-// Abort is part of the objstorage.Writable interface.
-func (*noopFinishAbort) Abort() {}
-
 // MakeIngestionWriterOptions returns writer options suitable for writing SSTs
 // that will subsequently be ingested (e.g. with AddSSTable). These options are
 // also used when constructing sstables for backups (because these sstables may
 // ultimately be ingested during online restore).
 func MakeIngestionWriterOptions(ctx context.Context, cs *cluster.Settings) sstable.WriterOptions {
-	// All supported versions understand TableFormatPebblev4. If columnar blocks
-	// are enabled and the active cluster version is at least 24.3, use
-	// TableFormatPebblev5.
-	format := sstable.TableFormatPebblev4
-	if ColumnarBlocksEnabled.Get(&cs.SV) {
-		format = sstable.TableFormatPebblev5
-	}
+	format := minPebbleFormatVersionInCluster(cs.Version.ActiveVersion(ctx).Version).MaxTableFormat()
 
 	opts := DefaultPebbleOptions().MakeWriterOptions(0, format)
-	// By default, compress with the algorithm used for storage in a Pebble store.
+	// By default, compress with the algorithm used for L6 in a Pebble store.
 	// There are other, more specific, use cases that may call for a different
 	// algorithm, which can be set by overriding the default (see
 	// MakeIngestionSSTWriterWithOverrides).
-	opts.Compression = getCompressionAlgorithm(ctx, cs, CompressionAlgorithmStorage)
+	dbCompression := CompressionAlgorithmStorage.Get(&cs.SV).DBCompressionSettings()
+	opts.Compression = dbCompression.Levels[len(dbCompression.Levels)-1]
 	opts.MergerName = "nullptr"
 	if !IngestionValueBlocksEnabled.Get(&cs.SV) {
 		opts.DisableValueBlocks = true
@@ -121,14 +87,16 @@ func makeSSTRewriteOptions(
 // sstables using this writer, those sstables will be sent over the network,
 // scanned and their keys inserted into new sstables (NB: constructed using
 // MakeIngestionSSTWriter) that ultimately are uploaded to object storage.
-func MakeTransportSSTWriter(ctx context.Context, cs *cluster.Settings, f io.Writer) SSTWriter {
-	// By default, take a conservative approach and assume we don't have newer
-	// table features available. Upgrade to an appropriate version only if the
-	// cluster supports it.
-	format := sstable.TableFormatPebblev4
-	if ColumnarBlocksEnabled.Get(&cs.SV) {
-		format = sstable.TableFormatPebblev5
-	}
+func MakeTransportSSTWriter(
+	ctx context.Context, cs *cluster.Settings, f objstorage.Writable,
+) SSTWriter {
+	// MakeTransportSSTWriter is used to evaluate export requests. The export
+	// requests could be issued by a non-system tenant with an older binary, so we
+	// must emit at the minimum supported version.
+	//
+	// TODO(radu): ideally the tenant would be able to specify the desired format
+	// version (#153283).
+	format := MinimumSupportedFormatVersion.MaxTableFormat()
 
 	opts := DefaultPebbleOptions().MakeWriterOptions(0, format)
 
@@ -142,10 +110,10 @@ func MakeTransportSSTWriter(ctx context.Context, cs *cluster.Settings, f io.Writ
 	// block checksums and more index entries are just overhead and smaller blocks
 	// reduce compression ratio.
 	opts.BlockSize = 128 << 10
-	opts.Compression = getCompressionAlgorithm(ctx, cs, CompressionAlgorithmBackupTransport)
+	opts.Compression = CompressionAlgorithmBackupTransport.Get(&cs.SV).CompressionProfile()
 	opts.MergerName = "nullptr"
 	return SSTWriter{
-		fw: sstable.NewWriter(&noopFinishAbort{f}, opts),
+		fw: sstable.NewWriter(f, opts),
 	}
 }
 
@@ -171,10 +139,12 @@ var WithValueBlocksDisabled SSTWriterOption = func(opts *sstable.WriterOptions) 
 // WithCompressionFromClusterSetting sets the compression algorithm for an
 // SSTable based on the value of the given cluster setting.
 func WithCompressionFromClusterSetting(
-	ctx context.Context, cs *cluster.Settings, setting *settings.EnumSetting[compressionAlgorithm],
+	ctx context.Context,
+	cs *cluster.Settings,
+	setting *settings.EnumSetting[SSTableCompressionProfile],
 ) SSTWriterOption {
 	return func(opts *sstable.WriterOptions) {
-		opts.Compression = getCompressionAlgorithm(ctx, cs, setting)
+		opts.Compression = setting.Get(&cs.SV).CompressionProfile()
 	}
 }
 
@@ -237,7 +207,7 @@ func (fw *SSTWriter) ClearRawRange(start, end roachpb.Key, pointKeys, rangeKeys 
 
 // ClearMVCCRange implements the Writer interface.
 func (fw *SSTWriter) ClearMVCCRange(start, end roachpb.Key, pointKeys, rangeKeys bool) error {
-	panic("not implemented")
+	return errors.AssertionFailedf("not implemented")
 }
 
 // ClearMVCCVersions implements the Writer interface.
@@ -344,7 +314,7 @@ func (fw *SSTWriter) PutInternalRangeKey(start, end []byte, key rangekey.Key) er
 	case pebble.InternalKeyKindRangeKeyDelete:
 		return fw.fw.RangeKeyDelete(start, end)
 	default:
-		panic("unexpected range key kind")
+		return errors.AssertionFailedf("unexpected range key kind")
 	}
 }
 
@@ -355,7 +325,7 @@ func (fw *SSTWriter) PutInternalPointKey(key *pebble.InternalKey, value []byte) 
 		return errors.New("cannot decode engine key")
 	}
 	fw.DataSize += int64(len(ek.Key)) + int64(len(value))
-	return fw.fw.Raw().AddWithForceObsolete(*key, value, false /* forceObsolete */)
+	return fw.fw.Raw().Add(*key, value, false /* forceObsolete */, sstable.KVMeta{})
 }
 
 // clearRange clears all point keys in the given range by dropping a Pebble
@@ -392,7 +362,7 @@ func (fw *SSTWriter) Put(key MVCCKey, value []byte) error {
 // cannot have been called.
 func (fw *SSTWriter) PutMVCC(key MVCCKey, value MVCCValue) error {
 	if key.Timestamp.IsEmpty() {
-		panic("PutMVCC timestamp is empty")
+		return errors.AssertionFailedf("PutMVCC timestamp is empty")
 	}
 	encValue, err := EncodeMVCCValue(value)
 	if err != nil {
@@ -407,7 +377,7 @@ func (fw *SSTWriter) PutMVCC(key MVCCKey, value MVCCValue) error {
 // cannot have been called.
 func (fw *SSTWriter) PutRawMVCC(key MVCCKey, value []byte) error {
 	if key.Timestamp.IsEmpty() {
-		panic("PutRawMVCC timestamp is empty")
+		return errors.AssertionFailedf("PutRawMVCC timestamp is empty")
 	}
 	return fw.put(key, value)
 }
@@ -447,7 +417,7 @@ func (fw *SSTWriter) put(key MVCCKey, value []byte) error {
 
 // ApplyBatchRepr implements the Writer interface.
 func (fw *SSTWriter) ApplyBatchRepr(repr []byte, sync bool) error {
-	panic("unimplemented")
+	return errors.AssertionFailedf("not implemented")
 }
 
 // ClearMVCC implements the Writer interface. An error is returned if it is
@@ -456,7 +426,7 @@ func (fw *SSTWriter) ApplyBatchRepr(repr []byte, sync bool) error {
 // called.
 func (fw *SSTWriter) ClearMVCC(key MVCCKey, opts ClearOptions) error {
 	if key.Timestamp.IsEmpty() {
-		panic("ClearMVCC timestamp is empty")
+		return errors.AssertionFailedf("ClearMVCC timestamp is empty")
 	}
 	return fw.clear(key, opts)
 }
@@ -504,20 +474,25 @@ func (fw *SSTWriter) clear(key MVCCKey, opts ClearOptions) error {
 	return fw.fw.Delete(fw.scratch)
 }
 
+// SingleClearUnversioned implements the Writer interface.
+func (fw *SSTWriter) SingleClearUnversioned(key roachpb.Key) error {
+	return errors.AssertionFailedf("not implemented")
+}
+
 // SingleClearEngineKey implements the Writer interface.
 func (fw *SSTWriter) SingleClearEngineKey(key EngineKey) error {
-	panic("unimplemented")
+	return errors.AssertionFailedf("not implemented")
 }
 
 // ClearMVCCIteratorRange implements the Writer interface.
 func (fw *SSTWriter) ClearMVCCIteratorRange(_, _ roachpb.Key, _, _ bool) error {
-	panic("not implemented")
+	return errors.AssertionFailedf("not implemented")
 }
 
 // Merge implements the Writer interface.
 func (fw *SSTWriter) Merge(key MVCCKey, value []byte) error {
 	if fw.fw == nil {
-		return errors.New("cannot call Merge on a closed writer")
+		return errors.AssertionFailedf("cannot call Merge on a closed writer")
 	}
 	fw.DataSize += int64(len(key.Key)) + int64(len(value))
 	fw.scratch = EncodeMVCCKeyToBuf(fw.scratch[:0], key)
@@ -579,6 +554,9 @@ func (f *MemObject) Write(p []byte) error {
 	_, err := f.Buffer.Write(p)
 	return err
 }
+
+// StartMetadataPortion is part of the objstorage.Writable interface.
+func (*MemObject) StartMetadataPortion() error { return nil }
 
 // Finish is part of the objstorage.Writable interface.
 func (*MemObject) Finish() error {

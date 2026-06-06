@@ -15,6 +15,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/allocator/storepool"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/liveness"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/liveness/livenesspb"
 	"github.com/cockroachdb/cockroach/pkg/raft/raftpb"
@@ -41,7 +42,7 @@ func TestRaftReceiveQueue(t *testing.T) {
 	st := cluster.MakeTestingClusterSettings()
 	g := metric.NewGauge(metric.Metadata{})
 	m := mon.NewUnlimitedMonitor(context.Background(), mon.Options{
-		Name:     mon.MakeMonitorName("test"),
+		Name:     mon.MakeName("test"),
 		CurCount: g,
 		Settings: st,
 	})
@@ -146,7 +147,7 @@ func TestRaftCrossLocalityMetrics(t *testing.T) {
 	clock := hlc.NewClockForTesting(timeutil.NewManualTime(timeutil.Unix(0, 123)))
 	cfg := TestStoreConfig(clock)
 	var stopper *stop.Stopper
-	stopper, _, _, cfg.StorePool, _ = storepool.CreateTestStorePool(ctx, cfg.Settings,
+	stopper, _, _, cfg.StorePool, _, _ = storepool.CreateTestStorePool(ctx, cfg.Settings,
 		liveness.TestTimeUntilNodeDead, false, /* deterministic */
 		func() int { return 0 }, /* nodeCount */
 		livenesspb.NodeLivenessStatus_DEAD)
@@ -154,8 +155,8 @@ func TestRaftCrossLocalityMetrics(t *testing.T) {
 
 	// Create a noop store.
 	node := roachpb.NodeDescriptor{NodeID: roachpb.NodeID(1)}
-	eng := storage.NewDefaultInMemForTesting()
-	stopper.AddCloser(eng)
+	eng := kvstorage.MakeEngines(storage.NewDefaultInMemForTesting())
+	stopper.AddCloser(&eng)
 	cfg.Transport = NewDummyRaftTransport(cfg.AmbientCtx, cfg.Settings, cfg.Clock)
 	store := NewStore(ctx, cfg, eng, &node)
 	store.Ident = &roachpb.StoreIdent{
@@ -234,7 +235,7 @@ func TestRaftReceiveQueuesEnforceMaxLenConcurrency(t *testing.T) {
 	st := cluster.MakeTestingClusterSettings()
 	g := metric.NewGauge(metric.Metadata{})
 	m := mon.NewUnlimitedMonitor(context.Background(), mon.Options{
-		Name:     mon.MakeMonitorName("test"),
+		Name:     mon.MakeName("test"),
 		CurCount: g,
 		Settings: st,
 	})
@@ -297,7 +298,7 @@ func TestRaftReceiveQueuesEnforceMaxLen(t *testing.T) {
 	st := cluster.MakeTestingClusterSettings()
 	g := metric.NewGauge(metric.Metadata{})
 	m := mon.NewUnlimitedMonitor(context.Background(), mon.Options{
-		Name:     mon.MakeMonitorName("test"),
+		Name:     mon.MakeName("test"),
 		CurCount: g,
 		Settings: st,
 	})

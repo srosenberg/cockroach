@@ -13,10 +13,12 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backupbase"
+	"github.com/cockroachdb/cockroach/pkg/backup/backupinfo"
 	"github.com/cockroachdb/cockroach/pkg/backup/backuputils"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql"
+	"github.com/cockroachdb/cockroach/pkg/util"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
 )
@@ -24,6 +26,8 @@ import (
 // The default subdirectory for incremental backups.
 const (
 	incBackupSubdirGlob = "/[0-9]*/[0-9]*.[0-9][0-9]/"
+	// incBackupSubdirGlobWithSuffix is used for all backups taken on or after v25.2.
+	incBackupSubdirGlobWithSuffix = "/[0-9]*/[0-9]*.[0-9][0-9]-[0-9]*.[0-9][0-9]/"
 )
 
 // backupSubdirRE identifies the portion of a larger path that refers to the full backup subdirectory.
@@ -66,59 +70,92 @@ func CollectionsAndSubdir(paths []string, subdir string) ([]string, string, erro
 	return output, matchedSubdirectory, nil
 }
 
-// FindPriorBackups finds "appended" incremental backups by searching
-// for the subdirectories matching the naming pattern (e.g. YYMMDD/HHmmss.ss).
-// If includeManifest is true the returned paths are to the manifests for the
-// prior backup, otherwise it is just to the backup path.
-func FindPriorBackups(
+// FindAllIncrementalPaths finds all complete incremental backups that are
+// chained off of the provided full backup subdirectory. It returns the paths to
+// all incrementals relative to the subdir in the incremental storage location.
+// It expects that subdir has been resolved and is not LATEST. Backups paths are
+// returned in sorted ascending end time order, with ties broken in ascending
+// start time. All paths are returned with a leading slash.
+//
+// TODO (kev-cao): On 26.2, we can fully deprecate the legacy path and remove
+// the `incStore` parameter.
+func FindAllIncrementalPaths(
+	ctx context.Context,
+	execCfg *sql.ExecutorConfig,
+	incStore cloud.ExternalStorage,
+	rootStore cloud.ExternalStorage,
+	subdir string,
+) ([]string, error) {
+	ctx, sp := tracing.ChildSpan(ctx, "backupdest.FindAllIncrementalPaths")
+	defer sp.Finish()
+
+	if !backupinfo.ReadBackupIndexEnabled.Get(&execCfg.Settings.SV) {
+		return LegacyFindPriorBackups(ctx, incStore, OmitManifest)
+	}
+
+	indexes, err := backupinfo.ListIndexes(ctx, rootStore, subdir)
+	if err != nil {
+		return nil, err
+	}
+	// Due to our policy for writing indexes, if there exists an index file for a
+	// backup chain, we can assume the index is complete. So either an index has
+	// been written for every backup in the chain, or there are no indexes at all.
+	if len(indexes) == 0 {
+		return LegacyFindPriorBackups(ctx, incStore, OmitManifest)
+	}
+
+	return util.MapE(
+		indexes[1:], // We skip the full backup
+		func(indexFilename string) (string, error) {
+			return backupinfo.ParseBackupFilePathFromIndexFileName(subdir, indexFilename)
+		},
+	)
+}
+
+// LegacyFindPriorBackups finds "appended" incremental backups via the legacy
+// path prior to the backup index. It searches for subdirectories matchingl the
+// naming pattern (e.g. YYMMDD/HHmmss.ss) by delimiting on the `data/` dir.
+// Backup paths are returned in ascending end time order.
+//
+// Note: store should be rooted at the directory containing the incremental
+// backups (i.e. gs://my-bucket/backup/incrementals/2025/07/29-123456.00/)
+//
+// TODO (msbutler): we didn't bother to update this to use the up to date
+// manifest as this will eventually be deleted when all reads use the index.
+func LegacyFindPriorBackups(
 	ctx context.Context, store cloud.ExternalStorage, includeManifest bool,
 ) ([]string, error) {
 	ctx, sp := tracing.ChildSpan(ctx, "backupdest.FindPriorBackups")
 	defer sp.Finish()
 
 	var prev []string
-	if err := store.List(ctx, "", backupbase.ListingDelimDataSlash, func(p string) error {
-		if ok, err := path.Match(incBackupSubdirGlob+backupbase.BackupManifestName, p); err != nil {
-			return err
-		} else if ok {
-			if !includeManifest {
-				p = strings.TrimSuffix(p, "/"+backupbase.BackupManifestName)
+	if err := store.List(
+		ctx, "", cloud.ListOptions{Delimiter: backupbase.ListingDelimDataSlash},
+		func(p string) error {
+			matchesGlob, err := path.Match(incBackupSubdirGlob+backupbase.DeprecatedBackupManifestName, p)
+			if err != nil {
+				return err
+			} else if !matchesGlob {
+				matchesGlob, err = path.Match(incBackupSubdirGlobWithSuffix+backupbase.DeprecatedBackupManifestName, p)
+				if err != nil {
+					return err
+				}
 			}
-			prev = append(prev, p)
+
+			if matchesGlob {
+				if !includeManifest {
+					p = strings.TrimSuffix(p, "/"+backupbase.DeprecatedBackupManifestName)
+				}
+				prev = append(prev, p)
+				return nil
+			}
 			return nil
-		}
-		if ok, err := path.Match(incBackupSubdirGlob+backupbase.BackupOldManifestName, p); err != nil {
-			return err
-		} else if ok {
-			if !includeManifest {
-				p = strings.TrimSuffix(p, "/"+backupbase.BackupOldManifestName)
-			}
-			prev = append(prev, p)
-		}
-		return nil
-	}); err != nil {
+		},
+	); err != nil {
 		return nil, errors.Wrap(err, "reading previous backup layers")
 	}
 	sort.Strings(prev)
 	return prev, nil
-}
-
-// backupsFromLocation is a small helper function to retrieve all prior
-// backups from the specified location.
-func backupsFromLocation(
-	ctx context.Context, user username.SQLUsername, execCfg *sql.ExecutorConfig, loc string,
-) ([]string, error) {
-	ctx, sp := tracing.ChildSpan(ctx, "backupdest.backupsFromLocation")
-	defer sp.Finish()
-
-	mkStore := execCfg.DistSQLSrv.ExternalStorageFromURI
-	store, err := mkStore(ctx, loc, user)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to open backup storage location")
-	}
-	defer store.Close()
-	prev, err := FindPriorBackups(ctx, store, false)
-	return prev, err
 }
 
 // MakeBackupDestinationStores makes ExternalStorage handles to the passed in
@@ -130,97 +167,77 @@ func MakeBackupDestinationStores(
 	mkStore cloud.ExternalStorageFromURIFactory,
 	destinationDirs []string,
 ) ([]cloud.ExternalStorage, func() error, error) {
-	incStores := make([]cloud.ExternalStorage, len(destinationDirs))
-	for i := range destinationDirs {
-		store, err := mkStore(ctx, destinationDirs[i], user)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "failed to open backup storage location")
-		}
-		incStores[i] = store
-	}
-
-	return incStores, func() error {
-		// Close all the incremental stores in the returned cleanup function.
-		for _, store := range incStores {
+	stores := make([]cloud.ExternalStorage, 0, len(destinationDirs))
+	cleanup := func() error {
+		var combinedErr error
+		for _, store := range stores {
 			if err := store.Close(); err != nil {
-				return err
+				combinedErr = errors.CombineErrors(combinedErr, err)
 			}
 		}
-		return nil
-	}, nil
+		return combinedErr
+	}
+
+	for _, dir := range destinationDirs {
+		store, err := mkStore(ctx, dir, user)
+		if err != nil {
+			err := errors.Wrapf(err, "failed to open backup storage location")
+			return nil, nil, errors.CombineErrors(err, cleanup())
+		}
+		stores = append(stores, store)
+	}
+
+	return stores, cleanup, nil
 }
 
 // ResolveIncrementalsBackupLocation returns the resolved locations of
-// incremental backups by looking into either the explicitly provided
-// incremental backup collections, or the full backup collections if no explicit
-// incremental collections are provided.
+// incremental backups within the default incremental directory.
 func ResolveIncrementalsBackupLocation(
-	ctx context.Context,
-	user username.SQLUsername,
-	execCfg *sql.ExecutorConfig,
-	explicitIncrementalCollections []string,
-	fullBackupCollections []string,
-	subdir string,
+	fullBackupCollections []string, subdir string,
 ) ([]string, error) {
-	ctx, sp := tracing.ChildSpan(ctx, "backupdest.ResolveIncrementalsBackupLocation")
-	defer sp.Finish()
-
-	if len(explicitIncrementalCollections) > 0 {
-		incPaths, err := backuputils.AppendPaths(explicitIncrementalCollections, subdir)
-		if err != nil {
-			return nil, err
-		}
-
-		// Check we can read from this location, though we don't need the backups here.
-		// If we can't read, we want to throw the appropriate error so the caller
-		// knows this isn't a usable incrementals store.
-		// Some callers will abort, e.g. BACKUP. Others will proceed with a
-		// warning, e.g. SHOW and RESTORE.
-		_, err = backupsFromLocation(ctx, user, execCfg, incPaths[0])
-		if err != nil {
-			return nil, err
-		}
-		return incPaths, nil
-	}
-
-	resolvedIncrementalsBackupLocationOld, err := backuputils.AppendPaths(fullBackupCollections, subdir)
-	if err != nil {
-		return nil, err
-	}
-
-	// We can have >1 full backup collection specified, but each will have an
-	// incremental layer iff all of them do. So it suffices to check only the
-	// first.
-	// Check we can read from this location, though we don't need the backups here.
-	prevOld, err := backupsFromLocation(ctx, user, execCfg, resolvedIncrementalsBackupLocationOld[0])
-	if err != nil {
-		return nil, err
-	}
-
 	resolvedIncrementalsBackupLocation, err := backuputils.AppendPaths(fullBackupCollections, backupbase.DefaultIncrementalsSubdir, subdir)
 	if err != nil {
 		return nil, err
 	}
-
-	prev, err := backupsFromLocation(ctx, user, execCfg, resolvedIncrementalsBackupLocation[0])
-	if err != nil {
-		return nil, err
-	}
-
-	// TODO(bardin): This algorithm divides "destination resolution" and "actual backup lookup" for historical reasons,
-	// but this doesn't quite make sense now that destination resolution depends on backup lookup.
-	// Try to figure out a clearer way to organize this.
-	if len(prevOld) > 0 && len(prev) > 0 {
-		return nil, errors.New(
-			"Incremental layers found in both old and new default locations. " +
-				"Please choose a location manually with the `incremental_location` parameter.")
-	}
-
-	// If we have backups in the old default location, continue to use the old location.
-	if len(prevOld) > 0 {
-		return resolvedIncrementalsBackupLocationOld, nil
-	}
-
-	// Otherwise, use the new location.
 	return resolvedIncrementalsBackupLocation, nil
+}
+
+// ResolveDefaultBaseIncrementalStorageLocation returns the default incremental
+// storage location that contains all incremental backups.
+// It is passed an array of locality-aware full backup collections and an
+// optional array of explicit incremental backup locations.
+//
+// e.g. details for:
+//
+// BACKUP INTO (
+//
+//	'nodelocal://1/backup?COCKROACH_LOCALITY=default',
+//	'nodelocal://1/backup2?COCKROACH_LOCALITY=region%3Dus-west'
+//
+// )
+//
+// returns 'nodelocal://1/backup/incrementals'
+func ResolveDefaultBaseIncrementalStorageLocation(
+	fullBackupCollections []string, explicitIncrementalCollections []string,
+) (string, error) {
+	if len(explicitIncrementalCollections) > 0 {
+		defaultURI, _, err := GetURIsByLocalityKV(explicitIncrementalCollections, "")
+		if err != nil {
+			return "", errors.Wrapf(err, "get default incremental backup collection URI")
+		}
+		return defaultURI, nil
+	}
+
+	if len(fullBackupCollections) == 0 {
+		return "", errors.New(
+			"no full backup collections provided to resolve default incremental storage location",
+		)
+	}
+
+	defaultURI, _, err := GetURIsByLocalityKV(fullBackupCollections, backupbase.DefaultIncrementalsSubdir)
+	if err != nil {
+		return "", errors.Wrapf(err, "get default incremental backup collection URI")
+	}
+
+	return defaultURI, nil
 }

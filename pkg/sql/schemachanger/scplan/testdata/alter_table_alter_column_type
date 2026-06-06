@@ -17,9 +17,7 @@ StatementPhase stage 1 of 1 with 1 MutationType op
       ColumnType:
         ColumnID: 2
         ElementCreationMetadata:
-          in231OrLater: true
-          in243OrLater: true
-        IsNullable: true
+          in261OrLater: true
         TableID: 104
         TypeT:
           Type:
@@ -43,9 +41,7 @@ PreCommitPhase stage 2 of 2 with 1 MutationType op
       ColumnType:
         ColumnID: 2
         ElementCreationMetadata:
-          in231OrLater: true
-          in243OrLater: true
-        IsNullable: true
+          in261OrLater: true
         TableID: 104
         TypeT:
           Type:
@@ -97,7 +93,7 @@ PreCommitPhase stage 2 of 2 with 3 MutationType ops
       DescriptorIDs:
       - 104
       JobID: 1
-      RunningStatus: PostCommitPhase stage 1 of 1 with 1 ValidationType op pending
+      RunningStatus: 'Pending: Validating CHECK constraint (1 operation) — PostCommit phase (stage 1 of 1).'
       Statements:
       - statement: ALTER TABLE defaultdb.act ALTER COLUMN c1 SET DATA TYPE INT2
         redactedstatement: ALTER TABLE defaultdb.public.act ALTER COLUMN c1 SET DATA TYPE INT2
@@ -135,9 +131,7 @@ PostCommitNonRevertiblePhase stage 2 of 3 with 4 MutationType ops
       ColumnType:
         ColumnID: 2
         ElementCreationMetadata:
-          in231OrLater: true
-          in243OrLater: true
-        IsNullable: true
+          in261OrLater: true
         TableID: 104
         TypeT:
           Type:
@@ -183,7 +177,7 @@ StatementPhase stage 1 of 1 with 14 MutationType ops
     [[IndexData:{DescID: 104, IndexID: 4}, PUBLIC], ABSENT] -> PUBLIC
     [[Column:{DescID: 104, ColumnID: 3}, PUBLIC], ABSENT] -> DELETE_ONLY
     [[ColumnType:{DescID: 104, ColumnFamilyID: 0, ColumnID: 3, TypeName: STRING}, PUBLIC], ABSENT] -> PUBLIC
-    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
+    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, ReferencedColumnIDs: [2], Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 2}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 3}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 4}, PUBLIC], ABSENT] -> PUBLIC
@@ -198,9 +192,7 @@ StatementPhase stage 1 of 1 with 14 MutationType ops
         ColumnFamilyOrderFollowsColumnID: 2
         ColumnID: 3
         ElementCreationMetadata:
-          in231OrLater: true
-          in243OrLater: true
-        IsNullable: true
+          in261OrLater: true
         TableID: 104
         TypeT:
           Type:
@@ -292,7 +284,7 @@ PreCommitPhase stage 1 of 2 with 1 MutationType op
     [[IndexData:{DescID: 104, IndexID: 4}, PUBLIC], PUBLIC] -> ABSENT
     [[Column:{DescID: 104, ColumnID: 3}, PUBLIC], DELETE_ONLY] -> ABSENT
     [[ColumnType:{DescID: 104, ColumnFamilyID: 0, ColumnID: 3, TypeName: STRING}, PUBLIC], PUBLIC] -> ABSENT
-    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], PUBLIC] -> ABSENT
+    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, ReferencedColumnIDs: [2], Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], PUBLIC] -> ABSENT
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 2}, TRANSIENT_ABSENT], PUBLIC] -> ABSENT
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 3}, TRANSIENT_ABSENT], PUBLIC] -> ABSENT
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 4}, PUBLIC], PUBLIC] -> ABSENT
@@ -313,7 +305,7 @@ PreCommitPhase stage 2 of 2 with 19 MutationType ops
     [[IndexData:{DescID: 104, IndexID: 4}, PUBLIC], ABSENT] -> PUBLIC
     [[Column:{DescID: 104, ColumnID: 3}, PUBLIC], ABSENT] -> DELETE_ONLY
     [[ColumnType:{DescID: 104, ColumnFamilyID: 0, ColumnID: 3, TypeName: STRING}, PUBLIC], ABSENT] -> PUBLIC
-    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
+    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, ReferencedColumnIDs: [2], Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 2}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 3}, TRANSIENT_ABSENT], ABSENT] -> PUBLIC
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 4}, PUBLIC], ABSENT] -> PUBLIC
@@ -328,9 +320,7 @@ PreCommitPhase stage 2 of 2 with 19 MutationType ops
         ColumnFamilyOrderFollowsColumnID: 2
         ColumnID: 3
         ElementCreationMetadata:
-          in231OrLater: true
-          in243OrLater: true
-        IsNullable: true
+          in261OrLater: true
         TableID: 104
         TypeT:
           Type:
@@ -427,7 +417,7 @@ PreCommitPhase stage 2 of 2 with 19 MutationType ops
       DescriptorIDs:
       - 104
       JobID: 1
-      RunningStatus: PostCommitPhase stage 1 of 15 with 2 MutationType ops pending
+      RunningStatus: 'Pending: Updating schema metadata (2 operations) — PostCommit phase (stage 1 of 15).'
       Statements:
       - statement: ALTER TABLE defaultdb.act ALTER COLUMN c1 SET DATA TYPE STRING
         redactedstatement: ALTER TABLE defaultdb.public.act ALTER COLUMN c1 SET DATA TYPE STRING
@@ -634,7 +624,7 @@ PostCommitNonRevertiblePhase stage 1 of 4 with 10 MutationType ops
     [[IndexColumn:{DescID: 104, ColumnID: 1, IndexID: 3}, TRANSIENT_ABSENT], PUBLIC] -> TRANSIENT_ABSENT
     [[TemporaryIndex:{DescID: 104, IndexID: 5, ConstraintID: 5, SourceIndexID: 2}, TRANSIENT_ABSENT], TRANSIENT_DELETE_ONLY] -> TRANSIENT_ABSENT
     [[IndexColumn:{DescID: 104, ColumnID: 1, IndexID: 5}, TRANSIENT_ABSENT], PUBLIC] -> TRANSIENT_ABSENT
-    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], PUBLIC] -> TRANSIENT_ABSENT
+    [[ColumnComputeExpression:{DescID: 104, ColumnID: 3, ReferencedColumnIDs: [2], Usage: ALTER_TYPE_USING}, TRANSIENT_ABSENT], PUBLIC] -> TRANSIENT_ABSENT
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 3}, TRANSIENT_ABSENT], PUBLIC] -> TRANSIENT_ABSENT
     [[IndexColumn:{DescID: 104, ColumnID: 3, IndexID: 5}, TRANSIENT_ABSENT], PUBLIC] -> TRANSIENT_ABSENT
   ops:

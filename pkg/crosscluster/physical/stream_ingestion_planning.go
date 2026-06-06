@@ -7,8 +7,8 @@ package physical
 
 import (
 	"context"
+	"math"
 
-	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
 	"github.com/cockroachdb/cockroach/pkg/crosscluster/streamclient"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/repstream/streampb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/server/telemetry"
+	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/colinfo"
 	"github.com/cockroachdb/cockroach/pkg/sql/exprutil"
@@ -25,6 +26,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/privilege"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
 	"github.com/cockroachdb/cockroach/pkg/sql/syntheticprivilege"
+	"github.com/cockroachdb/cockroach/pkg/sql/zoneconfig"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/errors"
@@ -33,6 +35,16 @@ import (
 // defaultRetentionTTLSeconds is the default value for how long
 // replicated data will be retained.
 const defaultRetentionTTLSeconds = int32(4 * 60 * 60)
+
+var readerTenantSystemTableIDOffset = settings.RegisterIntSetting(
+	settings.ApplicationLevel,
+	"physical_cluster_replication.reader_system_table_id_offset",
+	"the offset added to dynamically allocated system table IDs in the reader tenant",
+	1_000_000_000,
+	// Max offset is 1000 less than MaxUint32 to leave room 1000 dynamically
+	// allocated system table ids. Hope that never happens.
+	settings.NonNegativeIntWithMaximum(math.MaxUint32-1000),
+)
 
 func streamIngestionJobDescription(
 	p sql.PlanHookState,
@@ -120,13 +132,6 @@ func ingestionPlanHook(
 		ctx, span := tracing.ChildSpan(ctx, stmt.StatementTag())
 		defer span.Finish()
 
-		if err := utilccl.CheckEnterpriseEnabled(
-			p.ExecCfg().Settings,
-			"CREATE VIRTUAL CLUSTER FROM REPLICATION",
-		); err != nil {
-			return err
-		}
-
 		if err := sql.CanManageTenant(ctx, p); err != nil {
 			return err
 		}
@@ -161,7 +166,7 @@ func ingestionPlanHook(
 		tenantInfo.DataState = mtinfopb.DataStateAdd
 		tenantInfo.Name = roachpb.TenantName(dstTenantName)
 
-		initialTenantZoneConfig, err := sql.GetHydratedZoneConfigForTenantsRange(ctx, p.Txn(), p.ExtendedEvalContext().Descs)
+		initialTenantZoneConfig, err := zoneconfig.GetHydratedForTenantsRange(ctx, p.Txn(), p.ExtendedEvalContext().Descs)
 		if err != nil {
 			return err
 		}
@@ -181,7 +186,7 @@ func ingestionPlanHook(
 			return nil
 		}
 
-		readerID, err := createReaderTenant(ctx, p, tenantInfo.Name, destinationTenantID, options)
+		readerID, err := createReaderTenant(ctx, p, tenantInfo.Name, destinationTenantID, options, false)
 		if err != nil {
 			return err
 		}
@@ -300,15 +305,21 @@ func createReaderTenant(
 	tenantName roachpb.TenantName,
 	destinationTenantID roachpb.TenantID,
 	options *resolvedTenantReplicationOptions,
+	ready bool,
 ) (roachpb.TenantID, error) {
 	var readerID roachpb.TenantID
 	if options.ReaderTenantEnabled() {
 		var readerInfo mtinfopb.TenantInfoWithUsage
-		readerInfo.DataState = mtinfopb.DataStateAdd
+		if ready {
+			readerInfo.DataState = mtinfopb.DataStateReady
+			readerInfo.ServiceMode = mtinfopb.ServiceModeShared
+		} else {
+			readerInfo.DataState = mtinfopb.DataStateAdd
+		}
 		readerInfo.Name = tenantName + "-readonly"
 		readerInfo.ReadFromTenant = &destinationTenantID
 
-		readerZcfg, err := sql.GetHydratedZoneConfigForTenantsRange(ctx, p.Txn(), p.ExtendedEvalContext().Descs)
+		readerZcfg, err := zoneconfig.GetHydratedForTenantsRange(ctx, p.Txn(), p.ExtendedEvalContext().Descs)
 		if err != nil {
 			return readerID, err
 		}
@@ -325,10 +336,12 @@ func createReaderTenant(
 		}
 
 		readerInfo.ID = readerID.ToUint64()
-		_, err = sql.BootstrapTenant(ctx, p.ExecCfg(), p.Txn(), readerInfo, readerZcfg)
+		systemTableIDOffset := readerTenantSystemTableIDOffset.Get(&p.ExecCfg().Settings.SV)
+		_, err = sql.BootstrapTenant(ctx, p.ExecCfg(), p.Txn(), readerInfo, readerZcfg, uint32(systemTableIDOffset))
 		if err != nil {
 			return readerID, err
 		}
+		telemetry.Count("physical_replication.reader_tenant.created")
 	}
 	return readerID, nil
 }

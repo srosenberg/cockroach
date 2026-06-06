@@ -10,10 +10,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/batcheval/result"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/concurrency"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/lockspanset"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/spanset"
 	"github.com/cockroachdb/cockroach/pkg/storage"
@@ -160,7 +160,7 @@ func Subsume(
 	valRes, err := storage.MVCCGetAsTxn(ctx, readWriter, descKey, intentRes.Intent.Txn.WriteTimestamp, intentRes.Intent.Txn)
 	if err != nil {
 		return result.Result{}, errors.Wrap(err, "fetching local range descriptor as txn")
-	} else if valRes.Value != nil {
+	} else if valRes.Value.IsPresent() {
 		return result.Result{}, errors.Errorf("non-deletion intent on local range descriptor")
 	}
 
@@ -184,20 +184,33 @@ func Subsume(
 	// will be cleared later when OnRangeMerge is called the replica in
 	// (*Store).MergeRange.
 	stats := cArgs.EvalCtx.GetMVCCStats()
+	var locksWritten int
 	if args.PreserveUnreplicatedLocks {
-		acquisitions := cArgs.EvalCtx.GetConcurrencyManager().OnRangeSubsumeEval()
-		log.VEventf(ctx, 2, "upgrading durability of %d locks", len(acquisitions))
-		statsDelta := enginepb.MVCCStats{}
-		for _, acq := range acquisitions {
-			if err := storage.MVCCAcquireLock(ctx, readWriter,
-				&acq.Txn, acq.IgnoredSeqNums, acq.Strength, acq.Key, &statsDelta, 0, 0); err != nil {
-				return result.Result{}, err
+		durabilityUpgradeLimit := concurrency.GetMaxLockFlushSize(&cArgs.EvalCtx.ClusterSettings().SV)
+		acquisitions, approxSize := cArgs.EvalCtx.GetConcurrencyManager().OnRangeSubsumeEval()
+		if approxSize > durabilityUpgradeLimit {
+			log.KvExec.Warningf(ctx,
+				"refusing to upgrade lock durability of %d locks since approximate lock size of %d byte exceeds %d bytes",
+				len(acquisitions),
+				approxSize,
+				durabilityUpgradeLimit)
+		} else {
+			if len(acquisitions) > 0 {
+				log.KvExec.Infof(ctx, "upgrading durability of %d lock during subsume", len(acquisitions))
 			}
+			statsDelta := enginepb.MVCCStats{}
+			for _, acq := range acquisitions {
+				if err := storage.MVCCAcquireLock(ctx, readWriter,
+					&acq.Txn, acq.IgnoredSeqNums, acq.Strength, acq.Key, &statsDelta, 0, 0, true /* allowSequenceNumberRegression */); err != nil {
+					return result.Result{}, err
+				}
+			}
+			// Apply the stats delta to both the stats snapshot we are sending in the
+			// response and to the stats update we expect as part of this proposal.
+			stats.Add(statsDelta)
+			cArgs.Stats.Add(statsDelta)
+			locksWritten = len(acquisitions)
 		}
-		// Apply the stats delta to both the stats snapshot we are sending in the
-		// response and to the stats update we expect as part of this proposal.
-		stats.Add(statsDelta)
-		cArgs.Stats.Add(statsDelta)
 	}
 
 	// Now that the range is frozen, collect some information to ship to the LHS
@@ -218,7 +231,8 @@ func Subsume(
 	// rather than introducing additional synchronization complexity.
 	ridPrefix := keys.MakeRangeIDReplicatedPrefix(desc.RangeID)
 	reply.RangeIDLocalMVCCStats, err = storage.ComputeStats(
-		ctx, readWriter, ridPrefix, ridPrefix.PrefixEnd(), 0 /* nowNanos */)
+		ctx, readWriter, fs.BatchEvalReadCategory,
+		ridPrefix, ridPrefix.PrefixEnd(), 0 /* nowNanos */)
 	if err != nil {
 		return result.Result{}, err
 	}
@@ -235,9 +249,12 @@ func Subsume(
 	// Set DoTimelyApplicationToAllReplicas so that merges are applied on all
 	// replicas. This is needed since Replica.AdminMerge calls
 	// waitForApplication when sending a kvpb.SubsumeRequest.
-	if cArgs.EvalCtx.ClusterSettings().Version.IsActive(ctx, clusterversion.V25_1_AddRangeForceFlushKey) {
-		pd.Replicated.DoTimelyApplicationToAllReplicas = true
-	}
+	pd.Replicated.DoTimelyApplicationToAllReplicas = true
 	pd.Local.RepopulateSubsumeResponseLAI = args.PreserveUnreplicatedLocks
+	if locksWritten > 0 {
+		pd.Local.Metrics = &result.Metrics{
+			SubsumeLocksWritten: locksWritten,
+		}
+	}
 	return pd, nil
 }

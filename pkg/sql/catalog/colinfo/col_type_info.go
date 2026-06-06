@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/docs"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
@@ -97,6 +98,10 @@ func ValidateColumnDefType(ctx context.Context, st *cluster.Settings, t *types.T
 			return unimplemented.NewWithIssueDetailf(23468, t.String(),
 				"arrays of JSON unsupported as column type")
 		}
+		if t.ArrayContents().Family() == types.JsonpathFamily {
+			return unimplemented.NewWithIssueDetailf(144910, t.String(),
+				"arrays of jsonpath unsupported as column type")
+		}
 		if err := types.CheckArrayElementType(t.ArrayContents()); err != nil {
 			return err
 		}
@@ -109,12 +114,29 @@ func ValidateColumnDefType(ctx context.Context, st *cluster.Settings, t *types.T
 		types.TSQueryFamily, types.TSVectorFamily, types.PGLSNFamily, types.PGVectorFamily, types.RefCursorFamily:
 	// These types are OK.
 
+	case types.JsonpathFamily:
+		return unimplemented.NewWithIssueDetailf(144910, t.String(),
+			"jsonpath unsupported as column type")
+
+	case types.LTreeFamily:
+		if !st.Version.IsActive(ctx, clusterversion.V25_4) {
+			return pgerror.Newf(
+				pgcode.FeatureNotSupported,
+				"ltree not supported until version 25.4",
+			)
+		}
+
 	case types.TupleFamily:
 		if !t.UserDefined() {
 			return pgerror.New(pgcode.InvalidTableDefinition, "cannot use anonymous record type as table column")
 		}
 		if t.TypeMeta.ImplicitRecordType {
 			return unimplemented.NewWithIssue(70099, "cannot use table record type as table column")
+		}
+		for _, typ := range t.TupleContents() {
+			if err := ValidateColumnDefType(ctx, st, typ); err != nil {
+				return err
+			}
 		}
 
 	default:
@@ -210,6 +232,8 @@ func MustBeValueEncoded(semanticType *types.T) bool {
 		return true
 	case types.PGVectorFamily:
 		return true
+		// NB: if you're adding a new type here, you probably also want to
+		// include it into rowenc.mustUseValueEncodingForFingerprinting.
 	}
 	return false
 }

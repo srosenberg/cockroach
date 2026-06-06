@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
+	rperrors "github.com/cockroachdb/cockroach/pkg/roachprod/errors"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 )
@@ -48,7 +49,7 @@ a pull request for tc-nightly-main branch and after merging build a new
 artifact using:
 
 # install build dependencies and build tools
-sudo apt-get -qqy install openjdk-8-jre openjdk-8-jre-headless libjna-java gnuplot
+sudo apt-get -qqy install openjdk-17-jre openjdk-17-jre-headless libjna-java gnuplot
 curl -o lein https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein
 chmod +x lein
 
@@ -74,10 +75,10 @@ to running roachtest and update repository URLs in the file to your liking.
 const envBuildJepsen = "ROACHTEST_BUILD_JEPSEN"
 
 const jepsenRepo = "https://github.com/cockroachdb/jepsen"
-const repoBranch = "tc-nightly"
+const repoBranch = "tc-nightly-main"
 
 const gcpPath = "https://storage.googleapis.com/cockroach-jepsen"
-const binaryVersion = "0.1.0-cdeef40-standalone"
+const binaryVersion = "0.1.0-bd82e2e-standalone"
 
 var jepsenNemeses = []struct {
 	name, config string
@@ -107,6 +108,11 @@ func initJepsen(ctx context.Context, t test.Test, c cluster.Cluster, j jepsenCon
 		return
 	}
 
+	// Jepsen requires DNS resolution to work, so we need to set up /etc/hosts.
+	if err := c.PopulateEtcHosts(ctx, t.L()); err != nil {
+		t.Fatal(err)
+	}
+
 	controller := c.Node(c.Spec().NodeCount)
 	workers := c.Range(1, c.Spec().NodeCount-1)
 
@@ -114,7 +120,7 @@ func initJepsen(ctx context.Context, t test.Test, c cluster.Cluster, j jepsenCon
 	// so do it before the initialization check for ease of iteration.
 	if err := c.GitClone(
 		ctx, t.L(),
-		"https://github.com/cockroachdb/jepsen", "/mnt/data1/jepsen", "tc-nightly", controller,
+		jepsenRepo, "/mnt/data1/jepsen", repoBranch, controller,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -158,10 +164,11 @@ func initJepsen(ctx context.Context, t test.Test, c cluster.Cluster, j jepsenCon
 	// (which is not how our official builds are laid out).
 	c.Run(ctx, option.WithNodes(c.All()), "tar --transform s,^,cockroach/, -c -z -f cockroach.tgz cockroach")
 
+	deps := `"sudo DEBIAN_FRONTEND=noninteractive apt-get -qqy install openjdk-17-jre openjdk-17-jre-headless libjna-java gnuplot > /dev/null 2>&1"`
+
 	// Install Jepsen's prereqs on the controller.
 	if result, err := c.RunWithDetailsSingleNode(
-		ctx, t.L(), option.WithNodes(controller), "sh", "-c",
-		`"sudo DEBIAN_FRONTEND=noninteractive apt-get -qqy install openjdk-8-jre openjdk-8-jre-headless libjna-java gnuplot > /dev/null 2>&1"`,
+		ctx, t.L(), option.WithNodes(controller), "sh", "-c", deps,
 	); err != nil {
 		if result.RemoteExitStatus == 100 {
 			t.Skip("apt-get failure (#31944)", result.Stdout+result.Stderr)
@@ -206,7 +213,7 @@ type jepsenConfig struct {
 }
 
 func makeJepsenConfig() jepsenConfig {
-	if e := os.Getenv(envBuildJepsen); e != "" {
+	if os.Getenv(envBuildJepsen) != "" {
 		return jepsenConfig{
 			buildFromSource: true,
 			repoURL:         jepsenRepo,
@@ -262,6 +269,8 @@ func (j jepsenConfig) startTest(
 	ctx context.Context, t test.Test, run func(args ...string) error, testArgs string,
 ) <-chan error {
 	errCh := make(chan error, 1)
+	var script string
+
 	if j.buildFromSource {
 		// Install the jepsen package (into ~/.m2) before running tests in
 		// the cockroach package. Clojure doesn't really understand
@@ -283,20 +292,28 @@ func (j jepsenConfig) startTest(
 			}
 			t.Fatalf("error installing Jepsen deps: %+v", err)
 		}
-		t.Go(func(context.Context, *logger.Logger) error {
-			errCh <- run("bash", "-e", "-c", fmt.Sprintf(
-				`"cd /mnt/data1/jepsen/cockroachdb && set -eo pipefail && ~/lein run %s > invoke.log 2>&1"`,
-				testArgs))
-			return nil
-		})
+		// N.B. jepsen exits with `255` if it encounters an unhandled exception.
+		// (See https://github.com/cockroachdb/cockroach/issues/99681)
+		// 255 is designated as SSH, hence we remap it to 254 below. (See errors.ClassifyCmdError)
+		script = fmt.Sprintf(`"
+cd /mnt/data1/jepsen/cockroachdb &&
+set -eo pipefail &&
+rc=0; ~/lein run %s > invoke.log 2>&1 || rc=\$?;
+exit \$(( rc == 255 ? 254 : rc ))"`, testArgs)
 	} else {
-		t.Go(func(context.Context, *logger.Logger) error {
-			errCh <- run("bash", "-e", "-c", fmt.Sprintf(
-				`"cd /mnt/data1/jepsen/cockroachdb && set -eo pipefail && java -jar %s %s > invoke.log 2>&1"`,
-				j.binaryName(), testArgs))
-			return nil
-		})
+		// N.B. jepsen exits with `255` if it encounters an unhandled exception.
+		// (See https://github.com/cockroachdb/cockroach/issues/99681)
+		// 255 is designated as SSH, hence we remap it to 254 below. (See errors.ClassifyCmdError)
+		script = fmt.Sprintf(`"
+cd /mnt/data1/jepsen/cockroachdb &&
+set -eo pipefail &&
+rc=0; java -jar %s %s > invoke.log 2>&1 || rc=\$?;
+exit \$(( rc == 255 ? 254 : rc ))"`, j.binaryName(), testArgs)
 	}
+	t.Go(func(context.Context, *logger.Logger) error {
+		errCh <- run("bash", "-e", "-c", script)
+		return nil
+	})
 	return errCh
 }
 
@@ -373,7 +390,12 @@ func runJepsen(ctx context.Context, t test.Test, c cluster.Cluster, testName, ne
 		// extra debugging help.
 		run(c, ctx, controller, "pkill -QUIT java")
 		time.Sleep(10 * time.Second)
-		run(c, ctx, controller, "pkill java")
+		if err := runE(c, ctx, controller, "pkill java"); err != nil {
+			// pkill exits 1 when no matching process is found.
+			// This is expected if the JVM already exited after
+			// the SIGQUIT above.
+			t.L().Printf("pkill java: %s", err)
+		}
 		t.L().Printf("timed out")
 		testErr = fmt.Errorf("timed out")
 	}
@@ -423,6 +445,20 @@ func runJepsen(ctx context.Context, t test.Test, c cluster.Cluster, testName, ne
 		if ignoreErr {
 			t.Skip("recognized known error", testErr.Error())
 		}
+
+		// Check for timeouts where the Jepsen workload completed but analysis took too long.
+		// This typically happens when the history is large (e.g., due to many transaction retries
+		// under chaos nemeses), making linearizability checking slow.
+		// We still capture the logs above, but we want to classify this as a transient failure
+		// and not a test failure, since it's a known flake.
+		if testErr.Error() == "timed out" {
+			if err := runE(c, ctx, controller,
+				`grep -q "Run complete" /mnt/data1/jepsen/cockroachdb/store/latest/jepsen.log`,
+			); err == nil {
+				t.Fatal(rperrors.TransientFailure(testErr, "jepsen workload completed, but analysis timed out"))
+			}
+		}
+
 		t.Fatal(testErr)
 	} else {
 		collectFiles := []string{
@@ -483,7 +519,7 @@ func registerJepsen(r registry.Registry) {
 				// if they detect that the machines have already been properly
 				// initialized.
 				Cluster:          r.MakeClusterSpec(6, spec.ReuseTagged("jepsen")),
-				CompatibleClouds: registry.AllExceptAWS,
+				CompatibleClouds: registry.AllClouds.NoAWS().NoIBM(),
 				Suites:           registry.Suites(registry.Nightly),
 				Leases:           registry.MetamorphicLeases,
 				Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {

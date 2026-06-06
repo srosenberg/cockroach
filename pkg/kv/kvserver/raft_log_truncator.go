@@ -11,15 +11,14 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvserverpb"
-	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/stateloader"
+	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/kvstorage"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/storage"
-	"github.com/cockroachdb/cockroach/pkg/util"
-	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
-	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/crlib/crtime"
 )
 
 // pendingLogTruncations tracks proposed truncations for a replica that have
@@ -92,7 +91,7 @@ func (p *pendingLogTruncations) nextCompactedIndex(compIndex kvpb.RaftIndex) kvp
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.iterateLocked(func(_ int, trunc pendingTruncation) {
-		compIndex = max(compIndex, trunc.compactedIndex())
+		compIndex = max(compIndex, trunc.Index)
 	})
 	return compIndex
 }
@@ -140,6 +139,7 @@ func (p *pendingLogTruncations) capacity() int {
 	return len(p.mu.truncs)
 }
 
+// TODO(pav-kv): refresh this struct comments.
 type pendingTruncation struct {
 	// The pending truncation will truncate entries up to
 	// RaftTruncatedState.Index, inclusive.
@@ -150,12 +150,11 @@ type pendingTruncation struct {
 	// originates in ReplicatedEvalResult, where it is accurate.
 	// There are two reasons isDeltaTrusted could be considered false here:
 	// - The original "accurate" delta does not account for sideloaded files. It
-	//   is adjusted on this replica using
-	//   SideloadStorage.BytesIfTruncatedFromTo, but it is possible that the
-	//   truncated state of this replica is already > expectedFirstIndex. We
-	//   don't actually set isDeltaTrusted=false for this case since we will
-	//   change Replica.raftLogSizeTrusted to false after enacting this
-	//   truncation.
+	//   is adjusted on this replica using SideloadStorage.Stats, but it is
+	//   possible that the truncated state of this replica is already >
+	//   expectedFirstIndex. We don't actually set isDeltaTrusted=false for this
+	//   case since we will change replicaLogStorage.shMu.sizeTrusted to false
+	//   after enacting this truncation.
 	// - We merge pendingTruncation entries in the pendingTruncations struct. We
 	//   are making an effort to have consecutive TruncateLogRequests provide us
 	//   stats for index intervals that are adjacent and non-overlapping, but
@@ -165,11 +164,22 @@ type pendingTruncation struct {
 	// ReplicatedEvalResult.RaftLogDelta, this is <= 0.
 	logDeltaBytes  int64
 	isDeltaTrusted bool
+	// hasSideloaded is true if the truncated interval could contain at least one
+	// sideloaded entry.
+	hasSideloaded bool
 }
 
-func (pt *pendingTruncation) compactedIndex() kvpb.RaftIndex {
-	// Reminder: RaftTruncatedState.Index is inclusive.
-	return pt.Index
+// merge returns the result of merging this pendingTruncation with the one that
+// precedes it.
+func (pt pendingTruncation) merge(prev pendingTruncation) pendingTruncation {
+	res := prev
+	res.RaftTruncatedState = pt.RaftTruncatedState
+	res.logDeltaBytes += pt.logDeltaBytes
+	res.hasSideloaded = prev.hasSideloaded || pt.hasSideloaded
+	if !pt.isDeltaTrusted || prev.Index+1 != pt.expectedFirstIndex {
+		res.isDeltaTrusted = false
+	}
+	return res
 }
 
 // raftLogTruncator is responsible for actually enacting truncations.
@@ -181,6 +191,7 @@ type raftLogTruncator struct {
 	ambientCtx context.Context
 	store      storeForTruncator
 	stopper    *stop.Stopper
+	busyNanos  *metric.Counter // maybe nil in tests
 	mu         struct {
 		syncutil.Mutex
 		// Ranges are queued into addRanges and batch dequeued by swapping with
@@ -195,12 +206,16 @@ type raftLogTruncator struct {
 }
 
 func makeRaftLogTruncator(
-	ambientCtx log.AmbientContext, store storeForTruncator, stopper *stop.Stopper,
+	ambientCtx log.AmbientContext,
+	store storeForTruncator,
+	stopper *stop.Stopper,
+	busyNanos *metric.Counter,
 ) *raftLogTruncator {
 	t := &raftLogTruncator{
 		ambientCtx: ambientCtx.AnnotateCtx(context.Background()),
 		store:      store,
 		stopper:    stopper,
+		busyNanos:  busyNanos,
 	}
 	t.mu.addRanges = make(map[roachpb.RangeID]struct{})
 	t.mu.drainRanges = make(map[roachpb.RangeID]struct{})
@@ -218,7 +233,7 @@ type storeForTruncator interface {
 	// releaseReplicaForTruncator releases the replica.
 	releaseReplicaForTruncator(r replicaForTruncator)
 	// Engine accessor.
-	getEngine() storage.Engine
+	getEngines() kvstorage.Engines
 }
 
 // replicaForTruncator abstracts the interface of Replica needed by the
@@ -240,16 +255,18 @@ type replicaForTruncator interface {
 	getRangeID() roachpb.RangeID
 	// Returns the current truncated state.
 	getTruncatedState() kvserverpb.RaftTruncatedState
-	// Updates the replica state after the truncation is enacted.
-	handleTruncationResult(_ context.Context, _ pendingTruncation)
+	// Updates the replica state before the truncation is enacted.
+	stagePendingTruncation(_ context.Context, _ pendingTruncation)
+	// Updates the replica state after truncations are enacted.
+	finalizeTruncation(_ context.Context)
 	// Returns the pending truncations queue. The caller is allowed to mutate
 	// the return value by additionally acquiring pendingLogTruncations.mu.
 	getPendingTruncs() *pendingLogTruncations
 	// Returns the sideloaded bytes that would be freed if we were to truncate
 	// (from, to].
-	sideloadedBytesIfTruncatedFromTo(
-		_ context.Context, _ kvpb.RaftSpan) (freed int64, _ error)
-	getStateLoader() stateloader.StateLoader
+	sideloadedStats(
+		_ context.Context, _ kvpb.RaftSpan) (entries uint64, size int64, _ error)
+	getStateLoader() kvstorage.StateLoader
 	// NB: Setting the persistent raft state is via the Engine exposed by
 	// storeForTruncator.
 }
@@ -310,25 +327,20 @@ func (t *raftLogTruncator) addPendingTruncation(
 	// In the common case of alreadyTruncIndex+1 == raftExpectedFirstIndex, the
 	// computation returns the same result regardless of which is plugged in as
 	// the lower bound.
-	sideloadedFreed, err := r.sideloadedBytesIfTruncatedFromTo(ctx, kvpb.RaftSpan{
-		After: alreadyTruncIndex, Last: pendingTrunc.compactedIndex(),
-	})
-	if err != nil {
+	if entries, size, err := r.sideloadedStats(ctx, kvpb.RaftSpan{
+		After: alreadyTruncIndex, Last: pendingTrunc.Index,
+	}); err != nil {
 		// Log a loud error since we need to continue enqueuing the truncation.
-		log.Errorf(ctx, "while computing size of sideloaded files to truncate: %+v", err)
+		log.KvExec.Errorf(ctx, "while computing size of sideloaded files to truncate: %+v", err)
 		pendingTrunc.isDeltaTrusted = false
+	} else if entries != 0 {
+		pendingTrunc.logDeltaBytes -= size
+		pendingTrunc.hasSideloaded = true
 	}
-	pendingTrunc.logDeltaBytes -= sideloadedFreed
 	if mergeWithPending {
 		// Merge the existing entry into the new one.
 		// No need to acquire pendingTruncs.mu for read in this case.
-		pendingTrunc.isDeltaTrusted = pendingTrunc.isDeltaTrusted &&
-			pendingTruncs.mu.truncs[pos].isDeltaTrusted
-		if pendingTruncs.mu.truncs[pos].compactedIndex()+1 != pendingTrunc.expectedFirstIndex {
-			pendingTrunc.isDeltaTrusted = false
-		}
-		pendingTrunc.logDeltaBytes += pendingTruncs.mu.truncs[pos].logDeltaBytes
-		pendingTrunc.expectedFirstIndex = pendingTruncs.mu.truncs[pos].expectedFirstIndex
+		pendingTrunc = pendingTrunc.merge(pendingTruncs.mu.truncs[pos])
 	}
 	pendingTruncs.mu.Lock()
 	// Install the new pending truncation.
@@ -383,6 +395,13 @@ func (t *raftLogTruncator) durabilityAdvancedCallback() {
 	}
 	if err := t.stopper.RunAsyncTask(t.ambientCtx, "raft-log-truncation",
 		func(ctx context.Context) {
+			if t.busyNanos != nil {
+				start := crtime.NowMono()
+				defer func() {
+					t.busyNanos.Inc(start.Elapsed().Nanoseconds())
+				}()
+			}
+
 			for {
 				t.durabilityAdvanced(ctx)
 				shouldReturn := false
@@ -436,7 +455,8 @@ func (t *raftLogTruncator) durabilityAdvanced(ctx context.Context) {
 	// Sort it for deterministic testing output.
 	sort.Sort(rangesByRangeID(ranges))
 	// Create an engine Reader to provide a safe lower bound on what is durable.
-	reader := t.store.getEngine().NewReader(storage.GuaranteedDurability)
+	eng := t.store.getEngines()
+	reader := eng.StateEngine().NewReader(storage.GuaranteedDurability)
 	defer reader.Close()
 	shouldQuiesce := t.stopper.ShouldQuiesce()
 	quiesced := false
@@ -518,7 +538,7 @@ func (t *raftLogTruncator) tryEnactTruncations(
 	stateLoader := r.getStateLoader()
 	as, err := stateLoader.LoadRangeAppliedState(ctx, reader)
 	if err != nil {
-		log.Errorf(ctx, "error loading RangeAppliedState, dropping all pending log truncations: %s",
+		log.KvExec.Errorf(ctx, "error loading RangeAppliedState, dropping all pending log truncations: %s",
 			err)
 		pendingTruncs.reset()
 		return
@@ -540,42 +560,36 @@ func (t *raftLogTruncator) tryEnactTruncations(
 	}
 	// Do the truncation of persistent raft entries, specified by enactIndex
 	// (this subsumes all the preceding queued truncations).
-	batch := t.store.getEngine().NewUnindexedBatch()
+	eng := t.store.getEngines()
+	batch := eng.LogEngine().NewWriteBatch()
 	defer batch.Close()
-	apply, err := handleTruncatedStateBelowRaftPreApply(ctx, truncState,
-		&pendingTruncs.mu.truncs[enactIndex].RaftTruncatedState,
-		stateLoader.StateLoader, batch)
-	if err != nil || !apply {
-		if err != nil {
-			log.Errorf(ctx, "while attempting to truncate raft log: %+v", err)
-		} else {
-			err := errors.AssertionFailedf(
-				"unexpected !apply from handleTruncatedStateBelowRaftPreApply")
-			if buildutil.CrdbTestBuild || util.RaceEnabled {
-				log.Fatalf(ctx, "%s", err)
-			} else {
-				log.Errorf(ctx, "%s", err)
-			}
-		}
+	if err := handleTruncatedStateBelowRaftPreApply(ctx, truncState,
+		pendingTruncs.mu.truncs[enactIndex].RaftTruncatedState,
+		stateLoader.StateLoader, batch, eng.Separated(),
+	); err != nil {
+		log.KvExec.Errorf(ctx, "while attempting to truncate raft log: %+v", err)
 		pendingTruncs.reset()
 		return
 	}
-	// sync=false since we don't need a guarantee that the truncation is
-	// durable. Loss of a truncation means we have more of the suffix of the
-	// raft log, which does not affect correctness.
-	if err := batch.Commit(false /* sync */); err != nil {
-		log.Errorf(ctx, "while committing batch to truncate raft log: %+v", err)
-		pendingTruncs.reset()
-		return
-	}
-	// Truncation done. Need to update the Replica state. This requires iterating
-	// over all the enacted entries.
+	// Need to update the Replica state first. This requires iterating over all
+	// the enacted truncations.
 	pendingTruncs.iterateLocked(func(index int, trunc pendingTruncation) {
-		if index > enactIndex {
-			return
+		if index <= enactIndex {
+			r.stagePendingTruncation(ctx, trunc)
 		}
-		r.handleTruncationResult(ctx, trunc)
 	})
+	// Most of the time, sync=false since we don't need a guarantee that the
+	// truncation is durable. Loss of a truncation means we have more of the
+	// suffix of the raft log, which does not affect correctness.
+	//
+	// If the truncated log interval contains sideloaded entries, we need to sync
+	// so that the subsequent removals from the sideloaded storage are safe.
+	sync := pendingTruncs.mu.truncs[enactIndex].hasSideloaded
+	if err := batch.Commit(sync); err != nil {
+		log.KvExec.Fatalf(ctx, "while committing batch to truncate raft log: %+v", err)
+		return
+	}
+	r.finalizeTruncation(ctx)
 	// Now remove the enacted truncations. It is the same iteration as the
 	// previous one, but we do it while holding pendingTruncs.mu. Note that
 	// since we have updated the raft log size but not yet removed the pending

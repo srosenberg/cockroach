@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/tree"
@@ -26,34 +25,55 @@ import (
 	"github.com/cockroachdb/errors"
 )
 
-// UpdateFn is the callback passed to Job.Update. It is called from the context
+// DeprecatedUpdateFn is the callback passed to Job.Update. It is called from the context
 // of a transaction and is passed the current metadata for the job. The callback
 // can modify metadata using the JobUpdater and the changes will be persisted
 // within the same transaction.
 //
 // The function is free to modify contents of JobMetadata in place (but the
 // changes will be ignored unless JobUpdater is used).
-type UpdateFn func(txn isql.Txn, md JobMetadata, ju *JobUpdater) error
+//
+// Deprecated: See comment on DeprecatedUpdater for more information.
+type DeprecatedUpdateFn func(txn isql.Txn, md DeprecatedJobMetadata, ju *DeprecatedJobUpdater) error
 
-type Updater struct {
+// DeprecatedUpdater implements methods for updating job metadata.
+//
+// Deprecated: The job updater api is deprecated in favor of the api in job_info_storage.go.
+// This api has been a source of bugs and edge cases in the jobs system, and is, in general,
+// overly complex for the problem it solves. The api in job_info_storage.go provides a more simple
+// and direct interface. Specifically, ProgressStorage.Set can be used for reporting human readable
+// progress, and InfoStorage can be used to fetch and store machine readable resumption state.
+// Additionally, for those migrating to the new api, jobs.LoadLegacyPayload, jobs.LoadLegacyProgress
+// and jobs.StoreLegacyProgress can be used for interacting with legacy protobuf schemes from the
+// new api.
+type DeprecatedUpdater struct {
 	j            *Job
 	txn          isql.Txn
 	txnDebugName string
 }
 
-func (j *Job) NoTxn() Updater {
-	return Updater{j: j}
+// DeprecatedNoTxn returns a DeprecatedUpdater with no txn set.
+//
+// Deprecated: See comment on DeprecatedUpdater for more information.
+func (j *Job) DeprecatedNoTxn() DeprecatedUpdater {
+	return DeprecatedUpdater{j: j}
 }
 
-func (j *Job) DebugNameNoTxn(txnDebugName string) Updater {
-	return Updater{j: j, txnDebugName: txnDebugName}
+// DeprecatedDebugNameNoTxn returns a DeprecatedUpdater with txnDebugName set to the passed string.
+//
+// Deprecated: See comment on DeprecatedUpdater for more information.
+func (j *Job) DeprecatedDebugNameNoTxn(txnDebugName string) DeprecatedUpdater {
+	return DeprecatedUpdater{j: j, txnDebugName: txnDebugName}
 }
 
-func (j *Job) WithTxn(txn isql.Txn) Updater {
-	return Updater{j: j, txn: txn}
+// DeprecatedWithTxn returns a DeprecatedUpdater with txn set to the passed isql.Txn.
+//
+// Deprecated: See comment on DeprecatedUpdater for more information.
+func (j *Job) DeprecatedWithTxn(txn isql.Txn) DeprecatedUpdater {
+	return DeprecatedUpdater{j: j, txn: txn}
 }
 
-func (u Updater) update(ctx context.Context, updateFn UpdateFn) (retErr error) {
+func (u DeprecatedUpdater) update(ctx context.Context, updateFn DeprecatedUpdateFn) (retErr error) {
 	if u.txn == nil {
 		return u.j.registry.db.Txn(ctx, func(
 			ctx context.Context, txn isql.Txn,
@@ -147,7 +167,7 @@ WHERE id = $1
 				state, j.session.ID(), sqlliveness.SessionID(storedSession))
 		}
 	} else {
-		log.VInfof(ctx, 1, "job %d: update called with no session ID", j.ID())
+		log.Dev.VInfof(ctx, 1, "job %d: update called with no session ID", j.ID())
 	}
 
 	lastRun, ok := row[4].(*tree.DTimestamp)
@@ -159,14 +179,14 @@ WHERE id = $1
 		return errors.AssertionFailedf("expected int num_runs, but got %T", numRuns)
 	}
 
-	md := JobMetadata{
+	md := DeprecatedJobMetadata{
 		ID:       j.ID(),
 		State:    state,
 		Payload:  payload,
 		Progress: progress,
 	}
 
-	var ju JobUpdater
+	var ju DeprecatedJobUpdater
 	if err := updateFn(u.txn, md, &ju); err != nil {
 		return err
 	}
@@ -204,28 +224,6 @@ WHERE id = $1
 		return nil
 	}
 
-	// Build a statement of the following form, depending on which properties
-	// need updating:
-	//
-	//   UPDATE system.jobs
-	//   SET
-	//     [status = $2,]
-	//     [payload = $y,]
-	//     [progress = $z]
-	//   WHERE
-	//     id = $1
-
-	var setters []string
-	params := []interface{}{j.ID()} // $1 is always the job ID.
-	addSetter := func(column string, value interface{}) {
-		params = append(params, value)
-		setters = append(setters, fmt.Sprintf("%s = $%d", column, len(params)))
-	}
-
-	if ju.md.State != "" {
-		addSetter("status", ju.md.State)
-	}
-
 	var payloadBytes []byte
 	if ju.md.Payload != nil {
 		payload = ju.md.Payload
@@ -247,26 +245,6 @@ WHERE id = $1
 		}
 	}
 
-	if len(setters) != 0 {
-		updateStmt := fmt.Sprintf(
-			"UPDATE system.jobs SET %s WHERE id = $1",
-			strings.Join(setters, ", "),
-		)
-		n, err := u.txn.ExecEx(
-			ctx, "job-update", u.txn.KV(),
-			sessiondata.NodeUserSessionDataOverride,
-			updateStmt, params...,
-		)
-		if err != nil {
-			return err
-		}
-		if n != 1 {
-			return errors.Errorf(
-				"expected exactly one row affected, but %d rows affected by job update", n,
-			)
-		}
-	}
-
 	// Insert the job payload and progress into the system.jobs_info table.
 	infoStorage := j.InfoStorage(u.txn)
 	infoStorage.claimChecked = true
@@ -281,104 +259,121 @@ WHERE id = $1
 		}
 	}
 
-	v, err := u.txn.GetSystemSchemaVersion(ctx)
-	if err != nil {
-		return err
-	}
-	if v.AtLeast(clusterversion.V25_1_AddJobsTables.Version()) {
-		if ju.md.State != "" && ju.md.State != state {
-			if err := j.Messages().Record(ctx, u.txn, "state", string(ju.md.State)); err != nil {
-				return err
-			}
-			// If we are changing state, we should clear out the status, unless
-			// we are about to set it to something instead.
-			if progress == nil || progress.StatusMessage == "" {
-				if err := j.StatusStorage().Clear(ctx, u.txn); err != nil {
-					return err
-				}
-			}
+	if ju.md.State != "" && ju.md.State != state {
+		if err := j.Messages().Record(ctx, u.txn, "state", string(ju.md.State)); err != nil {
+			return err
 		}
-
-		if progress != nil {
-			var ts hlc.Timestamp
-			if hwm := progress.GetHighWater(); hwm != nil {
-				ts = *hwm
-			}
-
-			if err := j.ProgressStorage().Set(ctx, u.txn, float64(progress.GetFractionCompleted()), ts); err != nil {
-				return err
-			}
-
-			if progress.StatusMessage != beforeProgress.StatusMessage {
-				if err := j.StatusStorage().Set(ctx, u.txn, progress.StatusMessage); err != nil {
-					return err
-				}
-			}
-
-			if progress.TraceID != beforeProgress.TraceID {
-				if err := j.Messages().Record(ctx, u.txn, "trace-id", fmt.Sprintf("%d", progress.TraceID)); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if v.AtLeast(clusterversion.V25_1_AddJobsColumns.Version()) {
-
-		vals := []interface{}{j.ID()}
-
-		var update strings.Builder
-
-		if payloadBytes != nil {
-			if beforePayload.Description != payload.Description {
-				if update.Len() > 0 {
-					update.WriteString(", ")
-				}
-				vals = append(vals, payload.Description)
-				fmt.Fprintf(&update, "description = $%d", len(vals))
-			}
-
-			if beforePayload.UsernameProto.Decode() != payload.UsernameProto.Decode() {
-				if update.Len() > 0 {
-					update.WriteString(", ")
-				}
-				vals = append(vals, payload.UsernameProto.Decode().Normalized())
-				fmt.Fprintf(&update, "owner = $%d", len(vals))
-			}
-
-			if beforePayload.Error != payload.Error {
-				if update.Len() > 0 {
-					update.WriteString(", ")
-				}
-				vals = append(vals, payload.Error)
-				fmt.Fprintf(&update, "error_msg = $%d", len(vals))
-			}
-
-			if beforePayload.FinishedMicros != payload.FinishedMicros {
-				if update.Len() > 0 {
-					update.WriteString(", ")
-				}
-				vals = append(vals, time.UnixMicro(payload.FinishedMicros))
-				fmt.Fprintf(&update, "finished = $%d", len(vals))
-			}
-
-		}
-		if len(vals) > 1 {
-			stmt := fmt.Sprintf("UPDATE system.jobs SET %s WHERE id = $1", update.String())
-			if _, err := u.txn.ExecEx(
-				ctx, "job-update-row", u.txn.KV(),
-				sessiondata.NodeUserSessionDataOverride,
-				stmt, vals...,
-			); err != nil {
+		// If we are changing state, we should clear out the status, unless
+		// we are about to set it to something instead or if we are coming from a
+		// pause requested state, in which case we already cleared it out once when
+		// we entered the pause requested state and may have since set it to a pause
+		// reason which we now want to preserve.
+		noNewStatus := progress == nil || progress.StatusMessage == ""
+		if noNewStatus && ju.md.State != StatePauseRequested {
+			if err := j.StatusStorage().Clear(ctx, u.txn); err != nil {
 				return err
 			}
 		}
 	}
 
+	// NB: if ju.md.Progress was non-nil then progress has been set to the value
+	// from the updater. If it isn't set, progress has the value from the original
+	// scan.
+	if ju.md.Progress != nil {
+		var ts hlc.Timestamp
+		if hwm := progress.GetHighWater(); hwm != nil {
+			ts = *hwm
+		} else {
+			_, existing, _, err := j.ProgressStorage().Get(ctx, u.txn)
+			if err != nil {
+				return err
+			}
+			ts = existing
+		}
+
+		if err := j.ProgressStorage().Set(ctx, u.txn, float64(progress.GetFractionCompleted()), ts); err != nil {
+			return err
+		}
+
+		if progress.StatusMessage != beforeProgress.StatusMessage {
+			if err := j.StatusStorage().Set(ctx, u.txn, progress.StatusMessage); err != nil {
+				return err
+			}
+		}
+
+		if progress.TraceID != beforeProgress.TraceID {
+			if err := j.Messages().Record(ctx, u.txn, "trace-id", fmt.Sprintf("%d", progress.TraceID)); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Build a statement of the following form, depending on which properties
+	// need updating:
+	//
+	//   UPDATE system.jobs
+	//   SET
+	//     [status = $2,]
+	//     [owner = $y,]
+	//     [error_msg = $z]
+	//   WHERE
+	//     id = $1
+	var setters []string
+	params := []interface{}{j.ID()} // $1 is always the job ID.
+	addSetter := func(column string, value interface{}) {
+		params = append(params, value)
+		setters = append(setters, fmt.Sprintf("%s = $%d", column, len(params)))
+	}
+
+	if ju.md.State != "" {
+		addSetter("status", ju.md.State)
+	}
+	if payloadBytes != nil {
+		if beforePayload.Description != payload.Description {
+			addSetter("description", payload.Description)
+		}
+
+		beforeUser := beforePayload.UsernameProto.Decode()
+		afterUser := payload.UsernameProto.Decode()
+		if afterUser != beforeUser {
+			addSetter("owner", afterUser.Normalized())
+		}
+
+		if beforePayload.Error != payload.Error {
+			addSetter("error_msg", payload.Error)
+		}
+
+		if beforePayload.FinishedMicros != payload.FinishedMicros {
+			addSetter("finished", time.UnixMicro(payload.FinishedMicros))
+		}
+	}
+
+	if len(setters) != 0 {
+		updateStmt := fmt.Sprintf(
+			"UPDATE system.jobs SET %s WHERE id = $1",
+			strings.Join(setters, ", "),
+		)
+		n, err := u.txn.ExecEx(
+			ctx, "job-update-job", u.txn.KV(),
+			sessiondata.NodeUserSessionDataOverride,
+			updateStmt, params...,
+		)
+		if err != nil {
+			return err
+		}
+		if n != 1 {
+			return errors.Errorf(
+				"expected exactly one row affected, but %d rows affected by job update", n,
+			)
+		}
+	}
 	return nil
 }
 
-// JobMetadata groups the job metadata values passed to UpdateFn.
-type JobMetadata struct {
+// DeprecatedJobMetadata groups the job metadata values passed to UpdateFn.
+//
+// This api is deprecated. See job_info_storage.go for better alternatives.
+type DeprecatedJobMetadata struct {
 	ID       jobspb.JobID
 	State    State
 	Payload  *jobspb.Payload
@@ -387,20 +382,22 @@ type JobMetadata struct {
 
 // CheckRunningOrReverting returns an InvalidStatusError if md.Status is not
 // StatusRunning or StatusReverting.
-func (md *JobMetadata) CheckRunningOrReverting() error {
+func (md *DeprecatedJobMetadata) CheckRunningOrReverting() error {
 	if md.State != StateRunning && md.State != StateReverting {
 		return &InvalidStateError{md.ID, md.State, "update progress on", md.Payload.Error}
 	}
 	return nil
 }
 
-// JobUpdater accumulates changes to job metadata that are to be persisted.
-type JobUpdater struct {
-	md JobMetadata
+// DeprecatedJobUpdater accumulates changes to job metadata that are to be persisted.
+//
+// This api is deprecated. See job_info_storage.go for better alternatives.
+type DeprecatedJobUpdater struct {
+	md DeprecatedJobMetadata
 }
 
 // UpdateState sets a new status (to be persisted).
-func (ju *JobUpdater) UpdateState(state State) {
+func (ju *DeprecatedJobUpdater) UpdateState(state State) {
 	ju.md.State = state
 }
 
@@ -408,27 +405,27 @@ func (ju *JobUpdater) UpdateState(state State) {
 //
 // WARNING: the payload can be large (resulting in a large KV for each version);
 // it shouldn't be updated frequently.
-func (ju *JobUpdater) UpdatePayload(payload *jobspb.Payload) {
+func (ju *DeprecatedJobUpdater) UpdatePayload(payload *jobspb.Payload) {
 	ju.md.Payload = payload
 }
 
 // UpdateProgress sets a new Progress (to be persisted).
-func (ju *JobUpdater) UpdateProgress(progress *jobspb.Progress) {
+func (ju *DeprecatedJobUpdater) UpdateProgress(progress *jobspb.Progress) {
 	ju.md.Progress = progress
 }
 
-func (ju *JobUpdater) hasUpdates() bool {
-	return ju.md != JobMetadata{}
+func (ju *DeprecatedJobUpdater) hasUpdates() bool {
+	return ju.md != DeprecatedJobMetadata{}
 }
 
-func (ju *JobUpdater) PauseRequested(
-	ctx context.Context, txn isql.Txn, md JobMetadata, reason string,
+func (ju *DeprecatedJobUpdater) PauseRequested(
+	ctx context.Context, txn isql.Txn, md DeprecatedJobMetadata, reason string,
 ) error {
 	return ju.PauseRequestedWithFunc(ctx, txn, md, nil /* fn */, reason)
 }
 
-func (ju *JobUpdater) PauseRequestedWithFunc(
-	ctx context.Context, txn isql.Txn, md JobMetadata, fn onPauseRequestFunc, reason string,
+func (ju *DeprecatedJobUpdater) PauseRequestedWithFunc(
+	ctx context.Context, txn isql.Txn, md DeprecatedJobMetadata, fn onPauseRequestFunc, reason string,
 ) error {
 	if md.State == StatePauseRequested || md.State == StatePaused {
 		return nil
@@ -441,16 +438,21 @@ func (ju *JobUpdater) PauseRequestedWithFunc(
 			return err
 		}
 	}
+	if reason != "" {
+		if err := StatusStorage(md.ID).Set(ctx, txn, fmt.Sprintf("pausing: %s", reason)); err != nil {
+			return err
+		}
+	}
 	ju.UpdateState(StatePauseRequested)
 	md.Payload.PauseReason = reason
 	ju.UpdatePayload(md.Payload)
-	log.Infof(ctx, "job %d: pause requested recorded with reason %s", md.ID, reason)
+	log.Dev.Infof(ctx, "job %d: pause requested recorded with reason %s", md.ID, reason)
 	return nil
 }
 
 // Unpaused sets the state of the tracked job to running or reverting iff the
 // job is currently paused. It does not directly resume the job.
-func (ju *JobUpdater) Unpaused(_ context.Context, md JobMetadata) error {
+func (ju *DeprecatedJobUpdater) Unpaused(_ context.Context, md DeprecatedJobMetadata) error {
 	if md.State == StateRunning || md.State == StateReverting {
 		// Already resumed - do nothing.
 		return nil
@@ -468,12 +470,14 @@ func (ju *JobUpdater) Unpaused(_ context.Context, md JobMetadata) error {
 	return nil
 }
 
-func (ju *JobUpdater) CancelRequested(ctx context.Context, md JobMetadata) error {
+func (ju *DeprecatedJobUpdater) CancelRequested(
+	ctx context.Context, md DeprecatedJobMetadata,
+) error {
 	return ju.CancelRequestedWithReason(ctx, md, errJobCanceled)
 }
 
-func (ju *JobUpdater) CancelRequestedWithReason(
-	ctx context.Context, md JobMetadata, reason error,
+func (ju *DeprecatedJobUpdater) CancelRequestedWithReason(
+	ctx context.Context, md DeprecatedJobMetadata, reason error,
 ) error {
 	if md.Payload.Noncancelable {
 		return errors.Newf("job %d: not cancelable", md.ID)
@@ -516,10 +520,10 @@ func (ju *JobUpdater) CancelRequestedWithReason(
 //
 // Note that there are various convenience wrappers (like FractionProgressed)
 // defined in jobs.go.
-func (u Updater) Update(ctx context.Context, updateFn UpdateFn) error {
+func (u DeprecatedUpdater) Update(ctx context.Context, updateFn DeprecatedUpdateFn) error {
 	return u.update(ctx, updateFn)
 }
 
-func (u Updater) now() time.Time {
+func (u DeprecatedUpdater) now() time.Time {
 	return u.j.registry.clock.Now().GoTime()
 }

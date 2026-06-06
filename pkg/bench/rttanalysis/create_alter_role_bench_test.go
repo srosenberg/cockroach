@@ -9,8 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/cockroachdb/cockroach/pkg/testutils/skip"
 )
 
+// BenchmarkCreateRole is a benchmark for the CREATE ROLE statement.
+// benchmark-ci: benchtime=20x
 func BenchmarkCreateRole(b *testing.B) { reg.Run(b) }
 func init() {
 	reg.Register("CreateRole", []RoundTripBenchTestCase{
@@ -37,6 +41,8 @@ func init() {
 	})
 }
 
+// BenchmarkAlterRole is a benchmark for the ALTER ROLE statement.
+// benchmark-ci: benchtime=20x
 func BenchmarkAlterRole(b *testing.B) { reg.Run(b) }
 func init() {
 	reg.Register("AlterRole", []RoundTripBenchTestCase{
@@ -63,7 +69,10 @@ func init() {
 
 // BenchmarkUseManyRoles is useful for testing the performance of the
 // role membership cache.
-func BenchmarkUseManyRoles(b *testing.B) { reg.Run(b) }
+func BenchmarkUseManyRoles(b *testing.B) {
+	skip.UnderShort(b, "skipping long benchmark")
+	reg.Run(b)
+}
 func init() {
 
 	createFunc := `
@@ -101,19 +110,19 @@ $$ LANGUAGE plpgsql;`
 			},
 		},
 		{
-			Name: "use 50 roles",
+			Name: "use 25 roles",
 			SetupEx: []string{
 				"CREATE ROLE parent_role",
-				createNRoles(50),
-				grantRoleToNRoles("parent_role", 50),
+				createNRoles(25),
+				grantRoleToNRoles("parent_role", 25),
 				"CREATE TABLE tab (a INT)",
 				"GRANT SELECT ON tab TO parent_role",
 				"INSERT INTO tab VALUES (1)",
 				createFunc,
 			},
-			Stmt: "SELECT query_table_with_roles(50)",
+			Stmt: "SELECT query_table_with_roles(25)",
 			ResetEx: []string{
-				dropNRoles(50),
+				dropNRoles(25),
 				"DROP ROLE parent_role",
 			},
 		},

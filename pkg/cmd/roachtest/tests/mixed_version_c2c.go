@@ -22,8 +22,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/roachtestutil/task"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/spec"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
-	"github.com/cockroachdb/cockroach/pkg/roachprod"
-	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/logger"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
@@ -50,9 +48,10 @@ func registerC2CMixedVersions(r registry.Registry) {
 	r.Add(registry.TestSpec{
 		Name:             "c2c/mixed-version",
 		Owner:            registry.OwnerDisasterRecovery,
-		Cluster:          r.MakeClusterSpec(sp.dstNodes+sp.srcNodes+1, spec.WorkloadNode()),
+		Cluster:          r.MakeClusterSpec(sp.dstNodes+sp.srcNodes+1, spec.WorkloadNode(), spec.CPU(8)),
 		CompatibleClouds: sp.clouds,
 		Suites:           registry.Suites(registry.MixedVersion, registry.Nightly),
+		Monitor:          true,
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runC2CMixedVersions(ctx, t, c, sp)
 		},
@@ -123,20 +122,26 @@ func InitC2CMixed(
 		return 0.0
 	}
 
+	// This test has the source and destination clusters interacting with each other
+	// through specific nodes, so it is incompatible with failure injections.
 	sourceMvt := mixedversion.NewTest(ctx, t, t.L(), c, c.Range(1, sp.srcNodes),
+		mixedversion.WithWorkloadNodes(c.WorkloadNode()),
 		mixedversion.AlwaysUseLatestPredecessors,
 		mixedversion.NumUpgrades(expectedMajorUpgrades),
 		mixedversion.EnabledDeploymentModes(mixedversion.SharedProcessDeployment),
 		mixedversion.WithTag("source"),
 		mixedversion.WithSkipVersionProbability(boolToProb(sourceVersionSkips)),
+		mixedversion.DisableAllFailureInjectionMutators(),
 	)
 
 	destMvt := mixedversion.NewTest(ctx, t, t.L(), c, c.Range(sp.srcNodes+1, sp.srcNodes+sp.dstNodes),
+		mixedversion.WithWorkloadNodes(c.WorkloadNode()),
 		mixedversion.AlwaysUseLatestPredecessors,
 		mixedversion.NumUpgrades(expectedMajorUpgrades),
 		mixedversion.EnabledDeploymentModes(mixedversion.SystemOnlyDeployment),
 		mixedversion.WithTag("dest"),
 		mixedversion.WithSkipVersionProbability(boolToProb(destVersionSkips)),
+		mixedversion.DisableAllFailureInjectionMutators(),
 	)
 
 	return &c2cMixed{
@@ -205,21 +210,16 @@ func (cm *c2cMixed) SetupHook(ctx context.Context) {
 			if err := h.System.Exec(r, "SET CLUSTER SETTING kv.rangefeed.enabled = true"); err != nil {
 				return errors.Wrap(err, "failed to enable rangefeeds")
 			}
+			if err := h.System.Exec(r, "SET CLUSTER SETTING sql.pgwire.max_repeated_error_count = 256"); err != nil {
+				return err
+			}
 			close(cm.sourceStartedChan)
 
 			l.Printf("generating pgurl")
 			srcNode := cm.c.Node(1)
-			srcClusterSetting := install.MakeClusterSettings()
-			addr, err := cm.c.ExternalPGUrl(ctx, l, srcNode, roachprod.PGURLOptions{
-				VirtualClusterName: install.SystemInterfaceName,
-			})
+			pgURL, err := makeInlineCertsURL(ctx, cm.t, l, cm.c, srcNode)
 			if err != nil {
-				return err
-			}
-
-			pgURL, err := copyPGCertsAndMakeURL(ctx, cm.t, cm.c, srcNode, srcClusterSetting.PGUrlCertsDir, addr[0])
-			if err != nil {
-				return err
+				return errors.Wrap(err, "generating pgurl")
 			}
 
 			sourceInfoChan <- sourceTenantInfo{name: h.Tenant.Descriptor.Name, pgurl: pgURL}
@@ -238,6 +238,10 @@ func (cm *c2cMixed) SetupHook(ctx context.Context) {
 		func(ctx context.Context, l *logger.Logger, r *rand.Rand, h *mixedversion.Helper) error {
 			l.Printf("waiting to hear from source cluster")
 			sourceInfo := chanReadCtx(ctx, sourceInfoChan)
+
+			if err := h.System.Exec(r, "SET CLUSTER SETTING sql.pgwire.max_repeated_error_count = 256"); err != nil {
+				return err
+			}
 
 			if err := h.Exec(r, fmt.Sprintf(
 				"CREATE TENANT %q FROM REPLICATION OF %q ON $1 WITH READ VIRTUAL CLUSTER",
@@ -512,7 +516,7 @@ func (cm *c2cMixed) WaitForReplicatedTime(
 		if !(replicatedTime.Valid && replicatedTime.Time.After(targetTime)) {
 			return errors.Newf("replicated time %s not yet at %s", replicatedTime, targetTime)
 		}
-		cm.t.L().Printf("replicated time is now %s, past %s", replicatedTime, targetTime)
+		cm.t.L().Printf("replicated time is now %+v, past %+v", replicatedTime, targetTime)
 		return nil
 	}, timeout)
 }

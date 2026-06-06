@@ -8,16 +8,18 @@ package vecindex
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/keys"
+	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/catid"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/cspann/quantize"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecpb"
+	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecsettings"
 	"github.com/cockroachdb/cockroach/pkg/sql/vecindex/vecstore"
-	"github.com/cockroachdb/cockroach/pkg/util/buildutil"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
@@ -34,6 +36,7 @@ type Manager struct {
 	}
 	ctx          context.Context
 	stopper      *stop.Stopper
+	sv           *settings.Values
 	codec        keys.SQLCodec
 	db           descs.DB
 	testingKnobs *VecIndexTestingKnobs
@@ -44,11 +47,12 @@ type Manager struct {
 // index instances. We store a context for creating new vector index objects,
 // since those outlive the context of Get calls.
 func NewManager(
-	ctx context.Context, stopper *stop.Stopper, codec keys.SQLCodec, db descs.DB,
+	ctx context.Context, stopper *stop.Stopper, sv *settings.Values, codec keys.SQLCodec, db descs.DB,
 ) *Manager {
 	mgr := &Manager{
 		ctx:     ctx,
 		stopper: stopper,
+		sv:      sv,
 		codec:   codec,
 		db:      db,
 	}
@@ -77,6 +81,13 @@ type indexEntry struct {
 // SetTestingKnobs sets the testing knobs for the manager to use in unit tests.
 func (m *Manager) SetTestingKnobs(knobs *VecIndexTestingKnobs) {
 	m.testingKnobs = knobs
+}
+
+// TestingKnobs returns the testing knobs configured on the manager, or nil if
+// none have been set. Exposed so that executor processors can propagate the
+// knobs to per-flow helpers such as Searcher.
+func (m *Manager) TestingKnobs() *VecIndexTestingKnobs {
+	return m.testingKnobs
 }
 
 // Metrics returns a metric.Struct which holds metrics for all vector indexes
@@ -109,13 +120,43 @@ func (m *Manager) Get(
 		} else {
 			// This is the expected "fast" path; don't emit an event.
 			if log.V(2) {
-				log.Infof(ctx, "config for index %d of table %d found in cache", indexID, tableID)
+				log.Dev.Infof(ctx, "config for index %d of table %d found in cache", indexID, tableID)
 			}
 		}
 		return e.idx, e.err
 	}
 	e = &indexEntry{mustWait: true, waitCond: sync.Cond{L: &m.mu}}
 	m.mu.indexes[idxKey] = e
+
+	// If the index construction below panics, mustWait will still be true
+	// because the normal completion path (which sets mustWait=false and calls
+	// Broadcast) is skipped. Wrap the panic cause into e.err so parked waiters
+	// get a meaningful error, drop the cache entry so subsequent callers retry
+	// instead of hanging, then rethrow so colexecerror catches the original
+	// panic for the calling goroutine as usual.
+	defer func() {
+		if !e.mustWait {
+			return
+		}
+
+		e.mustWait = false
+
+		r := recover()
+		cause, ok := r.(error)
+		if !ok {
+			// Covers both nil (Goexit-style exit) and non-error panic values.
+			cause = errors.Newf("non-error panic value: %v", r)
+		}
+		e.err = errors.NewAssertionErrorWithWrappedErrf(
+			cause, "vector index construction panicked")
+
+		e.waitCond.Broadcast()
+		delete(m.mu.indexes, idxKey)
+
+		if r != nil {
+			panic(r)
+		}
+	}()
 
 	idx, err := func() (*cspann.Index, error) {
 		// Unlock while we build the index structure so that concurrent requests can be
@@ -131,8 +172,9 @@ func (m *Manager) Get(
 			return nil, err
 		}
 		// TODO(drewk): use the config to populate the index options as well.
-		quantizer := quantize.NewRaBitQuantizer(int(config.Dims), config.Seed)
-		store, err := vecstore.New(ctx, m.db, quantizer, m.codec, tableID, indexID)
+		quantizer := quantize.NewRaBitQuantizer(int(config.Dims), config.Seed, config.DistanceMetric)
+		store, err := vecstore.New(
+			ctx, m.db, quantizer, m.codec, tableID, indexID, config.IsDeterministic)
 		if err != nil {
 			return nil, err
 		}
@@ -141,15 +183,16 @@ func (m *Manager) Get(
 		// passed to cspann.NewIndex, and we don't want that to be the context of
 		// the Get call.
 		idx, err := cspann.NewIndex(
-			m.ctx, store, quantizer, config.Seed, &cspann.IndexOptions{}, m.stopper)
+			m.ctx, store, quantizer, config.Seed,
+			m.getIndexOptions(&config, store.ReadOnly()), m.stopper,
+		)
 		if err != nil {
 			return nil, err
 		}
 
 		// Hook up index events to metrics methods.
-		idx.Fixups().OnSuccessfulSplit(m.metrics.IncSuccessSplits)
-		idx.Fixups().OnFixupAdded(m.metrics.IncFixupsAdded)
-		idx.Fixups().OnFixupProcessed(m.metrics.IncFixupsProcessed)
+		idx.Fixups().OnSuccessfulSplit(m.metrics.IncSuccessfulSplits)
+		idx.Fixups().OnPendingSplitsMerges(m.metrics.SetPendingSplitsMerges)
 
 		return idx, nil
 	}()
@@ -161,9 +204,40 @@ func (m *Manager) Get(
 
 	if err != nil {
 		// Don't keep the index entry around, so that we retry the query.
-		m.mu.indexes[idxKey] = nil
+		delete(m.mu.indexes, idxKey)
 	}
 	return idx, err
+}
+
+func (m *Manager) getIndexOptions(config *vecpb.Config, readOnly bool) *cspann.IndexOptions {
+	opts := &cspann.IndexOptions{
+		RotAlgorithm:     config.RotAlgorithm,
+		MinPartitionSize: int(config.MinPartitionSize),
+		MaxPartitionSize: int(config.MaxPartitionSize),
+		BaseBeamSize:     int(config.BuildBeamSize),
+		// Hook up the StalledOpTimeout callback to the cluster setting.
+		StalledOpTimeout: func() time.Duration {
+			return vecsettings.StalledOpTimeoutSetting.Get(m.sv)
+		},
+		IsDeterministic: config.IsDeterministic,
+		ReadOnly:        readOnly,
+		// Disable adaptive search until it's extended to work with vecstore.
+		DisableAdaptiveSearch: true,
+	}
+	if m.testingKnobs != nil {
+		// Install a lazy closure rather than copying the function pointer
+		// directly, because Manager caches *cspann.Index and its IndexOptions
+		// for the lifetime of the manager. Tests that mutate the knob fields
+		// after the index is first created (the common pattern in
+		// TestVectorIndexPanicCaught) would otherwise see the stale nil
+		// captured at creation time.
+		opts.PanicDuringCspannSearch = func() {
+			if panicFn := m.testingKnobs.PanicDuringCspannSearch; panicFn != nil {
+				panicFn()
+			}
+		}
+	}
+	return opts
 }
 
 func (m *Manager) getVecConfig(
@@ -185,7 +259,7 @@ func (m *Manager) getVecConfig(
 		return vecpb.Config{}, errTableNotFound
 	}
 	var idxDesc catalog.Index
-	for _, desc := range tableDesc.DeletableNonPrimaryIndexes() {
+	for _, desc := range tableDesc.NonPrimaryIndexes() {
 		if desc.GetID() == indexID {
 			idxDesc = desc
 			break
@@ -197,13 +271,6 @@ func (m *Manager) getVecConfig(
 	config := idxDesc.GetVecConfig()
 	if config.Dims <= 0 {
 		return vecpb.Config{}, errInvalidVecConfig
-	}
-	// TODO(mw5h, drewk): this should be a session setting in create index rather
-	// than an override like this.
-	if buildutil.CrdbTestBuild {
-		// This is a test build, so let's use a fixed seed for the random projection to
-		// avoid test flakes.
-		config.Seed = 0xdeadcafe
 	}
 	return config, nil
 }

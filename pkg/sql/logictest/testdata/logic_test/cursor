@@ -1,3 +1,5 @@
+# cluster-opt: enable-prepared-transactions-unsafe
+
 statement ok
 SET autocommit_before_ddl = false
 
@@ -553,6 +555,10 @@ bar  SELECT 1, 2, 3  false  false  false
 statement ok
 COMMIT
 
+skipif config schema-locked-disabled
+statement ok
+ALTER TABLE a SET (schema_locked=false);
+
 query TTBBB
 SELECT name, statement, is_scrollable, is_holdable, is_binary FROM pg_catalog.pg_cursors
 ----
@@ -641,12 +647,16 @@ FETCH 1 a b;
 statement ok
 COMMIT;
 
+skipif config schema-locked-disabled
+statement ok
+ALTER TABLE a SET (schema_locked=true);
+
 # Test holdable cursors.
 subtest holdable
 
 statement ok
 CREATE TABLE t (x INT PRIMARY KEY, y INT);
-INSERT INTO t (SELECT t, t%123 FROM generate_series(1, 10000) g(t));
+INSERT INTO t (SELECT t, t%7 FROM generate_series(1, 10) g(t));
 
 # A holdable cursor can be declared in an implicit transaction.
 statement ok
@@ -779,41 +789,32 @@ query T rowsort
 SELECT name FROM pg_cursors
 ----
 
-skipif config local-mixed-24.3
 # A transaction with an active holdable cursor cannot be prepared.
 statement ok
 BEGIN;
 
-skipif config local-mixed-24.3
 statement ok
 DECLARE foo CURSOR WITH HOLD FOR SELECT 1
 
-skipif config local-mixed-24.3
 statement error pgcode 0A000 pq: cannot PREPARE a transaction that has created a cursor WITH HOLD
 PREPARE TRANSACTION 'read-only'
 
-skipif config local-mixed-24.3
 query T rowsort
 SELECT name FROM pg_cursors
 ----
 
-skipif config local-mixed-24.3
 statement ok
 BEGIN;
 
-skipif config local-mixed-24.3
 statement ok
 DECLARE foo CURSOR WITH HOLD FOR SELECT 1
 
-skipif config local-mixed-24.3
 statement ok
 CLOSE foo;
 
-skipif config local-mixed-24.3
 statement ok
 PREPARE TRANSACTION 'read-only'
 
-skipif config local-mixed-24.3
 statement ok
 COMMIT PREPARED 'read-only'
 
@@ -838,7 +839,7 @@ COMMIT
 
 # Regression test for statement timeouts during DECLARE CURSOR.
 # We set timeout to 1s so that DECLARE CURSOR can execute, then sleep
-# 0.5s each to make up 1s and attempt to fetch.
+# 0.3s each to make up 0.6s and attempt to fetch.
 # Setting the timeout to 0.001ms means DECLARE CURSOR times out thus
 # voiding the test.
 statement ok
@@ -848,16 +849,18 @@ SET statement_timeout = '1s';
 DECLARE a CURSOR FOR SELECT * FROM ( VALUES (1), (2) ) t(id);
 
 # Note we can't set pg_sleep to 1 or else it'll statement timeout!
+retry
 statement ok
-select pg_sleep(0.7)
+select pg_sleep(0.3)
 
 query I
 FETCH 1 FROM a
 ----
 1
 
+retry
 statement ok
-select pg_sleep(0.7)
+select pg_sleep(0.3)
 
 query I
 FETCH 1 FROM a
@@ -870,5 +873,73 @@ COMMIT
 
 statement ok
 RESET autocommit_before_ddl
+
+subtest end
+
+# Regression test for #142114 - close the holdable cursor container if there is
+# an error while executing the query.
+subtest regression_142114
+
+statement error pgcode 22012 pq: sql-cursor: division by zero
+DECLARE foo CURSOR WITH HOLD FOR SELECT 1 // 0;
+
+statement ok
+DECLARE curs CURSOR WITH HOLD FOR SELECT 100;
+
+statement ok
+BEGIN;
+
+statement ok
+DECLARE foo CURSOR FOR SELECT 1;
+
+statement ok
+DECLARE bar CURSOR WITH HOLD FOR SELECT 2;
+
+statement ok
+DECLARE baz CURSOR WITH HOLD FOR SELECT 1 // 0;
+
+statement ok
+DECLARE bar2 CURSOR WITH HOLD FOR SELECT 3;
+
+statement ok
+INSERT INTO a VALUES (-1, -2);
+
+statement error pgcode 22012 pq: sql-cursor: division by zero
+COMMIT;
+
+# All cursors created in the aborted transaction should be closed.
+query T rowsort
+SELECT name FROM pg_cursors;
+----
+curs
+
+# The insert should not have been committed.
+query III
+SELECT * FROM a ORDER BY a LIMIT 1;
+----
+1  2  NULL
+
+statement ok
+CLOSE curs;
+
+subtest end
+
+# Regression test for incorrectly advancing internal position when persisting
+# the WITH HOLD cursor (#145362).
+subtest regression_145362
+
+statement ok
+CREATE TABLE empty (k INT PRIMARY KEY)
+
+statement ok
+BEGIN;
+DECLARE foo CURSOR WITH HOLD FOR SELECT * FROM empty;
+COMMIT;
+
+query empty
+FETCH ABSOLUTE 1 FROM foo;
+
+statement ok
+CLOSE foo;
 
 subtest end

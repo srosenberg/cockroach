@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"slices"
 	"sync"
 	"time"
 
@@ -16,20 +17,24 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/crlib/crtime"
-	"github.com/cockroachdb/errors"
 )
 
 // fixupType enumerates the different kinds of fixups.
 type fixupType int
 
 const (
-	// splitOrMergeFixup is a fixup that includes the key of a partition that
-	// may need to be split or merged, as well as the key of its parent partition
-	// (if it exists). Whether a partition is split or merged depends on its size.
-	splitOrMergeFixup fixupType = iota + 1
-	// vectorDeleteFixup is a fixup that includes the primary key of a vector to
-	// delete from the index, as well as the key of the partition that contains
-	// it.
+	// splitFixup starts or continues the split of an over-sized partition. It
+	// includes the key of the partition to split, as well as the key of its
+	// parent partition (if one exists).
+	splitFixup fixupType = iota + 1
+	// mergeFixup starts or continues the merge of an under-sized partition. It
+	// includes the key of the partition to split, as well as the key of its
+	// parent partition (if one exists).
+	mergeFixup
+	// vectorDeleteFixup deletes a "dangling vector" that exists in the index,
+	// but with no corresponding row in the primary index. It includes the primary
+	// key bytes of the vector to delete from the index, as well as the key of the
+	// partition that contains it.
 	vectorDeleteFixup
 )
 
@@ -60,12 +65,24 @@ type fixup struct {
 	VectorKey KeyBytes
 	// CachedKey caches the key for the fixup, suitable for use in a map.
 	CachedKey fixupKey
+	// SingleStep, if true, indicates that split and merge fixups will be aborted
+	// after each step in their execution. This is used for testing, in order to
+	// deterministically interleave multiple fixups together in the same tree.
+	SingleStep bool
+}
+
+// IsSplitMerge returns true if this is a split or merge fixup.
+func (f fixup) IsSplitMerge() bool {
+	return f.Type == splitFixup || f.Type == mergeFixup
 }
 
 // fixupKey is used to detect duplicate fixups on the same partition/vector, so
 // that we don't enqueue duplicates. It contains fields from the fixup struct
 // that have been converted to types that can be used in a map key.
 type fixupKey struct {
+	// Type is in the key to ensure that different types of fixups on the same
+	// partition are not treated as duplicates.
+	Type fixupType
 	// TreeKey is the fixup.TreeKey field converted to a string so that it's a
 	// valid map key.
 	// NOTE: This only results in an allocation if TreeKey is not empty.
@@ -81,7 +98,11 @@ type fixupKey struct {
 // into a map.
 func makeFixupKey(f fixup) fixupKey {
 	return fixupKey{
-		TreeKey: string(f.TreeKey), PartitionKey: f.PartitionKey, VectorKey: string(f.VectorKey)}
+		Type:         f.Type,
+		TreeKey:      string(f.TreeKey),
+		PartitionKey: f.PartitionKey,
+		VectorKey:    string(f.VectorKey),
+	}
 }
 
 // FixupProcessor applies index fixups in a background goroutine. Fixups repair
@@ -119,11 +140,9 @@ type FixupProcessor struct {
 
 	// onSuccessfulSplit is called when a partition is split without error.
 	onSuccessfulSplit func()
-	// onFixupAdded is called when a fixup is added to the queue.
-	onFixupAdded func()
-	// onFixupProcessed is called when a fixup is processed and removed from the
-	// queue.
-	onFixupProcessed func()
+	// onPendingSplitsMerges is called when a split or merge fixup is added or
+	// removed to/from the queue.
+	onPendingSplitsMerges func(count int)
 
 	// --------------------------------------------------
 	// These fields can be accessed on any goroutine.
@@ -146,6 +165,9 @@ type FixupProcessor struct {
 
 		// pendingFixups tracks fixups that are waiting to be processed.
 		pendingFixups map[fixupKey]bool
+		// pendingSplitsMerges tracks the number of split or merge fixups that
+		// are waiting to be processed.
+		pendingSplitsMerges int
 		// totalWorkers is the number of background workers available to process
 		// fixups.
 		totalWorkers int
@@ -156,11 +178,15 @@ type FixupProcessor struct {
 		// fixups. Only once the channel is closed will they begin processing.
 		// This is used for testing.
 		suspended chan struct{}
+		// fixupsDone is created when the caller to Process() is waiting for
+		// pending fixups to be processed. It is closed when all fixups have been
+		// processed.
+		fixupsDone chan struct{}
 		// waitForFixups broadcasts to any waiters when all fixups are processed.
 		// This is used for testing.
 		waitForFixups sync.Cond
-		// pacer limits vector insert/delete throughput if background fixups are
-		// falling behind.
+		// pacer limits vector insert/delete throughput if background split and
+		// merge fixups are falling behind.
 		pacer pacer
 	}
 }
@@ -190,6 +216,12 @@ func (fp *FixupProcessor) Init(
 
 	fp.mu.pendingFixups = make(map[fixupKey]bool, maxFixups)
 	fp.mu.waitForFixups.L = &fp.mu
+
+	if index.options.IsDeterministic {
+		// A deterministic index should be suspended until an explicit call to
+		// Process is called.
+		fp.mu.suspended = make(chan struct{})
+	}
 }
 
 // OnSuccessfulSplit sets a callback function that's invoked when a partition is
@@ -200,28 +232,21 @@ func (fp *FixupProcessor) OnSuccessfulSplit(fn func()) {
 	fp.onSuccessfulSplit = fn
 }
 
-// OnFixupAdded sets a callback function that's invoked when a fixup is added to
-// the queue.
+// OnPendingSplitsMerges sets a callback function that's invoked when a split or
+// merge fixup is added or removed to/from the queue.
 // NOTE: Callers can only set this immediately after Init is called, before any
 // background operations are possible.
-func (fp *FixupProcessor) OnFixupAdded(fn func()) {
-	fp.onFixupAdded = fn
+func (fp *FixupProcessor) OnPendingSplitsMerges(fn func(int)) {
+	fp.onPendingSplitsMerges = fn
 }
 
-// OnFixupProcessed sets a callback function that's invoked when a fixup is
-// processed and removed from the queue.
-// NOTE: Callers can only set this immediately after Init is called, before any
-// background operations are possible.
-func (fp *FixupProcessor) OnFixupProcessed(fn func()) {
-	fp.onFixupProcessed = fn
-}
-
-// QueueSize returns the current size of the fixup queue.
-func (fp *FixupProcessor) QueueSize() int {
+// PendingSplitsMerges returns the number of split/merge fixups that are
+// currently waiting to be processed.
+func (fp *FixupProcessor) PendingSplitsMerges() int {
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
 
-	return fp.countFixupsLocked()
+	return fp.mu.pendingSplitsMerges
 }
 
 // AllowedOpsPerSec returns the ops/sec currently allowed by the pacer.
@@ -234,7 +259,8 @@ func (fp *FixupProcessor) AllowedOpsPerSec() float64 {
 
 // DelayInsertOrDelete is called when a vector is about to be inserted into the
 // index or deleted from it. It will block for however long the pacer determines
-// is needed to allow background index maintenance work to keep up.
+// is needed to allow background index maintenance work to keep up. This is
+// based on the number of split/merge fixups waiting in the queue.
 func (fp *FixupProcessor) DelayInsertOrDelete(ctx context.Context) error {
 	// Get the amount of time to wait. Do this in a separate function so that
 	// the mutex is not held while waiting.
@@ -242,7 +268,7 @@ func (fp *FixupProcessor) DelayInsertOrDelete(ctx context.Context) error {
 		fp.mu.Lock()
 		defer fp.mu.Unlock()
 
-		return fp.mu.pacer.OnInsertOrDelete(fp.countFixupsLocked())
+		return fp.mu.pacer.OnInsertOrDelete(fp.mu.pendingSplitsMerges)
 	}()
 
 	// Enforce min delay (used for testing).
@@ -266,81 +292,136 @@ func (fp *FixupProcessor) DelayInsertOrDelete(ctx context.Context) error {
 	return nil
 }
 
-// AddSplitOrMergeCheck enqueues a fixup to check whether a split or merge is
-// needed for the given partition.
-func (fp *FixupProcessor) AddSplitOrMergeCheck(
-	ctx context.Context, treeKey TreeKey, parentPartitionKey PartitionKey, partitionKey PartitionKey,
-) {
-	fp.addFixup(ctx, fixup{
-		TreeKey:            treeKey,
-		Type:               splitOrMergeFixup,
-		ParentPartitionKey: parentPartitionKey,
-		PartitionKey:       partitionKey,
-	})
-}
-
 // AddDeleteVector enqueues a vector deletion fixup for later processing.
 func (fp *FixupProcessor) AddDeleteVector(
-	ctx context.Context, partitionKey PartitionKey, vectorKey KeyBytes,
+	ctx context.Context, treeKey TreeKey, partitionKey PartitionKey, vectorKey KeyBytes,
 ) {
 	fp.addFixup(ctx, fixup{
+		// Clone the tree key, since we don't own the memory.
+		TreeKey:      slices.Clone(treeKey),
 		Type:         vectorDeleteFixup,
 		PartitionKey: partitionKey,
 		VectorKey:    vectorKey,
 	})
 }
 
-// Suspend blocks all background workers from processing fixups until Process is
-// called to let them run. This is useful for testing.
-func (fp *FixupProcessor) Suspend() {
-	fp.mu.Lock()
-	defer fp.mu.Unlock()
+// AddSplit enqueues a fixup to start or continue the split of a partition.
+func (fp *FixupProcessor) AddSplit(
+	ctx context.Context,
+	treeKey TreeKey,
+	parentPartitionKey PartitionKey,
+	partitionKey PartitionKey,
+	singleStep bool,
+) {
+	fp.addFixup(ctx, fixup{
+		// Clone the tree key, since we don't own the memory.
+		TreeKey:            slices.Clone(treeKey),
+		Type:               splitFixup,
+		ParentPartitionKey: parentPartitionKey,
+		PartitionKey:       partitionKey,
+		SingleStep:         singleStep,
+	})
+}
 
-	if fp.mu.suspended != nil {
-		panic(errors.AssertionFailedf("fixup processor was already suspended"))
-	}
-
-	fp.mu.suspended = make(chan struct{})
+// AddMerge enqueues a fixup to start or continue the merge of a partition.
+func (fp *FixupProcessor) AddMerge(
+	ctx context.Context,
+	treeKey TreeKey,
+	parentPartitionKey PartitionKey,
+	partitionKey PartitionKey,
+	singleStep bool,
+) {
+	fp.addFixup(ctx, fixup{
+		// Clone the tree key, since we don't own the memory.
+		TreeKey:            slices.Clone(treeKey),
+		Type:               mergeFixup,
+		ParentPartitionKey: parentPartitionKey,
+		PartitionKey:       partitionKey,
+		SingleStep:         singleStep,
+	})
 }
 
 // Process waits until all pending fixups have been processed by background
 // workers. If background workers have been suspended, they are temporarily
 // allowed to run until all fixups have been processed. This is useful for
 // testing.
-func (fp *FixupProcessor) Process() {
+//
+// nolint:deferunlockcheck
+func (fp *FixupProcessor) Process(ctx context.Context) error {
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
 
-	suspended := fp.mu.suspended
-	if suspended != nil {
-		// Signal any waiting background workers that they can process fixups.
-		close(fp.mu.suspended)
-		fp.mu.suspended = nil
+	if len(fp.mu.pendingFixups) == 0 {
+		// No pending fixups to process.
+		return nil
 	}
 
-	// Wait for all fixups to be processed.
-	for fp.countFixupsLocked() > 0 {
-		fp.mu.waitForFixups.Wait()
+	// Check whether another goroutine has already called Process.
+	fixupsDone := fp.mu.fixupsDone
+	if fixupsDone == nil {
+		// Create the channel that will be closed once all fixups have been
+		// processed.
+		fixupsDone = make(chan struct{})
+		fp.mu.fixupsDone = fixupsDone
+
+		// Signal any waiting background workers that they can process fixups and
+		// create a new suspended channel to replace the closed one.
+		suspended := fp.mu.suspended
+		if suspended != nil {
+			close(fp.mu.suspended)
+			fp.mu.suspended = make(chan struct{})
+		}
 	}
 
-	// Re-suspend the fixup processor if it was suspended.
-	if suspended != nil {
-		fp.mu.suspended = make(chan struct{})
-	}
+	func() {
+		// Unlock while waiting for fixups to be processed.
+		fp.mu.Unlock()
+		defer fp.mu.Lock()
+
+		select {
+		case <-fixupsDone:
+			// All fixups processed.
+			break
+
+		case <-ctx.Done():
+			// Context canceled.
+			break
+
+		case <-fp.initCtx.Done():
+			// Processor has been quiesced.
+			break
+		}
+	}()
+
+	return nil
+}
+
+// Discard pops all unprocessed fixups from the queue and discards them. This is
+// useful for testing.
+func (fp *FixupProcessor) Discard(ctx context.Context) {
+	fp.mu.Lock()
+	defer fp.mu.Unlock()
+	fp.discardFixupsLocked()
 }
 
 // addFixup enqueues the given fixup for later processing, assuming there is not
 // already a duplicate fixup that's pending. It also starts a background worker
 // to process the fixup, if needed and allowed.
 func (fp *FixupProcessor) addFixup(ctx context.Context, fixup fixup) {
+	if fp.index.options.ReadOnly {
+		// Don't enqueue fixups if the index is read-only.
+		log.VEvent(ctx, 2, "discarding fixup because index is read-only")
+		return
+	}
+
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
 
 	// Check whether fixup limit has been reached.
-	if fp.countFixupsLocked() >= maxFixups {
+	if len(fp.mu.pendingFixups) >= maxFixups {
 		// Don't enqueue the fixup.
 		if fp.fixupsLimitHit.ShouldLog() {
-			log.Warning(ctx, "reached limit of unprocessed fixups")
+			log.Dev.Warning(ctx, "reached limit of unprocessed fixups")
 		}
 		return
 	}
@@ -356,13 +437,16 @@ func (fp *FixupProcessor) addFixup(ctx context.Context, fixup fixup) {
 	// maxFixups capacity.
 	fp.fixups <- fixup
 
-	if fp.onFixupAdded != nil {
-		// Notify listener that a fixup has been added.
-		fp.onFixupAdded()
-	}
+	if fixup.IsSplitMerge() {
+		fp.mu.pendingSplitsMerges++
 
-	// Notify the pacer that a fixup was just added.
-	fp.mu.pacer.OnFixup(fp.countFixupsLocked())
+		// Notify the pacer and any other listener that a split or merge fixup
+		// has been added to the queue.
+		fp.mu.pacer.OnQueueSizeChanged(fp.mu.pendingSplitsMerges)
+		if fp.onPendingSplitsMerges != nil {
+			fp.onPendingSplitsMerges(fp.mu.pendingSplitsMerges)
+		}
+	}
 
 	// If there is an idle worker available, nothing more to do.
 	if fp.mu.runningWorkers < fp.mu.totalWorkers {
@@ -383,46 +467,68 @@ func (fp *FixupProcessor) addFixup(ctx context.Context, fixup fixup) {
 	err := fp.stopper.RunAsyncTask(fp.initCtx, taskName, worker.Start)
 	if err != nil {
 		// Log error and continue.
-		log.Errorf(ctx, "error starting vector index background worker: %v", err)
+		log.Dev.Errorf(ctx, "error starting vector index background worker: %v", err)
 	}
 }
 
 // nextFixup fetches the next fixup in the queue so that it can be processed by
 // a background worker. It blocks until there is a fixup available (ok=true) or
-// until the processor shuts down (ok=false).
+// until the context is canceled or the processor shuts down (ok=false).
 func (fp *FixupProcessor) nextFixup(ctx context.Context) (next fixup, ok bool) {
-	select {
-	case next = <-fp.fixups:
-		// Within the scope of the mutex, increment running workers and check
-		// whether processor is suspended.
-		suspended := func() chan struct{} {
+	var suspended, fixupsDone chan struct{}
+	for {
+		// Within the scope of the mutex, check whether processor is suspended.
+		suspended, fixupsDone = func() (chan struct{}, chan struct{}) {
 			fp.mu.Lock()
 			defer fp.mu.Unlock()
-			fp.mu.runningWorkers++
-			return fp.mu.suspended
+			return fp.mu.suspended, fp.mu.fixupsDone
 		}()
-		if suspended != nil {
-			// Can't process the fixup until the processor is resumed, so wait
-			// until that happens.
+
+		if suspended != nil && fixupsDone == nil {
+			// Processor is suspended, so wait until it is resumed.
 			select {
 			case <-suspended:
-				break
+				// Jump back to top of loop to get the fixupsDone channel.
+				continue
 
 			case <-ctx.Done():
+				return fixup{}, false
+
+			case <-fp.initCtx.Done():
+				// Processor is shutting down.
 				return fixup{}, false
 			}
 		}
 
-		return next, true
+		// Get the next fixup.
+		select {
+		case next = <-fp.fixups:
+			func() {
+				// Increment running workers.
+				fp.mu.Lock()
+				defer fp.mu.Unlock()
+				fp.mu.runningWorkers++
+			}()
+			return next, true
 
-	case <-ctx.Done():
-		// Context was canceled, abort.
-		return fixup{}, false
+		case <-fixupsDone:
+			// Other goroutines have processed the fixups, so jump back to top of
+			// loop to suspend again.
+			continue
+
+		case <-ctx.Done():
+			// Context was canceled, abort.
+			return fixup{}, false
+
+		case <-fp.initCtx.Done():
+			// Processor is shutting down.
+			return fixup{}, false
+		}
 	}
 }
 
 // removeFixup removes a pending fixup that has been processed by a worker.
-func (fp *FixupProcessor) removeFixup(toRemove fixup) {
+func (fp *FixupProcessor) removeFixup(ctx context.Context, toRemove fixup) {
 	fp.mu.Lock()
 	defer fp.mu.Unlock()
 
@@ -430,23 +536,44 @@ func (fp *FixupProcessor) removeFixup(toRemove fixup) {
 
 	fp.mu.runningWorkers--
 
-	if fp.onFixupProcessed != nil {
-		// Notify listener that a fixup has been processed.
-		fp.onFixupProcessed()
+	if toRemove.IsSplitMerge() {
+		fp.mu.pendingSplitsMerges--
+
+		// Notify the pacer and any other listener that a split or merge op has
+		// been processed.
+		fp.mu.pacer.OnQueueSizeChanged(fp.mu.pendingSplitsMerges)
+		if fp.onPendingSplitsMerges != nil {
+			fp.onPendingSplitsMerges(fp.mu.pendingSplitsMerges)
+		}
 	}
 
-	// Notify the pacer that a fixup was just removed.
-	fp.mu.pacer.OnFixup(fp.countFixupsLocked())
+	// If single-stepping, discard all fixups that might have been triggered
+	// while processing this fixup.
+	if toRemove.SingleStep {
+		fp.discardFixupsLocked()
+	}
 
 	// If there are no more pending fixups, notify any waiters.
-	if fp.countFixupsLocked() == 0 {
-		fp.mu.waitForFixups.Broadcast()
+	if fp.mu.fixupsDone != nil && len(fp.mu.pendingFixups) == 0 {
+		close(fp.mu.fixupsDone)
+		fp.mu.fixupsDone = nil
 	}
 }
 
-// countFixupsLocked returns the number of fixups that are pending, including
-// those that are currently being processed as well as those that are waiting to
-// be processed.
-func (fp *FixupProcessor) countFixupsLocked() int {
-	return len(fp.mu.pendingFixups)
+// discardFixupsLocked pops all unprocessed fixups from the queue and discards
+// them. Note that any in-progress fixups are not affected.
+//
+// NOTE: Caller must have acquired the fp.mu lock.
+func (fp *FixupProcessor) discardFixupsLocked() {
+	for {
+		select {
+		case next := <-fp.fixups:
+			// Remove from the map.
+			delete(fp.mu.pendingFixups, next.CachedKey)
+
+		default:
+			// No more unprocessed fixups.
+			return
+		}
+	}
 }

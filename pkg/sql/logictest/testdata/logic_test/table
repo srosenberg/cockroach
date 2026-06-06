@@ -104,6 +104,7 @@ SELECT * FROM [SHOW CONSTRAINTS FROM c WITH COMMENT] ORDER BY constraint_name
 ----
 table_name  constraint_name  constraint_type  details               validated  comment
 c           c_bar_key        UNIQUE           UNIQUE (bar ASC)      true       NULL
+c           c_id_not_null    NOT NULL         NOT NULL              true       NULL
 c           c_pkey           PRIMARY KEY      PRIMARY KEY (id ASC)  true       NULL
 c           foo_positive     CHECK            CHECK ((foo > 0))     true       NULL
 
@@ -223,6 +224,7 @@ CREATE TABLE test.precision (x DECIMAL(0, 2))
 statement error at or near "\)": syntax error: scale \(4\) must be between 0 and precision \(2\)
 CREATE TABLE test.precision (x DECIMAL(2, 4))
 
+onlyif config schema-locked-disabled
 query TT
 SHOW CREATE TABLE test.users
 ----
@@ -242,7 +244,29 @@ test.public.users  CREATE TABLE public.users (
                      FAMILY fam_3_username_email (username, email),
                      CONSTRAINT check_nickname_name CHECK (length(nickname) < length(name)),
                      CONSTRAINT check_nickname CHECK (length(nickname) < 10:::INT8)
-                   )
+                   );
+
+skipif config schema-locked-disabled
+query TT
+SHOW CREATE TABLE test.users
+----
+test.public.users  CREATE TABLE public.users (
+                     id INT8 NOT NULL,
+                     name VARCHAR NOT NULL,
+                     title VARCHAR NULL,
+                     nickname STRING NULL,
+                     username STRING(10) NULL,
+                     email VARCHAR(100) NULL,
+                     CONSTRAINT users_pkey PRIMARY KEY (id ASC),
+                     INDEX foo (name ASC),
+                     UNIQUE INDEX bar (id ASC, name ASC),
+                     FAMILY "primary" (id, name),
+                     FAMILY fam_1_title (title),
+                     FAMILY fam_2_nickname (nickname),
+                     FAMILY fam_3_username_email (username, email),
+                     CONSTRAINT check_nickname_name CHECK (length(nickname) < length(name)),
+                     CONSTRAINT check_nickname CHECK (length(nickname) < 10:::INT8)
+                   ) WITH (schema_locked = true);
 
 statement ok
 CREATE TABLE test.dupe_generated (
@@ -255,12 +279,13 @@ CREATE TABLE test.dupe_generated (
 query TTTTB colnames
 SELECT * FROM [SHOW CONSTRAINTS FROM test.dupe_generated] ORDER BY constraint_name
 ----
-table_name      constraint_name      constraint_type  details                  validated
-dupe_generated  check_bar            CHECK            CHECK ((bar > 2))        true
-dupe_generated  check_foo            CHECK            CHECK ((foo > 2))        true
-dupe_generated  check_foo1           CHECK            CHECK ((foo < 10))       true
-dupe_generated  check_foo2           CHECK            CHECK ((foo > 1))        true
-dupe_generated  dupe_generated_pkey  PRIMARY KEY      PRIMARY KEY (rowid ASC)  true
+table_name      constraint_name                constraint_type  details                  validated
+dupe_generated  check_bar                      CHECK            CHECK ((bar > 2))        true
+dupe_generated  check_foo                      CHECK            CHECK ((foo > 2))        true
+dupe_generated  check_foo1                     CHECK            CHECK ((foo < 10))       true
+dupe_generated  check_foo2                     CHECK            CHECK ((foo > 1))        true
+dupe_generated  dupe_generated_pkey            PRIMARY KEY      PRIMARY KEY (rowid ASC)  true
+dupe_generated  dupe_generated_rowid_not_null  NOT NULL         NOT NULL                 true
 
 statement ok
 CREATE TABLE test.named_constraints (
@@ -280,6 +305,7 @@ CREATE TABLE test.named_constraints (
   FAMILY fam_3_username_email (username, email)
 )
 
+onlyif config schema-locked-disabled
 query TT
 SHOW CREATE TABLE test.named_constraints
 ----
@@ -301,18 +327,44 @@ test.public.named_constraints  CREATE TABLE public.named_constraints (
                                  FAMILY fam_3_username_email (username, email),
                                  CONSTRAINT ck2 CHECK (length(nickname) < length(name)),
                                  CONSTRAINT ck1 CHECK (length(nickname) < 10:::INT8)
-                               )
+                               );
+
+skipif config schema-locked-disabled
+query TT
+SHOW CREATE TABLE test.named_constraints
+----
+test.public.named_constraints  CREATE TABLE public.named_constraints (
+                                 id INT8 NOT NULL,
+                                 name VARCHAR NOT NULL,
+                                 title VARCHAR NULL DEFAULT 'VP of Something':::STRING,
+                                 nickname STRING NULL,
+                                 username STRING(10) NULL,
+                                 email VARCHAR(100) NULL,
+                                 CONSTRAINT pk PRIMARY KEY (id ASC),
+                                 UNIQUE INDEX uq (email ASC),
+                                 INDEX foo (name ASC),
+                                 UNIQUE INDEX uq2 (username ASC),
+                                 UNIQUE INDEX bar (id ASC, name ASC),
+                                 FAMILY "primary" (id, name),
+                                 FAMILY fam_1_title (title),
+                                 FAMILY fam_2_nickname (nickname),
+                                 FAMILY fam_3_username_email (username, email),
+                                 CONSTRAINT ck2 CHECK (length(nickname) < length(name)),
+                                 CONSTRAINT ck1 CHECK (length(nickname) < 10:::INT8)
+                               ) WITH (schema_locked = true);
 
 query TTTTB colnames
 SELECT * FROM [SHOW CONSTRAINTS FROM test.named_constraints] ORDER BY constraint_name
 ----
-table_name         constraint_name  constraint_type  details                                    validated
-named_constraints  bar              UNIQUE           UNIQUE (id ASC, name ASC)                  true
-named_constraints  ck1              CHECK            CHECK ((length(nickname) < 10))            true
-named_constraints  ck2              CHECK            CHECK ((length(nickname) < length(name)))  true
-named_constraints  pk               PRIMARY KEY      PRIMARY KEY (id ASC)                       true
-named_constraints  uq               UNIQUE           UNIQUE (email ASC)                         true
-named_constraints  uq2              UNIQUE           UNIQUE (username ASC)                      true
+table_name         constraint_name                  constraint_type  details                                    validated
+named_constraints  bar                              UNIQUE           UNIQUE (id ASC, name ASC)                  true
+named_constraints  ck1                              CHECK            CHECK ((length(nickname) < 10))            true
+named_constraints  ck2                              CHECK            CHECK ((length(nickname) < length(name)))  true
+named_constraints  named_constraints_id_not_null    NOT NULL         NOT NULL                                   true
+named_constraints  named_constraints_name_not_null  NOT NULL         NOT NULL                                   true
+named_constraints  pk                               PRIMARY KEY      PRIMARY KEY (id ASC)                       true
+named_constraints  uq                               UNIQUE           UNIQUE (email ASC)                         true
+named_constraints  uq2                              UNIQUE           UNIQUE (username ASC)                      true
 
 statement error duplicate constraint name: "pk"
 CREATE TABLE test.dupe_named_constraints (
@@ -489,11 +541,12 @@ statement ok
 SELECT * FROM test.empty
 
 # Issue #14308: support tables with DEFAULT NULL columns.
-statement ok
+statement disable-cf-mutator ok
 CREATE TABLE test.null_default (
   ts timestamp NULL DEFAULT NULL
 )
 
+onlyif config schema-locked-disabled
 query TT
 SHOW CREATE TABLE test.null_default
 ----
@@ -501,7 +554,17 @@ test.public.null_default  CREATE TABLE public.null_default (
                             ts TIMESTAMP NULL,
                             rowid INT8 NOT VISIBLE NOT NULL DEFAULT unique_rowid(),
                             CONSTRAINT null_default_pkey PRIMARY KEY (rowid ASC)
-                          )
+                         );
+
+skipif config schema-locked-disabled
+query TT
+SHOW CREATE TABLE test.null_default
+----
+test.public.null_default  CREATE TABLE public.null_default (
+                            ts TIMESTAMP NULL,
+                            rowid INT8 NOT VISIBLE NOT NULL DEFAULT unique_rowid(),
+                            CONSTRAINT null_default_pkey PRIMARY KEY (rowid ASC)
+                          ) WITH (schema_locked = true);
 
 # Issue #13873: don't permit invalid default columns
 statement error could not parse "blah" as type decimal
@@ -566,7 +629,7 @@ SELECT estimated_row_count FROM [SHOW TABLES] where table_name = 't1'
 ----
 1024
 
-statement ok
+statement count 24
 DELETE FROM rowtest.t1 WHERE a > 1000;
 
 statement ok
@@ -615,3 +678,91 @@ pr_check    CHECK ((price > 0))     true
 
 statement ok
 COMMIT;
+
+subtest end
+
+# Test that partial statistics are filtered out from table_row_statistics
+statement ok
+CREATE TABLE t (k INT PRIMARY KEY)
+
+statement ok
+INSERT INTO t SELECT generate_series(0, 9)
+
+statement ok
+ANALYZE t
+
+statement ok
+CREATE STATISTICS partial FROM t USING EXTREMES
+
+query I
+SELECT estimated_row_count FROM crdb_internal.table_row_statistics WHERE table_name = 't'
+----
+10
+
+subtest lock_table
+
+# LOCK TABLE is not supported by default.
+statement error pgcode 0A000 LOCK TABLE is not supported
+LOCK TABLE t IN ACCESS SHARE MODE
+
+# Bare LOCK (without IN ... MODE) is also not supported by default.
+statement error pgcode 0A000 LOCK TABLE is not supported
+LOCK t
+
+statement ok
+SET pg_dump_compatibility = 'postgres'
+
+# LOCK TABLE is a no-op when pg_dump_compatibility is enabled.
+statement ok
+LOCK TABLE t IN ACCESS SHARE MODE
+
+# Multiple tables work too (pg_dump batches locks).
+statement ok
+LOCK TABLE t, pg_class IN ACCESS SHARE MODE
+
+# NOWAIT variant also works.
+statement ok
+LOCK TABLE t IN ACCESS SHARE MODE NOWAIT
+
+# All lock modes are accepted.
+statement ok
+LOCK TABLE t IN ROW SHARE MODE
+
+statement ok
+LOCK TABLE t IN ROW EXCLUSIVE MODE
+
+statement ok
+LOCK TABLE t IN SHARE UPDATE EXCLUSIVE MODE
+
+statement ok
+LOCK TABLE t IN SHARE MODE
+
+statement ok
+LOCK TABLE t IN SHARE ROW EXCLUSIVE MODE
+
+statement ok
+LOCK TABLE t IN EXCLUSIVE MODE
+
+statement ok
+LOCK TABLE t IN ACCESS EXCLUSIVE MODE
+
+# Bare LOCK (no IN ... MODE) defaults to ACCESS EXCLUSIVE.
+statement ok
+LOCK t
+
+# Bare LOCK with NOWAIT.
+statement ok
+LOCK t NOWAIT
+
+# TABLE keyword is optional.
+statement ok
+LOCK TABLE t
+
+statement ok
+SET pg_dump_compatibility = 'off'
+
+# Verify LOCK TABLE is rejected again after disabling compat mode.
+statement error pgcode 0A000 LOCK TABLE is not supported
+LOCK TABLE t IN ACCESS SHARE MODE
+
+subtest end

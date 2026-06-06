@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/sql"
 	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats"
+	"github.com/cockroachdb/cockroach/pkg/sql/sqlstats/persistedsqlstats/sqlstatstestutil"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/datapathutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/serverutils"
@@ -33,7 +34,6 @@ import (
 const (
 	timeArgs                 = "time"
 	dbNameArgs               = "db"
-	implicitTxnArgs          = "implicitTxn"
 	fingerprintArgs          = "fingerprint"
 	eventArgs                = "event"
 	eventCallbackCmd         = "callbackCmd"
@@ -71,10 +71,12 @@ func TestSQLStatsDataDriven(t *testing.T) {
 
 	ctx := context.Background()
 	var params base.TestServerArgs
+	params.DisableElasticCPUAdmission = true
 	knobs := sqlstats.CreateTestingKnobs()
 	knobs.StubTimeNow = stubTime.Now
 	knobs.OnStmtStatsFlushFinished = injector.invokePostStmtStatsFlushCallback
 	knobs.OnTxnStatsFlushFinished = injector.invokePostTxnStatsFlushCallback
+	knobs.SynchronousSQLStats = true
 	params.Knobs.SQLStatsKnobs = knobs
 
 	cluster := serverutils.StartCluster(t, 3 /* numNodes */, base.TestClusterArgs{
@@ -129,14 +131,12 @@ func TestSQLStatsDataDriven(t *testing.T) {
 			stubTime.setTime(tm)
 			return stubTime.Now().String()
 		case "should-sample":
-			mustHaveArgsOrFatal(t, d, fingerprintArgs, implicitTxnArgs, dbNameArgs)
+			mustHaveArgsOrFatal(t, d, fingerprintArgs, dbNameArgs)
 
 			var dbName string
-			var implicitTxn bool
 			var fingerprint string
 
 			d.ScanArgs(t, fingerprintArgs, &fingerprint)
-			d.ScanArgs(t, implicitTxnArgs, &implicitTxn)
 			d.ScanArgs(t, dbNameArgs, &dbName)
 
 			// Since the data driven tests framework does not support space
@@ -144,16 +144,37 @@ func TestSQLStatsDataDriven(t *testing.T) {
 			// them.
 			fingerprint = strings.Replace(fingerprint, "%", " ", -1)
 
-			previouslySampled := appStats.StatementSampled(
-				fingerprint,
-				implicitTxn,
-				dbName,
-			)
+			previouslySampled := appStats.StatementSampled(fingerprint, dbName)
 			return fmt.Sprintf("%t", previouslySampled)
 		case "skip":
 			var issue int
 			d.ScanArgs(t, "issue-num", &issue)
 			skip.WithIssue(t, issue)
+			return ""
+		case "wait-for-stmt-stats":
+			// Wait for the in-memory statement stats to be recorded.
+			var count int
+			var app string
+			d.ScanArgs(t, "count", &count)
+			d.ScanArgs(t, "app", &app)
+			filters := sqlstatstestutil.StatementFilter{
+				App: app,
+			}
+			sqlstatstestutil.WaitForStatementEntriesAtLeast(t, observer, count, filters)
+			return ""
+		case "wait-for-txn-stats":
+			// Wait for the in-memory transaction stats to be recorded.
+			var count, execCount int
+			var app string
+			d.ScanArgs(t, "count", &count)
+			d.ScanArgs(t, "app", &app)
+			d.MaybeScanArgs(t, "execCount", &execCount)
+			filters := sqlstatstestutil.TransactionFilter{
+				App:       app,
+				ExecCount: execCount,
+			}
+
+			sqlstatstestutil.WaitForTransactionEntriesAtLeast(t, observer, count, filters)
 			return ""
 		}
 

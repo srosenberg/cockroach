@@ -8,14 +8,12 @@ package backup
 import (
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"testing"
 
 	"github.com/cockroachdb/cockroach/pkg/backup/backupencryption"
 	"github.com/cockroachdb/cockroach/pkg/base"
 	"github.com/cockroachdb/cockroach/pkg/blobs"
-	"github.com/cockroachdb/cockroach/pkg/ccl/storageccl"
 	"github.com/cockroachdb/cockroach/pkg/cloud"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/keys"
@@ -29,6 +27,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/humanizeutil"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/pebble/objstorage"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,24 +58,22 @@ func BenchmarkIteratorMemory(b *testing.B) {
 	makeWriter := func(
 		store cloud.ExternalStorage,
 		filename string,
-		enc *jobspb.BackupEncryptionOptions) (io.WriteCloser, error) {
-		w, err := store.Writer(ctx, filename)
+		enc *jobspb.BackupEncryptionOptions) (objstorage.Writable, error) {
+		w, err := cloud.OpenAbortableWriter(ctx, store, filename)
 		if err != nil {
 			return nil, err
 		}
 
-		if enc != nil {
-			key, err := backupencryption.GetEncryptionKey(ctx, enc, nil)
-			if err != nil {
-				return nil, err
-			}
-			encW, err := storageccl.EncryptingWriter(w, key)
-			if err != nil {
-				return nil, err
-			}
-			w = encW
+		if enc == nil {
+			return w, nil
 		}
-		return w, nil
+
+		key, err := backupencryption.GetEncryptionKey(ctx, enc, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		return storage.EncryptingWriter(w, key)
 	}
 
 	getRandomPayload := func(buf []byte) {
@@ -87,7 +84,7 @@ func BenchmarkIteratorMemory(b *testing.B) {
 		}
 	}
 
-	writeSST := func(w io.WriteCloser, store cloud.ExternalStorage, payloadSize int, numKeys int) {
+	writeSST := func(w objstorage.Writable, store cloud.ExternalStorage, payloadSize int, numKeys int) {
 		sst := storage.MakeTransportSSTWriter(ctx, store.Settings(), w)
 
 		buf := make([]byte, payloadSize)
@@ -156,13 +153,13 @@ func BenchmarkIteratorMemory(b *testing.B) {
 							require.NoError(b, err)
 
 							writeSST(w, store, 100, rows)
-							require.NoError(b, w.Close())
+							require.NoError(b, w.Finish())
 
 							sz, err := store.Size(ctx, filename)
 							require.NoError(b, err)
 
-							log.Infof(ctx, "Benchmarking using file of size %s", humanizeutil.IBytes(sz))
-							fileStores := make([]storageccl.StoreFile, fileCount)
+							log.Dev.Infof(ctx, "Benchmarking using file of size %s", humanizeutil.IBytes(sz))
+							fileStores := make([]storage.StoreFile, fileCount)
 							for i := 0; i < fileCount; i++ {
 								fileStores[i].Store = store
 								fileStores[i].FilePath = filename
@@ -196,7 +193,7 @@ func BenchmarkIteratorMemory(b *testing.B) {
 							b.ResetTimer()
 
 							for j := 0; j < iterCount; j++ {
-								iter, err := storageccl.ExternalSSTReader(ctx, fileStores, encOpts, iterOpts)
+								iter, err := storage.ExternalSSTReader(ctx, fileStores, encOpts, iterOpts)
 								require.NoError(b, err)
 
 								iters[j] = iter
